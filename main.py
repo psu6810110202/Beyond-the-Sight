@@ -1,3 +1,12 @@
+from kivy.config import Config
+from settings import WINDOW_WIDTH, WINDOW_HEIGHT, TITLE
+
+Config.set('graphics', 'width', str(WINDOW_WIDTH))
+Config.set('graphics', 'height', str(WINDOW_HEIGHT))
+Config.set('graphics', 'resizable', '0')
+Config.set('graphics', 'position', 'auto')
+Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
+
 from kivy.app import App 
 from kivy.uix.widget import Widget 
 from kivy.graphics import Rectangle 
@@ -24,6 +33,12 @@ class GameWidget(Widget):
         self._keyboard = None 
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
+        if keycode[1] == 'f11':
+            if Window.fullscreen:
+                Window.fullscreen = False
+            else:
+                Window.fullscreen = 'auto'
+
         print('down', text)
         self.pressed_keys.add(text)
         
@@ -53,6 +68,7 @@ class GameWidget(Widget):
 
 class MyApp(App): 
     def build(self): 
+        self.title = TITLE
         return GameWidget() 
 
 if __name__ == '__main__': 
