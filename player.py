@@ -2,13 +2,32 @@ from kivy.graphics import Rectangle
 from settings import *
 
 class Player:
-    def __init__(self, canvas):
+    def __init__(self, canvas,walls):
         self.is_moving = False
         self.target_pos = [96, 96]
+        self.walls = walls
+        self.canvas = canvas
+        self.current_speed = WALK_SPEED
+        #Stamina
+        self.stamina = MAX_STAMINA
+        self.max_stamina = MAX_STAMINA
         with canvas:
             self.rect = Rectangle(pos=(96, 96), size=(PLAYER_WIDTH * 2, PLAYER_HEIGHT * 2))
-
+            #Stamina Bar
+            Color(0,1,0,1)
+            self.stamina_bar = Rectangle(pos=(10, WINDOW_HEIGHT - 20), size=(self.stamina * 2, 10))
     def move(self, pressed_keys):
+        is_running = 'shift' in pressed_keys or self.is_moving:
+        if is_running and self.stamina > 0:
+            self.current_speed = RUN_SPEED
+            self.stamina -= STAMINA_DRAIN
+        else:
+            self.current_speed = WALK_SPEED
+            if self.stamina < self.max_stamina:
+                self.stamina += STAMINA_REGEN
+        #อัพเดตขนาดของ stamina bar
+        self.stamina_bar.size = (self.stamina / self.max_stamina * TILE_SIZE ,5)
+        self.stamina_bar.pos = (self.rect.pos[0], self.rect.pos[1] + TILE_SIZE + 2)
         if not self.is_moving:
             dx, dy = 0, 0
             if 'w' in pressed_keys or 'up' in pressed_keys: dy = TILE_SIZE
