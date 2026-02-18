@@ -17,7 +17,7 @@ class Player:
             Color(0,1,0,1)
             self.stamina_bar = Rectangle(pos=(10, WINDOW_HEIGHT - 20), size=(self.stamina * 2, 10))
     def move(self, pressed_keys):
-        is_running = 'shift' in pressed_keys or self.is_moving:
+        is_running = 'shift' in pressed_keys or self.is_moving
         if is_running and self.stamina > 0:
             self.current_speed = RUN_SPEED
             self.stamina -= STAMINA_DRAIN
@@ -47,7 +47,25 @@ class Player:
         if 0 <= new_x <= WINDOW_WIDTH - self.rect.size[0] and 0 <= new_y <= WINDOW_HEIGHT - self.rect.size[1]:
             self.target_pos = [new_x, new_y]
             self.is_moving = True
+    def check_and_move(self, dx, dy):
+        curr_x, curr_y = self.rect.pos
+        new_x = curr_x + dx
+        new_y = curr_y + dy
+        
+        # เช็คขอบจอ
+        if not (0 <= new_x <= WINDOW_WIDTH - TILE_SIZE and 0 <= new_y <= WINDOW_HEIGHT - TILE_SIZE):
+            return # ออกนอกจอ ไม่เดิน
 
+        # เช็คกำแพง (Collision)
+        # สร้างสี่เหลี่ยมสมมติขึ้นมาดูว่าจะชนไหม
+        future_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
+        for wall in self.walls:
+            if self.check_collision(future_rect, wall):
+                return # ชนกำแพง ไม่เดิน
+
+        # ถ้าผ่านหมด ก็เริ่มเดิน
+        self.target_pos = [new_x, new_y]
+        self.is_moving = True
     def continue_move(self):
         cur_x, cur_y = self.rect.pos
         tar_x, tar_y = self.target_pos
