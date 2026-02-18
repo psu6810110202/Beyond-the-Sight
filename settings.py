@@ -11,3 +11,10 @@ PLAYER_SPEED = 4
 
 # Tile Settings
 TILE_SIZE = 32
+WALK_SPEED = 2   # ความเร็วเดินปกติ
+RUN_SPEED = 4    # ความเร็วตอนวิ่ง (ต้องหาร TILE_SIZE ลงตัวจะดีที่สุด)
+
+# Stamina
+MAX_STAMINA = 100
+STAMINA_DRAIN = 0.5
+STAMINA_REGEN = 0.2
