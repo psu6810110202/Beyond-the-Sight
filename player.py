@@ -66,6 +66,15 @@ class Player:
         # ถ้าผ่านหมด ก็เริ่มเดิน
         self.target_pos = [new_x, new_y]
         self.is_moving = True
+    def check_collision(self, rect1, wall_obj):
+        # rect1 = [x, y, w, h]
+        # wall_obj.pos/size
+        r1x, r1y, r1w, r1h = rect1
+        r2x, r2y = wall_obj.pos
+        r2w, r2h = wall_obj.size
+        
+        return (r1x < r2x + r2w and r1x + r1w > r2x and
+                r1y < r2y + r2h and r1y + r1h > r2y)
     def continue_move(self):
         cur_x, cur_y = self.rect.pos
         tar_x, tar_y = self.target_pos
