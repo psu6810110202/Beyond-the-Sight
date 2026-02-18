@@ -1,5 +1,7 @@
 from kivy.config import Config
 from settings import *
+from kivy.graphics import Color, Rectangle # เพิ่ม Color
+from settings import * # อย่าลืม import settings
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -12,7 +14,14 @@ from kivy.uix.widget import Widget
 from kivy.core.window import Window 
 from kivy.clock import Clock 
 from player import Player
-
+# เพิ่มคลาส Wall ง่ายๆ
+class Wall:
+    def __init__(self, canvas, pos, size):
+        self.pos = pos
+        self.size = size
+        with canvas:
+            Color(0.5, 0.5, 0.5, 1) # กำแพงสีเทา
+            Rectangle(pos=pos, size=size)
 class GameWidget(Widget): 
     def __init__(self, **kwargs): 
         super().__init__(**kwargs) 
@@ -22,6 +31,9 @@ class GameWidget(Widget):
         self._keyboard.bind(on_key_up=self._on_key_up) 
 
         self.pressed_keys = set() 
+        # 1. สร้าง Map / กำแพง
+        self.walls = []
+        self.create_map()
         
         self.player = Player(self.canvas)
 
