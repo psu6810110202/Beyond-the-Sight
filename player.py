@@ -1,11 +1,10 @@
-from kivy.graphics import Rectangle
+from kivy.graphics import Rectangle, Color
 from settings import *
 
 class Player:
-    def __init__(self, canvas,walls):
+    def __init__(self, canvas):
         self.is_moving = False
         self.target_pos = [96, 96]
-        self.walls = walls
         self.canvas = canvas
         self.current_speed = WALK_SPEED
         #Stamina

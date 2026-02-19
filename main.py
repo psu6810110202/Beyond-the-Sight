@@ -14,6 +14,8 @@ from kivy.uix.widget import Widget
 from kivy.core.window import Window 
 from kivy.clock import Clock 
 from player import Player
+from npc import NPC
+
 # เพิ่มคลาส Wall ง่ายๆ
 class Wall:
     def __init__(self, canvas, pos, size):
@@ -36,6 +38,10 @@ class GameWidget(Widget):
         self.create_map()
         
         self.player = Player(self.canvas)
+        
+        # 2. สร้าง NPCs
+        self.npcs = []
+        self.create_npcs()
 
         Clock.schedule_interval(self.move_step, 1.0 / FPS) 
 
@@ -58,6 +64,67 @@ class GameWidget(Widget):
 
     def move_step(self, dt):
         self.player.move(self.pressed_keys)
+        # Update NPCs
+        for npc in self.npcs:
+            npc.update(dt)
+            # Check collision with player
+            if npc.check_player_collision(self.player.rect):
+                # Handle collision - you can add custom behavior here
+                # For now, just print a message
+                print("NPC collided with player!")
+    
+    def create_map(self):
+        # สร้างกำแพงขอบจอ
+        wall_thickness = TILE_SIZE
+        
+        # กำแพงบน
+        self.walls.append(Wall(self.canvas, (0, WINDOW_HEIGHT - wall_thickness), 
+                              (WINDOW_WIDTH, wall_thickness)))
+        # กำแพงล่าง
+        self.walls.append(Wall(self.canvas, (0, 0), 
+                              (WINDOW_WIDTH, wall_thickness)))
+        # กำแพงซ้าย
+        self.walls.append(Wall(self.canvas, (0, 0), 
+                              (wall_thickness, WINDOW_HEIGHT)))
+        # กำแพงขวา
+        self.walls.append(Wall(self.canvas, (WINDOW_WIDTH - wall_thickness, 0), 
+                              (wall_thickness, WINDOW_HEIGHT)))
+        
+        # สร้างกำแพงกลาง
+        self.walls.append(Wall(self.canvas, (200, 200), 
+                              (TILE_SIZE * 4, TILE_SIZE)))
+        self.walls.append(Wall(self.canvas, (400, 100), 
+                              (TILE_SIZE, TILE_SIZE * 6)))
+        self.walls.append(Wall(self.canvas, (600, 300), 
+                              (TILE_SIZE * 3, TILE_SIZE * 2)))
+    
+    def create_npcs(self):
+        # กำหนดตำแหน่ง NPC แบบตายตัว
+        npc_positions = [
+            (100, 100),   # NPC 1
+            (300, 200),   # NPC 2
+            (500, 150),   # NPC 3
+            (200, 350),   # NPC 4
+            (700, 250)    # NPC 5
+        ]
+        
+        colors = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1), (1, 1, 0, 1), (1, 0, 1, 1)]
+        
+        for i in range(NPC_COUNT):
+            x, y = npc_positions[i]
+            color = colors[i % len(colors)]
+            npc = NPC(self.canvas, x, y, self.walls, color)
+            self.npcs.append(npc)
+    
+    def check_npc_wall_collision(self, rect, wall_obj):
+        # rect = [x, y, w, h]
+        # wall_obj.pos/size
+        r1x, r1y, r1w, r1h = rect
+        r2x, r2y = wall_obj.pos
+        r2w, r2h = wall_obj.size
+        
+        return (r1x < r2x + r2w and r1x + r1w > r2x and
+                r1y < r2y + r2h and r1y + r1h > r2y)
 
 class MyApp(App): 
     def build(self): 
