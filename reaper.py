@@ -1,0 +1,173 @@
+from kivy.graphics import Rectangle, Color, Ellipse
+from settings import *
+import math
+
+class Reaper:
+    def __init__(self, canvas, x, y, walls):
+        self.canvas = canvas
+        self.walls = walls
+        self.x = x
+        self.y = y
+        self.speed = REAPER_SPEED
+        self.target_pos = [x, y]
+        self.is_moving = False
+        self.safe_zone_radius = SAFE_ZONE_RADIUS
+        self.detection_radius = REAPER_DETECTION_RADIUS
+        self.is_patrolling = True
+        self.patrol_direction = 1  # 1 for right, -1 for left
+        self.patrol_timer = 0
+        self.patrol_interval = 120  # frames before changing direction
+        self.is_protector = True  # Reaper เป็นผู้ปกป้อง
+        
+        # Visual elements
+        with canvas:
+            # Reaper body (friendly blue color)
+            Color(0.2, 0.5, 1.0, 1)  # สีฟ้าอ่อน - ดูเป็นมิตร
+            self.rect = Rectangle(pos=(x, y), size=(REAPER_WIDTH, REAPER_HEIGHT))
+            
+            # Safe zone visualization (protective green circle)
+            Color(0, 1, 0, 0.2)  # เขียวเข้มขึ้น - ดูปลอดภัย
+            self.safe_zone_circle = Ellipse(
+                pos=(x - self.safe_zone_radius + REAPER_WIDTH//2, 
+                     y - self.safe_zone_radius + REAPER_HEIGHT//2),
+                size=(self.safe_zone_radius * 2, self.safe_zone_radius * 2)
+            )
+            
+            # Protection aura (gentle blue glow)
+            Color(0.3, 0.7, 1.0, 0.1)  # สีฟ้าพาสเทลอ่อนๆ
+            self.protection_circle = Ellipse(
+                pos=(x - self.detection_radius + REAPER_WIDTH//2, 
+                     y - self.detection_radius + REAPER_HEIGHT//2),
+                size=(self.detection_radius * 2, self.detection_radius * 2)
+            )
+    
+    def update(self, dt, player_pos):
+        # Update visual positions
+        self.update_visual_positions()
+        
+        # Check if player is in safe zone
+        distance_to_player = self.calculate_distance(player_pos)
+        
+        if distance_to_player <= self.safe_zone_radius:
+            # Player is in safe zone - provide protection
+            self.protect_player(player_pos)
+        else:
+            # Player outside safe zone - patrol behavior
+            self.patrol()
+        
+        # Continue movement if needed
+        if self.is_moving:
+            self.continue_move()
+    
+    def update_visual_positions(self):
+        # Update safe zone circle position
+        self.safe_zone_circle.pos = (
+            self.x - self.safe_zone_radius + REAPER_WIDTH//2,
+            self.y - self.safe_zone_radius + REAPER_HEIGHT//2
+        )
+        
+        # Update protection circle position
+        self.protection_circle.pos = (
+            self.x - self.detection_radius + REAPER_WIDTH//2,
+            self.y - self.detection_radius + REAPER_HEIGHT//2
+        )
+    
+    def calculate_distance(self, target_pos):
+        dx = target_pos[0] - self.x
+        dy = target_pos[1] - self.y
+        return math.sqrt(dx**2 + dy**2)
+    
+    def is_in_safe_zone(self, target_pos):
+        distance = self.calculate_distance(target_pos)
+        return distance <= self.safe_zone_radius
+    
+    def protect_player(self, player_pos):
+        # Reaper ปกป้องผู้เล่น - ไม่ไล่ตามแต่คุ้มคุ้ม
+        self.is_patrolling = False
+        self.is_moving = False
+        # สามารถเพิ่มเอฟเฟกต์การปกป้องได้ที่นี่
+        print("Reaper is protecting you in the safe zone!")
+    
+    def patrol(self):
+        self.patrol_timer += 1
+        
+        if not self.is_moving:
+            if self.patrol_timer >= self.patrol_interval:
+                # Change patrol direction
+                self.patrol_direction *= -1
+                self.patrol_timer = 0
+                
+                # Move in patrol direction
+                dx = self.patrol_direction * TILE_SIZE * 2
+                new_x = self.x + dx
+                
+                if self.can_move_to(new_x, self.y):
+                    self.start_move(dx, 0)
+                else:
+                    # Hit boundary, reverse direction
+                    self.patrol_direction *= -1
+                    new_x = self.x + self.patrol_direction * TILE_SIZE * 2
+                    if self.can_move_to(new_x, self.y):
+                        self.start_move(self.patrol_direction * TILE_SIZE * 2, 0)
+    
+    def can_move_to(self, new_x, new_y):
+        # Check screen boundaries
+        if not (0 <= new_x <= WINDOW_WIDTH - REAPER_WIDTH and 
+                0 <= new_y <= WINDOW_HEIGHT - REAPER_HEIGHT):
+            return False
+        
+        # Check wall collisions
+        future_rect = [new_x, new_y, REAPER_WIDTH, REAPER_HEIGHT]
+        for wall in self.walls:
+            if self.check_collision(future_rect, wall):
+                return False
+        
+        return True
+    
+    def start_move(self, dx, dy):
+        new_x = self.x + dx
+        new_y = self.y + dy
+        
+        if self.can_move_to(new_x, new_y):
+            self.target_pos = [new_x, new_y]
+            self.is_moving = True
+    
+    def continue_move(self):
+        cur_x, cur_y = self.rect.pos
+        tar_x, tar_y = self.target_pos
+
+        if cur_x < tar_x: 
+            cur_x = min(cur_x + self.speed, tar_x)
+        elif cur_x > tar_x: 
+            cur_x = max(cur_x - self.speed, tar_x)
+        if cur_y < tar_y: 
+            cur_y = min(cur_y + self.speed, tar_y)
+        elif cur_y > tar_y: 
+            cur_y = max(cur_y - self.speed, tar_y)
+
+        self.rect.pos = (cur_x, cur_y)
+        self.x, self.y = cur_x, cur_y
+        
+        if cur_x == tar_x and cur_y == tar_y:
+            self.is_moving = False
+    
+    def check_collision(self, rect1, wall_obj):
+        # rect1 = [x, y, w, h]
+        # wall_obj.pos/size
+        r1x, r1y, r1w, r1h = rect1
+        r2x, r2y = wall_obj.pos
+        r2w, r2h = wall_obj.size
+        
+        return (r1x < r2x + r2w and r1x + r1w > r2x and
+                r1y < r2y + r2h and r1y + r1h > r2y)
+    
+    def check_player_collision(self, player_rect):
+        reaper_rect = [self.x, self.y, REAPER_WIDTH, REAPER_HEIGHT]
+        player_rect_list = [player_rect.pos[0], player_rect.pos[1], 
+                           player_rect.size[0], player_rect.size[1]]
+        
+        # Reaper ไม่ทำอันตรายผู้เล่น - แค่สัมผัสกันได้
+        return (reaper_rect[0] < player_rect_list[0] + player_rect_list[2] and
+                reaper_rect[0] + reaper_rect[2] > player_rect_list[0] and
+                reaper_rect[1] < player_rect_list[1] + player_rect_list[3] and
+                reaper_rect[1] + reaper_rect[3] > player_rect_list[1])

@@ -15,6 +15,7 @@ from kivy.core.window import Window
 from kivy.clock import Clock 
 from player import Player
 from npc import NPC
+from reaper import Reaper
 
 # เพิ่มคลาส Wall ง่ายๆ
 class Wall:
@@ -42,6 +43,9 @@ class GameWidget(Widget):
         # 2. สร้าง NPCs
         self.npcs = []
         self.create_npcs()
+        
+        # 3. สร้าง Reaper
+        self.reaper = Reaper(self.canvas, 400, 400, self.walls)
 
         Clock.schedule_interval(self.move_step, 1.0 / FPS) 
 
@@ -72,6 +76,18 @@ class GameWidget(Widget):
                 # Handle collision - you can add custom behavior here
                 # For now, just print a message
                 print("NPC collided with player!")
+        
+        # Update Reaper
+        player_pos = self.player.rect.pos
+        self.reaper.update(dt, player_pos)
+        
+        # Check Reaper collision with player (friendly interaction)
+        if self.reaper.check_player_collision(self.player.rect):
+            print("You touched the friendly Reaper!")
+        
+        # Check if player is in Reaper's safe zone
+        if self.reaper.is_in_safe_zone(player_pos):
+            print("You are safe in the Reaper's protection zone!")
     
     def create_map(self):
         # สร้างกำแพงขอบจอ
