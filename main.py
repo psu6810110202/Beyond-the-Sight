@@ -1,6 +1,6 @@
 from kivy.config import Config
 from settings import *
-from kivy.graphics import Color, Rectangle, Translate, PushMatrix, PopMatrix # เพิ่ม Color
+from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -23,7 +23,9 @@ class GameWidget(Widget):
         # Setup Camera
         with self.canvas.before:
             PushMatrix()
-            self.cam_translate = Translate()
+            self.cam_trans_center = Translate(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
+            self.cam_scale = Scale(1, 1, 1)
+            self.cam_trans_pos = Translate(0, 0)
         
         with self.canvas.after:
             PopMatrix()
@@ -51,19 +53,24 @@ class GameWidget(Widget):
         Clock.schedule_interval(self.move_step, 1.0 / FPS) 
 
     def update_camera(self):
-        # Center camera on player
+        # คำนวณอัตราส่วนการซูม (Scale) 
+        # เพื่อให้หน้าจอแคบๆ (CAMERA_SIZE) ถูกขยายให้เต็มหน้าต่างเกม (WINDOW_SIZE)
+        scale_x = WINDOW_WIDTH / CAMERA_WIDTH
+        scale_y = WINDOW_HEIGHT / CAMERA_HEIGHT
+        
+        # เลือกซูมตามด้านที่น้อยที่สุด เพื่อไม่ให้ภาพเสียสัดส่วน (รักษาสัดส่วนเดิม)
+        scale_factor = min(scale_x, scale_y)
+        self.cam_scale.xyz = (scale_factor, scale_factor, 1)
+
+        # ศูนย์กลางของตัวละคร
         px, py = self.player.rect.pos
         pw, ph = self.player.rect.size
         
-        # Start camera position such that player is centered
-        cam_x = px + pw / 2 - WINDOW_WIDTH / 2
-        cam_y = py + ph / 2 - WINDOW_HEIGHT / 2
+        cam_x = px + pw / 2
+        cam_y = py + ph / 2
         
-        # Clamp camera to map boundaries
-        cam_x = max(0, min(cam_x, WINDOW_WIDTH - WINDOW_WIDTH))
-        cam_y = max(0, min(cam_y, WINDOW_HEIGHT - WINDOW_HEIGHT))
-        
-        self.cam_translate.xy = (-cam_x, -cam_y) 
+        # เลื่อนตำแหน่งตัวละครมาไว้ที่จุดศูนย์กลางของจอ
+        self.cam_trans_pos.xy = (-cam_x, -cam_y)
 
     def _on_keyboard_closed(self): 
         self._keyboard.unbind(on_key_down=self._on_key_down)  

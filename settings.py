@@ -5,13 +5,12 @@ FPS = 60
 TITLE = "Beyond the Sight"
 
 # Camera Settings
-CAMERA_WIDTH = 960
-CAMERA_HEIGHT = 540
+CAMERA_WIDTH = 320
+CAMERA_HEIGHT = 240
 
 # Player Settings
-PLAYER_WIDTH = 16
+PLAYER_WIDTH = 32
 PLAYER_HEIGHT = 32
-PLAYER_SPEED = 4
 
 # Tile Settings
 TILE_SIZE = 32
@@ -20,8 +19,8 @@ RUN_SPEED = 4    # ความเร็วตอนวิ่ง (ต้อง�
 
 # Stamina
 MAX_STAMINA = 100
-STAMINA_DRAIN = 0.208
-STAMINA_REGEN = 0.333
+STAMINA_DRAIN = MAX_STAMINA / (8 * FPS)  # ใช้เวลา 8 วินาทีจนกว่า Stamina จะหมด
+STAMINA_REGEN = MAX_STAMINA / (5 * FPS)  # ใช้เวลา 5 วินาทีในการฟื้นฟูจนเต็ม
 
 # NPC Settings
 NPC_WIDTH = 16
