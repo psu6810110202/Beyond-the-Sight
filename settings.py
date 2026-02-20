@@ -4,6 +4,10 @@ WINDOW_HEIGHT = 540
 FPS = 60
 TITLE = "Beyond the Sight"
 
+# Camera Settings
+CAMERA_WIDTH = 960
+CAMERA_HEIGHT = 540
+
 # Player Settings
 PLAYER_WIDTH = 16
 PLAYER_HEIGHT = 32
@@ -16,8 +20,8 @@ RUN_SPEED = 4    # ความเร็วตอนวิ่ง (ต้อง�
 
 # Stamina
 MAX_STAMINA = 100
-STAMINA_DRAIN = 0.5
-STAMINA_REGEN = 0.2
+STAMINA_DRAIN = 0.208
+STAMINA_REGEN = 0.333
 
 # NPC Settings
 NPC_WIDTH = 16
