@@ -108,10 +108,6 @@ class GameWidget(Widget):
         # Check Reaper collision with player (friendly interaction)
         if self.reaper.check_player_collision(self.player.rect):
             print("You touched the friendly Reaper!")
-        
-        # Check if player is in Reaper's safe zone
-        if self.reaper.is_in_safe_zone(player_pos):
-            print("You are safe in the Reaper's protection zone!")
     
     def create_npcs(self):
         # กำหนดตำแหน่ง NPC แบบตายตัว
@@ -123,12 +119,9 @@ class GameWidget(Widget):
             (700, 250)    # NPC 5
         ]
         
-        colors = [(1, 0, 0, 1), (0, 1, 0, 1), (0, 0, 1, 1), (1, 1, 0, 1), (1, 0, 1, 1)]
-        
         for i in range(NPC_COUNT):
             x, y = npc_positions[i]
-            color = colors[i % len(colors)]
-            npc = NPC(self.canvas, x, y, color)
+            npc = NPC(self.canvas, x, y)
             self.npcs.append(npc)
     
     def check_npc_wall_collision(self, rect, wall_obj):

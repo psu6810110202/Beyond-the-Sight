@@ -23,10 +23,15 @@ STAMINA_DRAIN = MAX_STAMINA / (8 * FPS)  # ใช้เวลา 8 วินา�
 STAMINA_REGEN = MAX_STAMINA / (5 * FPS)  # ใช้เวลา 5 วินาทีในการฟื้นฟูจนเต็ม
 
 # NPC Settings
-NPC_WIDTH = 16
-NPC_HEIGHT = 32
+NPC_WIDTH = 64
+NPC_HEIGHT = 64
 NPC_SPEED = 1
 NPC_COUNT = 5
+
+# NPC Sprite Settings
+NPC_SPRITE_WIDTH = 32
+NPC_SPRITE_HEIGHT = 48
+NPC_ANIMATION_SPEED = 0.2
 
 # Reaper Settings
 REAPER_WIDTH = 20
