@@ -3,9 +3,8 @@ from settings import *
 import math
 
 class Reaper:
-    def __init__(self, canvas, x, y, walls):
+    def __init__(self, canvas, x, y):
         self.canvas = canvas
-        self.walls = walls
         self.x = x
         self.y = y
         self.speed = REAPER_SPEED
@@ -53,7 +52,7 @@ class Reaper:
             self.protect_player(player_pos)
         else:
             # Player outside safe zone - patrol behavior
-            self.patrol()
+            pass
         
         # Continue movement if needed
         if self.is_moving:
@@ -88,79 +87,6 @@ class Reaper:
         # สามารถเพิ่มเอฟเฟกต์การปกป้องได้ที่นี่
         print("Reaper is protecting you in the safe zone!")
     
-    def patrol(self):
-        self.patrol_timer += 1
-        
-        if not self.is_moving:
-            if self.patrol_timer >= self.patrol_interval:
-                # Change patrol direction
-                self.patrol_direction *= -1
-                self.patrol_timer = 0
-                
-                # Move in patrol direction
-                dx = self.patrol_direction * TILE_SIZE * 2
-                new_x = self.x + dx
-                
-                if self.can_move_to(new_x, self.y):
-                    self.start_move(dx, 0)
-                else:
-                    # Hit boundary, reverse direction
-                    self.patrol_direction *= -1
-                    new_x = self.x + self.patrol_direction * TILE_SIZE * 2
-                    if self.can_move_to(new_x, self.y):
-                        self.start_move(self.patrol_direction * TILE_SIZE * 2, 0)
-    
-    def can_move_to(self, new_x, new_y):
-        # Check screen boundaries
-        if not (0 <= new_x <= WINDOW_WIDTH - REAPER_WIDTH and 
-                0 <= new_y <= WINDOW_HEIGHT - REAPER_HEIGHT):
-            return False
-        
-        # Check wall collisions
-        future_rect = [new_x, new_y, REAPER_WIDTH, REAPER_HEIGHT]
-        for wall in self.walls:
-            if self.check_collision(future_rect, wall):
-                return False
-        
-        return True
-    
-    def start_move(self, dx, dy):
-        new_x = self.x + dx
-        new_y = self.y + dy
-        
-        if self.can_move_to(new_x, new_y):
-            self.target_pos = [new_x, new_y]
-            self.is_moving = True
-    
-    def continue_move(self):
-        cur_x, cur_y = self.rect.pos
-        tar_x, tar_y = self.target_pos
-
-        if cur_x < tar_x: 
-            cur_x = min(cur_x + self.speed, tar_x)
-        elif cur_x > tar_x: 
-            cur_x = max(cur_x - self.speed, tar_x)
-        if cur_y < tar_y: 
-            cur_y = min(cur_y + self.speed, tar_y)
-        elif cur_y > tar_y: 
-            cur_y = max(cur_y - self.speed, tar_y)
-
-        self.rect.pos = (cur_x, cur_y)
-        self.x, self.y = cur_x, cur_y
-        
-        if cur_x == tar_x and cur_y == tar_y:
-            self.is_moving = False
-    
-    def check_collision(self, rect1, wall_obj):
-        # rect1 = [x, y, w, h]
-        # wall_obj.pos/size
-        r1x, r1y, r1w, r1h = rect1
-        r2x, r2y = wall_obj.pos
-        r2w, r2h = wall_obj.size
-        
-        return (r1x < r2x + r2w and r1x + r1w > r2x and
-                r1y < r2y + r2h and r1y + r1h > r2y)
-    
     def check_player_collision(self, player_rect):
         reaper_rect = [self.x, self.y, REAPER_WIDTH, REAPER_HEIGHT]
         player_rect_list = [player_rect.pos[0], player_rect.pos[1], 
@@ -171,3 +97,4 @@ class Reaper:
                 reaper_rect[0] + reaper_rect[2] > player_rect_list[0] and
                 reaper_rect[1] < player_rect_list[1] + player_rect_list[3] and
                 reaper_rect[1] + reaper_rect[3] > player_rect_list[1])
+

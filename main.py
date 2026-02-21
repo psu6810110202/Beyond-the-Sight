@@ -1,7 +1,6 @@
 from kivy.config import Config
 from settings import *
-from kivy.graphics import Color, Rectangle # เพิ่ม Color
-from settings import * # อย่าลืม import settings
+from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -17,37 +16,61 @@ from player import Player
 from npc import NPC
 from reaper import Reaper
 
-# เพิ่มคลาส Wall ง่ายๆ
-class Wall:
-    def __init__(self, canvas, pos, size):
-        self.pos = pos
-        self.size = size
-        with canvas:
-            Color(0.5, 0.5, 0.5, 1) # กำแพงสีเทา
-            Rectangle(pos=pos, size=size)
 class GameWidget(Widget): 
     def __init__(self, **kwargs): 
         super().__init__(**kwargs) 
+
+        # Setup Camera
+        with self.canvas.before:
+            PushMatrix()
+            self.cam_trans_center = Translate(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
+            self.cam_scale = Scale(1, 1, 1)
+            self.cam_trans_pos = Translate(0, 0)
+        
+        with self.canvas.after:
+            PopMatrix()
+
+        # Draw Map Background
+        with self.canvas:
+            Color(0.2, 0.2, 0.2, 1) # Dark gray background
+            Rectangle(pos=(0, 0), size=(WINDOW_WIDTH, WINDOW_HEIGHT))
 
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
         self._keyboard.bind(on_key_down=self._on_key_down) 
         self._keyboard.bind(on_key_up=self._on_key_up) 
 
         self.pressed_keys = set() 
-        # 1. สร้าง Map / กำแพง
-        self.walls = []
-        self.create_map()
-        
-        self.player = Player(self.canvas)
         
         # 2. สร้าง NPCs
         self.npcs = []
         self.create_npcs()
         
         # 3. สร้าง Reaper
-        self.reaper = Reaper(self.canvas, 400, 400, self.walls)
+        self.reaper = Reaper(self.canvas, 400, 400)
+
+        self.player = Player(self.canvas)
 
         Clock.schedule_interval(self.move_step, 1.0 / FPS) 
+
+    def update_camera(self):
+        # คำนวณอัตราส่วนการซูม (Scale) 
+        # เพื่อให้หน้าจอแคบๆ (CAMERA_SIZE) ถูกขยายให้เต็มหน้าต่างเกม (WINDOW_SIZE)
+        scale_x = WINDOW_WIDTH / CAMERA_WIDTH
+        scale_y = WINDOW_HEIGHT / CAMERA_HEIGHT
+        
+        # เลือกซูมตามด้านที่น้อยที่สุด เพื่อไม่ให้ภาพเสียสัดส่วน (รักษาสัดส่วนเดิม)
+        scale_factor = min(scale_x, scale_y)
+        self.cam_scale.xyz = (scale_factor, scale_factor, 1)
+
+        # ศูนย์กลางของตัวละคร
+        px, py = self.player.rect.pos
+        pw, ph = self.player.rect.size
+        
+        cam_x = px + pw / 2
+        cam_y = py + ph / 2
+        
+        # เลื่อนตำแหน่งตัวละครมาไว้ที่จุดศูนย์กลางของจอ
+        self.cam_trans_pos.xy = (-cam_x, -cam_y)
 
     def _on_keyboard_closed(self): 
         self._keyboard.unbind(on_key_down=self._on_key_down)  
@@ -67,6 +90,7 @@ class GameWidget(Widget):
             self.pressed_keys.remove(key_name)
 
     def move_step(self, dt):
+        self.update_camera()
         self.player.move(self.pressed_keys)
         # Update NPCs
         for npc in self.npcs:
@@ -89,31 +113,6 @@ class GameWidget(Widget):
         if self.reaper.is_in_safe_zone(player_pos):
             print("You are safe in the Reaper's protection zone!")
     
-    def create_map(self):
-        # สร้างกำแพงขอบจอ
-        wall_thickness = TILE_SIZE
-        
-        # กำแพงบน
-        self.walls.append(Wall(self.canvas, (0, WINDOW_HEIGHT - wall_thickness), 
-                              (WINDOW_WIDTH, wall_thickness)))
-        # กำแพงล่าง
-        self.walls.append(Wall(self.canvas, (0, 0), 
-                              (WINDOW_WIDTH, wall_thickness)))
-        # กำแพงซ้าย
-        self.walls.append(Wall(self.canvas, (0, 0), 
-                              (wall_thickness, WINDOW_HEIGHT)))
-        # กำแพงขวา
-        self.walls.append(Wall(self.canvas, (WINDOW_WIDTH - wall_thickness, 0), 
-                              (wall_thickness, WINDOW_HEIGHT)))
-        
-        # สร้างกำแพงกลาง
-        self.walls.append(Wall(self.canvas, (200, 200), 
-                              (TILE_SIZE * 4, TILE_SIZE)))
-        self.walls.append(Wall(self.canvas, (400, 100), 
-                              (TILE_SIZE, TILE_SIZE * 6)))
-        self.walls.append(Wall(self.canvas, (600, 300), 
-                              (TILE_SIZE * 3, TILE_SIZE * 2)))
-    
     def create_npcs(self):
         # กำหนดตำแหน่ง NPC แบบตายตัว
         npc_positions = [
@@ -129,7 +128,7 @@ class GameWidget(Widget):
         for i in range(NPC_COUNT):
             x, y = npc_positions[i]
             color = colors[i % len(colors)]
-            npc = NPC(self.canvas, x, y, self.walls, color)
+            npc = NPC(self.canvas, x, y, color)
             self.npcs.append(npc)
     
     def check_npc_wall_collision(self, rect, wall_obj):
