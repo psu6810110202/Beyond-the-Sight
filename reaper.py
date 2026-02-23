@@ -98,3 +98,12 @@ class Reaper:
                 reaper_rect[1] < player_rect_list[1] + player_rect_list[3] and
                 reaper_rect[1] + reaper_rect[3] > player_rect_list[1])
 
+    def check_player_collision_logic(self, player_pos, tile_size):
+        reaper_rect = [self.x, self.y, REAPER_WIDTH, REAPER_HEIGHT]
+        player_rect_list = [player_pos[0], player_pos[1], tile_size, tile_size]
+        
+        return (reaper_rect[0] < player_rect_list[0] + player_rect_list[2] and
+                reaper_rect[0] + reaper_rect[2] > player_rect_list[0] and
+                reaper_rect[1] < player_rect_list[1] + player_rect_list[3] and
+                reaper_rect[1] + reaper_rect[3] > player_rect_list[1])
+

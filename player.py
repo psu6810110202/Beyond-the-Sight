@@ -8,6 +8,7 @@ class Player:
         self.canvas = canvas
         self.is_moving = False
         self.target_pos = [96, 96]
+        self.logic_pos = [96, 96]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
         self.current_speed = WALK_SPEED
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
         
@@ -47,9 +48,15 @@ class Player:
         self.max_stamina = MAX_STAMINA
 
         with canvas:
-            # สร้างตัวละครแค่ครั้งเดียว (ขนาดแนะนำคือ TILE_SIZE * 2 หรือตามความเหมาะสม)
+            # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 32x32 ไม่เกิน 1 ช่อง
+            Color(1, 1, 0, 0.3)
+            self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
+            
             Color(1, 1, 1, 1)
-            self.rect = Rectangle(pos=(96, 96), size=(PLAYER_WIDTH, PLAYER_HEIGHT))
+            # จุดเกิดตอนแรก จัดแกน X ให้ตัวละครกึ่งกลางบล็อก และดันแกน Y ขึ้นเล็กน้อยเพื่อให้เท้าแตะกลางแผ่น
+            offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
+            offset_y = 16  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
+            self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(PLAYER_WIDTH, PLAYER_HEIGHT))
             
             # Stamina Bar
             Color(0, 1, 0, 1)
@@ -170,15 +177,15 @@ class Player:
             self.update_frame()
 
     def start_move(self, dx, dy):
-        new_x = self.rect.pos[0] + dx
-        new_y = self.rect.pos[1] + dy
+        new_x = self.logic_pos[0] + dx
+        new_y = self.logic_pos[1] + dy
         
-        if 0 <= new_x <= WINDOW_WIDTH - self.rect.size[0] and 0 <= new_y <= WINDOW_HEIGHT - self.rect.size[1]:
+        if 0 <= new_x <= WINDOW_WIDTH - TILE_SIZE and 0 <= new_y <= WINDOW_HEIGHT - TILE_SIZE:
             self.target_pos = [new_x, new_y]
             self.is_moving = True
 
     def continue_move(self):
-        cur_x, cur_y = self.rect.pos
+        cur_x, cur_y = self.logic_pos
         tar_x, tar_y = self.target_pos
 
         # ใช้ current_speed แทน PLAYER_SPEED เพื่อให้วิ่งเร็วขึ้นจริง
@@ -187,6 +194,15 @@ class Player:
         if cur_y < tar_y: cur_y = min(cur_y + self.current_speed, tar_y)
         elif cur_y > tar_y: cur_y = max(cur_y - self.current_speed, tar_y)
 
-        self.rect.pos = (cur_x, cur_y)
+        self.logic_pos = [cur_x, cur_y]
+        
+        # จัดตำแหน่งรูปสไปรท์ใหม่เวลาเดิน
+        offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
+        offset_y = 16 
+        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
+        
+        # อัปเดตกรอบเช็คการชน (Hitbox) สีเหลืองตามการเดินให้เห็นชัดๆ ว่าแค่ 1 ช่อง
+        self.debug_rect.pos = self.logic_pos
+        
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False

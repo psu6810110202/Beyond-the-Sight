@@ -102,3 +102,12 @@ class Enemy:
                 enemy_r[0] + enemy_r[2] > player_r[0] and
                 enemy_r[1] < player_r[1] + player_r[3] and
                 enemy_r[1] + enemy_r[3] > player_r[1])
+
+    def check_player_collision_logic(self, player_pos, tile_size):
+        enemy_r = [self.x, self.y, ENEMY_WIDTH, ENEMY_HEIGHT]
+        player_r = [player_pos[0], player_pos[1], tile_size, tile_size]
+        
+        return (enemy_r[0] < player_r[0] + player_r[2] and
+                enemy_r[0] + enemy_r[2] > player_r[0] and
+                enemy_r[1] < player_r[1] + player_r[3] and
+                enemy_r[1] + enemy_r[3] > player_r[1])

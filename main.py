@@ -15,6 +15,8 @@ from kivy.clock import Clock
 from player import Player
 from npc import NPC
 from reaper import Reaper
+from heart import HeartUI
+from enemy import Enemy
 
 class GameWidget(Widget): 
     def __init__(self, **kwargs): 
@@ -29,11 +31,24 @@ class GameWidget(Widget):
         
         with self.canvas.after:
             PopMatrix()
+            
+        # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป
+        self.heart_ui = HeartUI(self.canvas)
 
-        # Draw Map Background
+        # Ensure UI updates position correctly on window resize
+        self.bind(size=self.update_ui_positions)
+
+        # Draw Map Background (Grid 32x32)
         with self.canvas:
-            Color(0.2, 0.2, 0.2, 1) # Dark gray background
-            Rectangle(pos=(0, 0), size=(WINDOW_WIDTH, WINDOW_HEIGHT))
+            # วาดตารางหมากรุกขนาด TILE_SIZE x TILE_SIZE ทั่วทั้งหน้าจอ
+            # เพื่อให้เห็นขอบเขตของแต่ละบล็อกการเดินอย่างชัดเจน
+            for x in range(0, WINDOW_WIDTH, TILE_SIZE):
+                for y in range(0, WINDOW_HEIGHT, TILE_SIZE):
+                    if (x // TILE_SIZE + y // TILE_SIZE) % 2 == 0:
+                        Color(0.2, 0.2, 0.2, 1)  # พื้นสีเทาเข้ม
+                    else:
+                        Color(0.25, 0.25, 0.25, 1) # พื้นสีเทาอ่อน
+                    Rectangle(pos=(x, y), size=(TILE_SIZE, TILE_SIZE))
 
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
         self._keyboard.bind(on_key_down=self._on_key_down) 
@@ -47,30 +62,41 @@ class GameWidget(Widget):
         
         # 3. สร้าง Reaper
         self.reaper = Reaper(self.canvas, 400, 400)
+        
+        # 4. สร้าง Enemies
+        self.enemies = []
+        self.create_enemies()
 
         self.player = Player(self.canvas)
 
         Clock.schedule_interval(self.move_step, 1.0 / FPS) 
 
     def update_camera(self):
+        # อัปเดตจุดศูนย์กลางกล้องให้เป็นกึ่งกลางของหน้าต่าง Application จริงๆ (เพื่อรองรับการขยายจอ)
+        self.cam_trans_center.xy = (self.width / 2, self.height / 2)
+
         # คำนวณอัตราส่วนการซูม (Scale) 
-        # เพื่อให้หน้าจอแคบๆ (CAMERA_SIZE) ถูกขยายให้เต็มหน้าต่างเกม (WINDOW_SIZE)
-        scale_x = WINDOW_WIDTH / CAMERA_WIDTH
-        scale_y = WINDOW_HEIGHT / CAMERA_HEIGHT
+        # เพื่อให้หน้าจอแคบๆ (CAMERA_SIZE) ถูกขยายให้เต็มหน้าต่างเกม (self.width / self.height)
+        scale_x = self.width / CAMERA_WIDTH
+        scale_y = self.height / CAMERA_HEIGHT
         
         # เลือกซูมตามด้านที่น้อยที่สุด เพื่อไม่ให้ภาพเสียสัดส่วน (รักษาสัดส่วนเดิม)
         scale_factor = min(scale_x, scale_y)
         self.cam_scale.xyz = (scale_factor, scale_factor, 1)
 
-        # ศูนย์กลางของตัวละคร
-        px, py = self.player.rect.pos
-        pw, ph = self.player.rect.size
+        # ศูนย์กลางของตัวละครให้แทร็กที่ logic_pos (กรอบ 32x32)
+        px, py = self.player.logic_pos
+        pw, ph = TILE_SIZE, TILE_SIZE
         
         cam_x = px + pw / 2
         cam_y = py + ph / 2
         
         # เลื่อนตำแหน่งตัวละครมาไว้ที่จุดศูนย์กลางของจอ
         self.cam_trans_pos.xy = (-cam_x, -cam_y)
+
+    def update_ui_positions(self, *args):
+        # เรียกปรับตำแหน่งของหัวใจเมื่อหน้าจอมีการเปลี่ยนแปลงขนาด
+        self.heart_ui.update_position(self.width, self.height)
 
     def _on_keyboard_closed(self): 
         self._keyboard.unbind(on_key_down=self._on_key_down)  
@@ -101,13 +127,21 @@ class GameWidget(Widget):
                 # For now, just print a message
                 print("NPC collided with player!")
         
-        # Update Reaper
-        player_pos = self.player.rect.pos
-        self.reaper.update(dt, player_pos)
+        # ใช้ logic_pos ของผู้เล่นสำหรับการคำนวณระยะห่าง
+        player_pos = self.player.logic_pos
         
         # Check Reaper collision with player (friendly interaction)
-        if self.reaper.check_player_collision(self.player.rect):
+        if self.reaper.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
             print("You touched the friendly Reaper!")
+            
+        # Update Enemies
+        # ใช้ [:] เพื่อคัดลอกลิสต์ ป้องกันการ error ขณะลบไอเทมในลูป
+        for enemy in self.enemies[:]:
+            enemy.update(dt, player_pos)
+            if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
+                enemy.destroy()           # ลบรูปสี่เหลี่ยมออกจากจอ
+                self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ
+                print("Enemy attacked the player and disappeared!")
     
     def create_npcs(self):
         # กำหนดตำแหน่ง NPC แบบตายตัว
@@ -123,6 +157,16 @@ class GameWidget(Widget):
             x, y = npc_positions[i]
             npc = NPC(self.canvas, x, y)
             self.npcs.append(npc)
+            
+    def create_enemies(self):
+        # สร้างศัตรูชั่วคราว ดักจับตำแหน่งให้อยู่บน Grid ของช่อง 32x32 
+        enemy_positions = [
+            (608, 416), # 19*32, 13*32
+            (192, 96)   # 6*32, 3*32
+        ]
+        for x, y in enemy_positions:
+            enemy = Enemy(self.canvas, x, y)
+            self.enemies.append(enemy)
     
     def check_npc_wall_collision(self, rect, wall_obj):
         # rect = [x, y, w, h]

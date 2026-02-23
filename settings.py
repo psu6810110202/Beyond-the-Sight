@@ -8,9 +8,10 @@ TITLE = "Beyond the Sight"
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240
 
-# Player Settings
-PLAYER_WIDTH = 32
-PLAYER_HEIGHT = 32
+# กรอบภาพตัวละครดั้งเดิมเป็น 1:1 (จตุรัส) แก้ขนาดให้ใหญ่ขึ้นเป็น 64x64 
+# ภาพจะไม่ยืด และเมื่อวางกึ่งกลาง จะทำให้ตัวละครจริงๆ มีขนาดเหมาะสมกับพื้น 32พอดี
+PLAYER_WIDTH = 40
+PLAYER_HEIGHT = 40
 
 # Tile Settings
 TILE_SIZE = 32
@@ -39,3 +40,9 @@ REAPER_HEIGHT = 40
 REAPER_SPEED = 1.5
 SAFE_ZONE_RADIUS = 80
 REAPER_DETECTION_RADIUS = 150
+
+# Enemy Settings
+ENEMY_WIDTH = 32
+ENEMY_HEIGHT = 32
+ENEMY_SPEED = WALK_SPEED
+ENEMY_DETECTION_RADIUS = 200
