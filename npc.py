@@ -12,11 +12,33 @@ class NPC:
         self.color = color
         
         # เลือกรูป NPC แบบสุ่ม
-        npc_images = ['assets/NPC/NPC1.png', 'assets/NPC/NPC2.png', 'assets/NPC/NPC3.png']
+        npc_images = ['assets/NPC/NPC1.png', 'assets/NPC/NPC2.png', 'assets/NPC/NPC3.png', 'assets/NPC/NPC4.png', 'assets/NPC/NPC5.png']
         self.image_path = random.choice(npc_images)
         
-        # ถ้าเป็น NPC1 ให้ใช้ spritesheet 1x3
+        # กำหนด spritesheet สำหรับแต่ละ NPC
         if 'NPC1' in self.image_path:
+            self.cols = 1
+            self.rows = 3
+            self.anim_row_map = {
+                'idle': {
+                    'down': 2, 
+                    'left': 0, 
+                    'right': 1, 
+                    'up': 0  # ใช้ซ้าแทนขึ้นเพราะมีแค่ 3 แถว
+                }
+            }
+        elif 'NPC4' in self.image_path:
+            self.cols = 1
+            self.rows = 2
+            self.anim_row_map = {
+                'idle': {
+                    'down': 1, 
+                    'left': 0, 
+                    'right': 0, 
+                    'up': 0  # ใช้ซ้าแทนขึ้นเพราะมีแค่ 2 แถว
+                }
+            }
+        elif 'NPC5' in self.image_path:
             self.cols = 1
             self.rows = 3
             self.anim_row_map = {
