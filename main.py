@@ -141,6 +141,7 @@ class GameWidget(Widget):
             if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
                 enemy.destroy()           # ลบรูปสี่เหลี่ยมออกจากจอ
                 self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ
+                self.heart_ui.take_damage() # ลดเลือดผู้เล่นและเปลี่ยนภาพ 1 -> 2 -> 3
                 print("Enemy attacked the player and disappeared!")
     
     def create_npcs(self):
