@@ -1,6 +1,7 @@
 from kivy.config import Config
 from settings import *
 from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix
+from kivy.uix.label import Label
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -34,6 +35,12 @@ class GameWidget(Widget):
             
         # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป
         self.heart_ui = HeartUI(self.canvas)
+
+        # สร้าง UI สำหรับแสดงข้อความคุย
+        self.dialogue_text = None
+        self.dialogue_bg = None
+        self.dialogue_timer = 0
+        self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
 
         # Ensure UI updates position correctly on window resize
         self.bind(size=self.update_ui_positions)
@@ -105,8 +112,14 @@ class GameWidget(Widget):
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         key_name = keycode[1]
+        print(f"Key pressed: {key_name}")  # Debug: แสดงปุ่มที่กด
+        
         if key_name == 'f11':
             Window.fullscreen = 'auto' if not Window.fullscreen else False
+        elif key_name == 'e':
+            print("E key detected - checking NPC interaction")
+            # ตรวจสอบว่า Player อยู่ใกล้ NPC หรือไม่
+            self.check_npc_interaction()
 
         self.pressed_keys.add(key_name)
         
@@ -118,6 +131,10 @@ class GameWidget(Widget):
     def move_step(self, dt):
         self.update_camera()
         self.player.move(self.pressed_keys, self.npcs)  # ส่ง npcs ไปด้วย
+        
+        # อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้
+        self.update_interaction_hints()
+        
         # Update NPCs
         for npc in self.npcs:
             npc.update(dt)
@@ -146,8 +163,66 @@ class GameWidget(Widget):
                 enemy.destroy()           # ลบรูปสี่เหลี่ยมออกจากจอ
                 self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ
                 self.heart_ui.take_damage() # ลดเลือดผู้เล่นและเปลี่ยนภาพ 1 -> 2 -> 3
-                print("Enemy attacked the player and disappeared!")
+                print("Enemy attacked player and disappeared!")
+        
+        # อัปเดต timer สำหรับข้อความคุย
+        if self.dialogue_timer > 0:
+            self.dialogue_timer -= dt
+            if self.dialogue_timer <= 0:
+                # ลบข้อความและพื้นหลัง
+                if self.dialogue_text:
+                    self.remove_widget(self.dialogue_text)
+                    self.dialogue_text = None
+                if self.dialogue_bg:
+                    self.canvas.remove(self.dialogue_bg)
+                    self.dialogue_bg = None
     
+    def update_interaction_hints(self):
+        """อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้"""
+        # ลบปุ่ม E เก่าทั้งหมด
+        for hint in self.interaction_hints:
+            if hasattr(hint, 'remove_widget'):
+                self.remove_widget(hint)
+            else:
+                self.canvas.remove(hint)
+        self.interaction_hints.clear()
+        
+        player_pos = self.player.logic_pos
+        
+        # ตรวจสอบ NPC ที่อยู่ใกล้
+        for i, npc in enumerate(self.npcs):
+            # คำนวณระยะห่างระหว่าง Player และ NPC
+            npc_center_x = npc.x + (NPC_WIDTH - TILE_SIZE) / 2
+            npc_center_y = npc.y + (NPC_HEIGHT - TILE_SIZE) / 2
+            
+            distance_x = abs(player_pos[0] - npc_center_x)
+            distance_y = abs(player_pos[1] - npc_center_y)
+            
+            # ถ้าอยู่ใกล้ NPC (ระยะ 2 ช่อง)
+            if distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
+                # สร้างปุ่ม E เหนือหัว NPC
+                with self.canvas:
+                    Color(1, 1, 0, 0.8)  # สีเหลือง
+                    hint = Rectangle(
+                        size=(20, 20),
+                        pos=(npc.x + NPC_WIDTH/2 - 10, npc.y + NPC_HEIGHT + 35)
+                    )
+                    self.interaction_hints.append(hint)
+                
+                # สร้างข้อความ E แยกต่างหาก
+                hint_text = Label(
+                    text="E",
+                    size_hint=(None, None),
+                    size=(20, 20),
+                    pos=(npc.x + NPC_WIDTH/2 - 10, npc.y + NPC_HEIGHT + 35),
+                    color=(0, 0, 0, 1),  # สีดำ
+                    font_size=14,
+                    halign='center',
+                    valign='middle'
+                )
+                self.add_widget(hint_text)
+                self.interaction_hints.append(hint_text)
+                
     def create_npcs(self):
         # กำหนดตำแหน่ง NPC แบบตายตัว
         npc_positions = [
@@ -172,6 +247,77 @@ class GameWidget(Widget):
         for x, y in enemy_positions:
             enemy = Enemy(self.canvas, x, y)
             self.enemies.append(enemy)
+    
+    def check_npc_interaction(self):
+        """ตรวจสอบว่า Player อยู่ใกล้ NPC และแสดงข้อความคุย"""
+        player_pos = self.player.logic_pos
+        print(f"Player position: {player_pos}")  # Debug: แสดงตำแหน่ง Player
+        
+        for i, npc in enumerate(self.npcs):
+            # คำนวณระยะห่างระหว่าง Player และ NPC
+            npc_center_x = npc.x + (NPC_WIDTH - TILE_SIZE) / 2
+            npc_center_y = npc.y + (NPC_HEIGHT - TILE_SIZE) / 2
+            
+            distance_x = abs(player_pos[0] - npc_center_x)
+            distance_y = abs(player_pos[1] - npc_center_y)
+            
+            print(f"NPC{i+1} center: ({npc_center_x}, {npc_center_y}), distance: ({distance_x}, {distance_y})")  # Debug
+            
+            # ถ้าอยู่ใกล้ NPC (ระยะ 2 ช่อง) เท่านั้น
+            if distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
+                npc_name = f"NPC{i+1}"
+                dialogue = self.get_proximity_dialogue(npc_name, distance_x, distance_y)
+                if dialogue:
+                    self.show_dialogue_above_npc(npc, dialogue)
+                return
+        
+        print("ไม่มี NPC อยู่ใกล้ๆ")
+    
+    def show_dialogue_above_npc(self, npc, dialogue):
+        """แสดงข้อความคุยเหนือหัว NPC"""
+        # ลบข้อความเก่าถ้ามี
+        if self.dialogue_text:
+            self.remove_widget(self.dialogue_text)
+        
+        # สร้างพื้นหลังสีดำสำหรับข้อความ
+        with self.canvas:
+            Color(0, 0, 0, 0.8)  # สีดำโปร่งแสด 80%
+            self.dialogue_bg = Rectangle(
+                size=(160, 30),
+                pos=(npc.x + NPC_WIDTH/2 - 80, npc.y + NPC_HEIGHT + 8)
+            )
+        
+        # สร้าง Label สำหรับแสดงข้อความ
+        self.dialogue_text = Label(
+            text=dialogue,
+            size_hint=(None, None),
+            size=(140, 20),
+            pos=(npc.x + NPC_WIDTH/2 - 70, npc.y + NPC_HEIGHT + 10),
+            color=(1, 1, 1, 1),  # สีขาว
+            font_size=12,  # ลดขนาดฟอนต์
+            halign='center',
+            valign='middle'
+        )
+        
+        # เพิ่ม Label ลงใน widget
+        self.add_widget(self.dialogue_text)
+        
+        # ตั้ง timer ให้หายไปหลัง 3 วินาที
+        self.dialogue_timer = 3.0
+    
+    def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
+        """สร้างข้อความพูดขึ้นมาตามระยะ"""
+        if distance_x <= TILE_SIZE and distance_y <= TILE_SIZE:
+            # ระยะใกล้มาก (1 ช่อง)
+            return f"[{npc_name}]: เจ้ามาอยู่ใกล้มาก! ฉันชื่อ {npc_name}"
+        elif distance_x <= TILE_SIZE * 1.5 and distance_y <= TILE_SIZE * 1.5:
+            # ระยะปานกลาง (1.5 ช่อง)
+            return f"[{npc_name}ะ]: โอ... มีอะไรให้ช่วยเหรือ?"
+        elif distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
+            # ระยะไกล (2 ช่อง)
+            return f"[{npc_name}]: สวัสดี! ฉันชื่อ {npc_name}"
+        else:
+            return None
     
     def check_npc_wall_collision(self, rect, wall_obj):
         # rect = [x, y, w, h]
