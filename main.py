@@ -1,6 +1,6 @@
 from kivy.config import Config
 from settings import *
-from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix
+from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix, Ellipse
 from kivy.uix.label import Label
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
@@ -158,7 +158,8 @@ class GameWidget(Widget):
         # Update Enemies
         # ใช้ [:] เพื่อคัดลอกลิสต์ ป้องกันการ error ขณะลบไอเทมในลูป
         for enemy in self.enemies[:]:
-            enemy.update(dt, player_pos)
+            reaper_pos = (self.reaper.x, self.reaper.y)
+            enemy.update(dt, player_pos, reaper_pos)
             if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
                 enemy.destroy()           # ลบรูปสี่เหลี่ยมออกจากจอ
                 self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ

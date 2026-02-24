@@ -46,3 +46,4 @@ ENEMY_WIDTH = 32
 ENEMY_HEIGHT = 32
 ENEMY_SPEED = WALK_SPEED
 ENEMY_DETECTION_RADIUS = 200
+ENEMY_SAFE_ZONE_RADIUS = 150  # รัศมี safe zone สำหรับ enemy ไม่สามารถเข้ามาได้

@@ -10,6 +10,7 @@ class Enemy:
         self.y = y
         self.speed = ENEMY_SPEED
         self.detection_radius = ENEMY_DETECTION_RADIUS
+        self.safe_zone_radius = ENEMY_SAFE_ZONE_RADIUS
         
         self.is_moving = False
         self.target_pos = [x, y]
@@ -26,7 +27,7 @@ class Enemy:
         self.canvas.remove(self.color)
         self.canvas.remove(self.rect)
             
-    def update(self, dt, player_pos):
+    def update(self, dt, player_pos, reaper_pos=None):
         # 1. ขยับตัวละครถ้าอยู่ในสถานะเดิน
         if self.is_moving:
             self.continue_move()
@@ -35,7 +36,7 @@ class Enemy:
         if not self.is_moving:
             distance_to_player = self.calculate_distance(player_pos)
             if distance_to_player <= self.detection_radius:
-                self.chase_player_grid(player_pos)
+                self.chase_player_grid(player_pos, reaper_pos)
                     
         # อัปเดตกราฟิกสี่เหลี่ยมตามพิกัด x, y
         self.rect.pos = (self.x, self.y)
@@ -45,7 +46,7 @@ class Enemy:
         dy = target_pos[1] - self.y
         return math.sqrt(dx**2 + dy**2)
         
-    def chase_player_grid(self, player_pos):
+    def chase_player_grid(self, player_pos, reaper_pos=None):
         if self.turn_delay > 0:
             self.turn_delay -= 1
             return
@@ -73,6 +74,18 @@ class Enemy:
                 self.direction = new_dir
                 self.turn_delay = 6
             else:
+                # ตรวจสอบว่าตำแหน่งใหม่อยู่ใน safe zone หรือไม่
+                new_x = self.x + move_x
+                new_y = self.y + move_y
+                
+                # คำนวณระยะห่างจาก Reaper (ถ้ามี Reaper position)
+                if reaper_pos:
+                    distance_from_reaper = math.sqrt((new_x - reaper_pos[0])**2 + (new_y - reaper_pos[1])**2)
+                    
+                    # ถ้าตำแหน่งใหม่อยู่ใน safe zone ให้หยุดเดิน
+                    if distance_from_reaper < self.safe_zone_radius:
+                        return  # ไม่เดินเข้าไปใน safe zone
+                
                 self.start_move(move_x, move_y)
 
     def start_move(self, dx, dy):
