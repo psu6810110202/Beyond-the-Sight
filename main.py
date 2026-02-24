@@ -117,7 +117,7 @@ class GameWidget(Widget):
 
     def move_step(self, dt):
         self.update_camera()
-        self.player.move(self.pressed_keys)
+        self.player.move(self.pressed_keys, self.npcs)  # ส่ง npcs ไปด้วย
         # Update NPCs
         for npc in self.npcs:
             npc.update(dt)
@@ -127,13 +127,17 @@ class GameWidget(Widget):
                 # For now, just print a message
                 print("NPC collided with player!")
         
+        # Update Reaper
+        player_pos = self.player.rect.pos
+        self.reaper.update(dt, player_pos)
+        
+        # Check Reaper collision with player (friendly interaction)
+        if self.reaper.check_player_collision(self.player.rect):
+            print("You touched the friendly Reaper!")
+    
         # ใช้ logic_pos ของผู้เล่นสำหรับการคำนวณระยะห่าง
         player_pos = self.player.logic_pos
         
-        # Check Reaper collision with player (friendly interaction)
-        if self.reaper.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
-            print("You touched the friendly Reaper!")
-            
         # Update Enemies
         # ใช้ [:] เพื่อคัดลอกลิสต์ ป้องกันการ error ขณะลบไอเทมในลูป
         for enemy in self.enemies[:]:
