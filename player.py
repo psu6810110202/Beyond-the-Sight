@@ -55,7 +55,7 @@ class Player:
             Color(1, 1, 1, 1)
             # จุดเกิดตอนแรก จัดแกน X ให้ตัวละครกึ่งกลางบล็อก และดันแกน Y ขึ้นเล็กน้อยเพื่อให้เท้าแตะกลางแผ่น
             offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
-            offset_y = 16  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
+            offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
             self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(PLAYER_WIDTH, PLAYER_HEIGHT))
             
             # Stamina Bar
@@ -198,7 +198,7 @@ class Player:
         
         # จัดตำแหน่งรูปสไปรท์ใหม่เวลาเดิน
         offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
-        offset_y = 16 
+        offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
         self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
         
         # อัปเดตกรอบเช็คการชน (Hitbox) สีเหลืองตามการเดินให้เห็นชัดๆ ว่าแค่ 1 ช่อง

@@ -14,7 +14,7 @@ PLAYER_WIDTH = 40
 PLAYER_HEIGHT = 40
 
 # Tile Settings
-TILE_SIZE = 32
+TILE_SIZE = 16
 WALK_SPEED = 2   # ความเร็วเดินปกติ
 RUN_SPEED = 4    # ความเร็วตอนวิ่ง (ต้องหาร TILE_SIZE ลงตัวจะดีที่สุด)
 
