@@ -18,6 +18,7 @@ from npc import NPC
 from reaper import Reaper
 from heart import HeartUI
 from enemy import Enemy
+from map_loader import KivyTiledMap
 
 class GameWidget(Widget): 
     def __init__(self, **kwargs): 
@@ -31,10 +32,18 @@ class GameWidget(Widget):
             self.cam_trans_pos = Translate(0, 0)
         
         with self.canvas.after:
-            PopMatrix()
-            
-        # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป
-        self.heart_ui = HeartUI(self.canvas)
+            pass 
+
+        self.debug_label = Label(
+            text="", 
+            size_hint=(None, None),
+            size=(200, 120),              # ตั้งขนาดกรอบ
+            halign='right',                # ชิดซ้าย
+            valign='top',                 # ชิดบน
+            color=(0, 1, 0, 1),           # สีเขียว
+            font_size='18sp'
+        )
+        self.debug_label.bind(size=self.debug_label.setter('text_size'))
 
         # สร้าง UI สำหรับแสดงข้อความคุย
         self.dialogue_text = None
@@ -42,20 +51,10 @@ class GameWidget(Widget):
         self.dialogue_timer = 0
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
 
-        # Ensure UI updates position correctly on window resize
-        self.bind(size=self.update_ui_positions)
-
-        # Draw Map Background (Grid 32x32)
-        with self.canvas:
-            # วาดตารางหมากรุกขนาด TILE_SIZE x TILE_SIZE ทั่วทั้งหน้าจอ
-            # เพื่อให้เห็นขอบเขตของแต่ละบล็อกการเดินอย่างชัดเจน
-            for x in range(0, WINDOW_WIDTH, TILE_SIZE):
-                for y in range(0, WINDOW_HEIGHT, TILE_SIZE):
-                    if (x // TILE_SIZE + y // TILE_SIZE) % 2 == 0:
-                        Color(0.2, 0.2, 0.2, 1)  # พื้นสีเทาเข้ม
-                    else:
-                        Color(0.25, 0.25, 0.25, 1) # พื้นสีเทาอ่อน
-                    Rectangle(pos=(x, y), size=(TILE_SIZE, TILE_SIZE))
+        # Draw Map Background (Floor, Walls, etc) - in the background layer
+        with self.canvas.before:
+            self.game_map = KivyTiledMap('assets/Tiles/beyond.tmj')
+            self.game_map.draw_background(self.canvas.before)
 
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
         self._keyboard.bind(on_key_down=self._on_key_down) 
@@ -75,8 +74,25 @@ class GameWidget(Widget):
         self.create_enemies()
 
         self.player = Player(self.canvas)
-
-        Clock.schedule_interval(self.move_step, 1.0 / FPS) 
+        
+        # Draw Map Foreground (Roofs, hanging objects, etc) - in the foreground layer
+        with self.canvas.after:
+            self.game_map.draw_foreground(self.canvas.after)
+            PopMatrix()
+            
+        # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป (เพื่อให้วาดหน้าจอ Screen Space ทับ PopMatrix)
+        self.heart_ui = HeartUI(self.canvas)
+            
+        # Initial chunk update setup
+        self.game_map.update_chunks(self.player.logic_pos[0], self.player.logic_pos[1])
+            
+        # Ensure UI updates position correctly on window resize AFTER everything is created
+        self.bind(size=self.update_ui_positions)
+        
+        # Manually force the first UI positioning update
+        self.update_ui_positions()
+            
+        Clock.schedule_interval(self.move_step, 1.0 / FPS)  
 
     def update_camera(self):
         # อัปเดตจุดศูนย์กลางกล้องให้เป็นกึ่งกลางของหน้าต่าง Application จริงๆ (เพื่อรองรับการขยายจอ)
@@ -91,7 +107,7 @@ class GameWidget(Widget):
         scale_factor = min(scale_x, scale_y)
         self.cam_scale.xyz = (scale_factor, scale_factor, 1)
 
-        # ศูนย์กลางของตัวละครให้แทร็กที่ logic_pos (กรอบ 32x32)
+        # ศูนย์กลางของตัวละครให้แทร็กที่ logic_pos
         px, py = self.player.logic_pos
         pw, ph = TILE_SIZE, TILE_SIZE
         
@@ -103,7 +119,8 @@ class GameWidget(Widget):
 
     def update_ui_positions(self, *args):
         # เรียกปรับตำแหน่งของหัวใจเมื่อหน้าจอมีการเปลี่ยนแปลงขนาด
-        self.heart_ui.update_position(self.width, self.height)
+        if getattr(self, 'heart_ui', None):
+            self.heart_ui.update_position(self.width, self.height)
 
     def _on_keyboard_closed(self): 
         self._keyboard.unbind(on_key_down=self._on_key_down)  
@@ -130,6 +147,21 @@ class GameWidget(Widget):
 
     def move_step(self, dt):
         self.update_camera()
+
+        # อัปเดต Debug Label แสดงข้อมูลโดยรวมแบบบรรทัดเดียวแต่จัดให้เป็นระเบียบ
+        px, py = self.player.logic_pos
+        grid_x, grid_y = px // TILE_SIZE, py // TILE_SIZE
+        chunk_x, chunk_y = grid_x // 16, grid_y // 16
+        self.debug_label.text = (
+            f"FPS: {Clock.get_fps():.0f}\n"
+            f"Pos: ({px}, {py})\n"
+            f"Grid: ({grid_x}, {grid_y})\n"
+            f"Chunk: ({chunk_x}, {chunk_y})"
+        )
+        
+        # update dynamic map chunks based on camera center
+        self.game_map.update_chunks(px, py)
+        
         self.player.move(self.pressed_keys, self.npcs, self.reaper)  # ส่ง npcs และ reaper ไปด้วย
         
         # อัปเดตแถบ Stamina ของผู้เล่น
@@ -245,9 +277,10 @@ class GameWidget(Widget):
             
     def create_enemies(self):
         # สร้างศัตรูชั่วคราว ดักจับตำแหน่งให้อยู่บน Grid ของช่อง 32x32 
+        # ย้ายตำแหน่งศัตรูมาใกล้ๆ จุดเกิดตรงกลาง
         enemy_positions = [
-            (608, 416), # 19*32, 13*32
-            (192, 96)   # 6*32, 3*32
+            (800 + 64, 800 + 64), 
+            (800 - 128, 800 - 128)
         ]
         for x, y in enemy_positions:
             enemy = Enemy(self.canvas, x, y)
@@ -310,6 +343,7 @@ class GameWidget(Widget):
         # ตั้ง timer ให้หายไปหลัง 3 วินาที
         self.dialogue_timer = 3.0
     
+    # must fix
     def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
         """สร้างข้อความพูดขึ้นมาตามระยะ"""
         if distance_x <= TILE_SIZE and distance_y <= TILE_SIZE:
@@ -337,7 +371,19 @@ class GameWidget(Widget):
 class MyApp(App): 
     def build(self): 
         self.title = TITLE
-        return GameWidget() 
+        
+        from kivy.uix.floatlayout import FloatLayout
+        root = FloatLayout()
+        
+        # สร้างตัวเกม
+        game = GameWidget()
+        root.add_widget(game)
+        
+        # นำ debug_label แปะที่ FloatLayout (UI หน้าจอจริงๆ) ให้พ้นจากกล้องซูม/หมุน
+        game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
+        root.add_widget(game.debug_label)
+        
+        return root 
 
 if __name__ == '__main__': 
     MyApp().run()

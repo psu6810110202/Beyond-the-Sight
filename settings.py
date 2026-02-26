@@ -4,6 +4,10 @@ WINDOW_HEIGHT = 540
 FPS = 60
 TITLE = "Beyond the Sight"
 
+# Map Settings
+MAP_WIDTH = 1600
+MAP_HEIGHT = 1600
+
 # Camera Settings
 CAMERA_WIDTH = 320
 CAMERA_HEIGHT = 240

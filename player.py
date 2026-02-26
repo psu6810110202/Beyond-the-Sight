@@ -7,8 +7,10 @@ class Player:
     def __init__(self, canvas):
         self.canvas = canvas
         self.is_moving = False
-        self.target_pos = [96, 96]
-        self.logic_pos = [96, 96]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
+        start_x = (848 // TILE_SIZE) * TILE_SIZE
+        start_y = (80 // TILE_SIZE) * TILE_SIZE
+        self.target_pos = [start_x, start_y]
+        self.logic_pos = [start_x, start_y]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
         self.current_speed = WALK_SPEED
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
         
@@ -40,7 +42,7 @@ class Player:
         }
         
         self.state = 'idle'
-        self.direction = 'down' 
+        self.direction = 'up' 
         self.frame_index = 0
         
         # Stamina
@@ -49,7 +51,7 @@ class Player:
         self.exhausted = False
 
         with canvas:
-            # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 32x32 ไม่เกิน 1 ช่อง
+            # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 16x16 ไม่เกิน 1 ช่อง
             Color(1, 1, 0, 0.3)
             self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
             
@@ -184,8 +186,8 @@ class Player:
         new_x = self.logic_pos[0] + dx
         new_y = self.logic_pos[1] + dy
         
-        # ตรวจสอบขอบเขตหน้าต่าง
-        if 0 <= new_x <= WINDOW_WIDTH - TILE_SIZE and 0 <= new_y <= WINDOW_HEIGHT - TILE_SIZE:
+        # ตรวจสอบขอบเขตกำแพงล่องหนของแผนที่ (1600x1600)
+        if 0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE:
             # ตรวจสอบการชนกับ NPC
             if npcs and self.check_npc_collision(new_x, new_y, npcs):
                 print("Cannot move - NPC blocking!")
