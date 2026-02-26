@@ -108,7 +108,7 @@ class Player:
             
         self.update_frame()
         
-    def move(self, pressed_keys, npcs=None):  # เพิ่ม npcs parameter
+    def move(self, pressed_keys, npcs=None, reaper=None):  # เพิ่ม npcs parameter
         # 1. อัปเดตตำแหน่งก่อน หากเดินอยู่ให้เดินจนจบช่อง
         if self.is_moving:
             self.continue_move()
@@ -137,7 +137,7 @@ class Player:
                         self.turn_delay = 6  # จำนวนเฟรมที่รอก่อนเดิน (ประมาน 0.1 วินาที)
                         self.update_frame()
                     else:
-                        self.start_move(dx, dy, npcs)  # ส่ง npcs ไปด้วย
+                        self.start_move(dx, dy, npcs, reaper)  # ส่ง npcs และ reaper ไปด้วย
 
         # 3. คำนวณความเร็วและ FPS จากค่าความจริงของ self.is_moving ที่เพิ่งได้รับการอัปเดตอย่างต่อเนื่องแล้วเท่านั้น
         is_running = 'shift' in pressed_keys and self.is_moving
@@ -176,7 +176,7 @@ class Player:
             self.frame_index = 0
             self.update_frame()
 
-    def start_move(self, dx, dy, npcs=None):
+    def start_move(self, dx, dy, npcs=None, reaper=None):
         new_x = self.logic_pos[0] + dx
         new_y = self.logic_pos[1] + dy
         
@@ -185,6 +185,11 @@ class Player:
             # ตรวจสอบการชนกับ NPC
             if npcs and self.check_npc_collision(new_x, new_y, npcs):
                 print("Cannot move - NPC blocking!")
+                return
+            
+            # ตรวจสอบการชนกับ Reaper
+            if reaper and self.check_reaper_collision(new_x, new_y, reaper):
+                print("Cannot move - Reaper blocking!")
                 return
             
             self.target_pos = [new_x, new_y]
@@ -207,6 +212,25 @@ class Player:
                 player_rect[1] < npc_rect[1] + npc_rect[3] and
                 player_rect[1] + player_rect[3] > npc_rect[1]):
                 return True
+        
+        return False
+
+    def check_reaper_collision(self, new_x, new_y, reaper):
+        """ตรวจสอบว่าตำแหน่งใหม่จะชนกับ Reaper หรือไม่"""
+        player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
+        
+        # ใช้พื้นที่บล็อคของ Reaper เป็น 1x1 (32x32) เหมือน Player
+        # คำนวณตำแหน่งศูนย์กลางของ Reaper แล้วลดขนาดลงเป็น 1x1
+        reaper_center_x = reaper.x + (REAPER_WIDTH - TILE_SIZE) / 2
+        reaper_center_y = reaper.y + (REAPER_HEIGHT - TILE_SIZE) / 2
+        reaper_rect = [reaper_center_x, reaper_center_y, TILE_SIZE, TILE_SIZE]
+        
+        # ตรวจสอบการชนระหว่างสี่เหลี่ยม
+        if (player_rect[0] < reaper_rect[0] + reaper_rect[2] and
+            player_rect[0] + player_rect[2] > reaper_rect[0] and
+            player_rect[1] < reaper_rect[1] + reaper_rect[3] and
+            player_rect[1] + player_rect[3] > reaper_rect[1]):
+            return True
         
         return False
 

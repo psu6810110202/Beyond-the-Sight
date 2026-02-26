@@ -130,7 +130,7 @@ class GameWidget(Widget):
 
     def move_step(self, dt):
         self.update_camera()
-        self.player.move(self.pressed_keys, self.npcs)  # ส่ง npcs ไปด้วย
+        self.player.move(self.pressed_keys, self.npcs, self.reaper)  # ส่ง npcs และ reaper ไปด้วย
         
         # อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้
         self.update_interaction_hints()
