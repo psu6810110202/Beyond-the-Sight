@@ -46,6 +46,7 @@ class Player:
         # Stamina
         self.stamina = MAX_STAMINA
         self.max_stamina = MAX_STAMINA
+        self.exhausted = False
 
         with canvas:
             # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 32x32 ไม่เกิน 1 ช่อง
@@ -57,10 +58,6 @@ class Player:
             offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
             offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
             self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(PLAYER_WIDTH, PLAYER_HEIGHT))
-            
-            # Stamina Bar
-            Color(0, 1, 0, 1)
-            self.stamina_bar = Rectangle(pos=(10, 10), size=(0, 5))
             
         self.update_frame()
         self.current_fps = 8
@@ -142,10 +139,17 @@ class Player:
         # 3. คำนวณความเร็วและ FPS จากค่าความจริงของ self.is_moving ที่เพิ่งได้รับการอัปเดตอย่างต่อเนื่องแล้วเท่านั้น
         is_running = 'shift' in pressed_keys and self.is_moving
         
+        # ถ้าเหนื่อยหอบ (Stamina = 0) จะต้องรอคูลดาวน์ให้หลอดเต็ม 100% (ใช้เวลา 5 วิ) ถึงจะกลับมาวิ่งได้
+        if self.exhausted and self.stamina >= self.max_stamina:
+            self.exhausted = False
+
         if self.is_moving:
-            if is_running and self.stamina > 0:
+            if is_running and not self.exhausted:
                 self.current_speed = RUN_SPEED
                 self.stamina -= STAMINA_DRAIN
+                if self.stamina <= 0:
+                    self.stamina = 0
+                    self.exhausted = True  # เหนื่อยหอบแล้ว ต้องปล่อย Shift ก่อน
                 target_fps = 12
             else:
                 self.current_speed = WALK_SPEED

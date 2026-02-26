@@ -132,6 +132,10 @@ class GameWidget(Widget):
         self.update_camera()
         self.player.move(self.pressed_keys, self.npcs, self.reaper)  # ส่ง npcs และ reaper ไปด้วย
         
+        # อัปเดตแถบ Stamina ของผู้เล่น
+        stamina_ratio = max(0.0, self.player.stamina / self.player.max_stamina)
+        self.heart_ui.update_stamina(stamina_ratio)
+        
         # อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้
         self.update_interaction_hints()
         
