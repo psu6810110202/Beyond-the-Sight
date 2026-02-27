@@ -13,7 +13,7 @@ class Reaper:
         self.color = color
         
         # ใช้รูป Reaper เฉพาะ
-        self.image_path = 'assets/Repper/Repper.png'
+        self.image_path = 'assets/Reaper/Reaper.png'
         
         # กำหนด spritesheet สำหรับ Reaper (เหมือน NPC)
         self.cols = 1
@@ -71,7 +71,10 @@ class Reaper:
             else:
                 # ใช้สีแดงถ้าโหลดรูปไม่ได้
                 Color(1, 0, 0, 1)
-            self.rect = Rectangle(pos=(x, y), size=(REAPER_WIDTH, REAPER_HEIGHT))
+            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ตำแหน่งตาม x,y (center of hitbox)
+            visual_x = self.x - (REAPER_VISUAL_WIDTH - REAPER_WIDTH) // 2
+            visual_y = self.y - (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT) // 2
+            self.rect = Rectangle(pos=(visual_x, visual_y), size=(REAPER_VISUAL_WIDTH, REAPER_VISUAL_HEIGHT))
             
             # Safe zone visualization (protective green circle)
             Color(0, 1, 0, 0.2)  # เขียวเข้มขึ้น - ดูปลอดภัย
@@ -129,15 +132,7 @@ class Reaper:
         self.update_frame()
     
     def update(self, dt, player_pos):
-        # อัปเดตการเปลี่ยนทิศทางอัตโนมัติ (เหมือน NPC)
-        self.direction_change_timer += dt
-        if self.direction_change_timer >= self.direction_change_interval:
-            self.direction_change_timer = 0
-            # เลือกทิศทางใหม่แบบสุ่ม (แต่ไม่ซ้ำทิศทางปัจจุบัน)
-            current_direction = self.direction
-            available_directions = [d for d in self.directions if d != current_direction]
-            self.direction = random.choice(available_directions)
-            self.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
+        # Reaper อยู่ในท่า down เสมอเมื่อไม่ได้เคลื่อนไหว
         
         # Check if player is in safe zone
         distance_to_player = self.calculate_distance(player_pos)
@@ -173,8 +168,10 @@ class Reaper:
 
         self.x, self.y = cur_x, cur_y
         
-        # อัปเดตตำแหน่งของ Rectangle (เหมือน NPC)
-        self.rect.pos = (self.x, self.y)
+        # อัปเดตตำแหน่งของ Rectangle (ใช้ตำแหน่งภาพตาม visual size)
+        visual_x = self.x - (REAPER_VISUAL_WIDTH - REAPER_WIDTH) // 2
+        visual_y = self.y - (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT) // 2
+        self.rect.pos = (visual_x, visual_y)
         
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False
@@ -209,7 +206,9 @@ class Reaper:
         print("Reaper is protecting you in the safe zone!")
     
     def check_player_collision(self, player_rect):
-        reaper_rect = [self.x, self.y, REAPER_WIDTH, REAPER_HEIGHT]
+        # ใช้ hitbox เฉพาะส่วนฐาน/เท้า (4px จากขอบล่างสุด)
+        hitbox_y = self.y + (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT)
+        reaper_rect = [self.x, hitbox_y, REAPER_WIDTH, REAPER_HEIGHT]
         player_rect_list = [player_rect.pos[0], player_rect.pos[1], 
                            player_rect.size[0], player_rect.size[1]]
         
@@ -220,7 +219,9 @@ class Reaper:
                 reaper_rect[1] + reaper_rect[3] > player_rect_list[1])
 
     def check_player_collision_logic(self, player_pos, tile_size):
-        reaper_rect = [self.x, self.y, REAPER_WIDTH, REAPER_HEIGHT]
+        # ใช้ hitbox เฉพาะส่วนฐาน/เท้า (4px จากขอบล่างสุด)
+        hitbox_y = self.y + (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT)
+        reaper_rect = [self.x, hitbox_y, REAPER_WIDTH, REAPER_HEIGHT]
         player_rect_list = [player_pos[0], player_pos[1], tile_size, tile_size]
         
         return (reaper_rect[0] < player_rect_list[0] + player_rect_list[2] and

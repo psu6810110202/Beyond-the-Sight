@@ -5,15 +5,18 @@ from settings import *
 import random
 
 class NPC:
-    def __init__(self, canvas, x, y, color=(1, 0, 0, 1)):
+    def __init__(self, canvas, x, y, image_path=None, color=(1, 0, 0, 1)):
         self.canvas = canvas
         self.x = x
         self.y = y
         self.color = color
         
-        # เลือกรูป NPC แบบสุ่ม
-        npc_images = ['assets/NPC/NPC1.png', 'assets/NPC/NPC2.png', 'assets/NPC/NPC3.png', 'assets/NPC/NPC4.png', 'assets/NPC/NPC5.png']
-        self.image_path = random.choice(npc_images)
+        # ถ้ามีการกำหนด image_path มาให้ใช้ค่านั้น ถ้าไม่ให้สุ่ม
+        if image_path:
+            self.image_path = image_path
+        else:
+            npc_images = ['assets/NPC/NPC1.png', 'assets/NPC/NPC2.png', 'assets/NPC/NPC3.png', 'assets/NPC/NPC4.png', 'assets/NPC/NPC5.png']
+            self.image_path = random.choice(npc_images)
         
         # กำหนด spritesheet สำหรับแต่ละ NPC
         if 'NPC1' in self.image_path:
@@ -40,13 +43,13 @@ class NPC:
             }
         elif 'NPC5' in self.image_path:
             self.cols = 1
-            self.rows = 3
+            self.rows = 5
             self.anim_row_map = {
                 'idle': {
-                    'down': 2, 
-                    'left': 0, 
-                    'right': 1, 
-                    'up': 0  # ใช้ซ้าแทนขึ้นเพราะมีแค่ 3 แถว
+                    'down': 4, 
+                    'left': 3, 
+                    'right': 2, 
+                    'up': 1  # ใช้ซ้าแทนขึ้นเพราะมีแค่ 3 แถว
                 }
             }
         else:
@@ -77,11 +80,17 @@ class NPC:
         }
         
         self.state = 'idle'
-        self.direction = random.choice(['down', 'left', 'right', 'up'])
+        self.direction = 'down'
         self.frame_index = 0
         
         # Animation properties
-        self.current_fps = 1  # ลด FPS เหลือ 1 เพื่อไม่ให้กระพริบ
+        # NPC5 มี animation ตลอดเวลา ส่วนอื่นๆ นิ่ง
+        if 'NPC5' in self.image_path:
+            self.current_fps = 8  # FPS สูงสำหรับ animation ตลอดเวลา
+            self.is_animated = True
+        else:
+            self.current_fps = 1  # ลด FPS เหลือ 1 เพื่อไม่ให้กระพริบ
+            self.is_animated = False
         self.direction_change_timer = 0
         self.direction_change_interval = 3.0  # เปลี่ยนทิศทางทุก 3 วินาที (ช้าขึ้น)
         self.directions = ['down', 'left', 'right', 'up']
@@ -94,7 +103,10 @@ class NPC:
             else:
                 # ใช้สีแดงถ้าโหลดรูปไม่ได้
                 Color(1, 0, 0, 1)
-            self.rect = Rectangle(pos=(x, y), size=(NPC_WIDTH, NPC_HEIGHT))
+            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ตำแหน่งตาม x,y (center of hitbox)
+            visual_x = self.x - (NPC_VISUAL_WIDTH - NPC_WIDTH) // 2
+            visual_y = self.y - (NPC_VISUAL_HEIGHT - NPC_HEIGHT) // 2
+            self.rect = Rectangle(pos=(visual_x, visual_y), size=(NPC_VISUAL_WIDTH, NPC_VISUAL_HEIGHT))
         
         self.update_frame()
         self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)
@@ -128,26 +140,38 @@ class NPC:
             self.rect.texture = None
         
     def animate(self, dt):
-        # NPC มีแค่ idle animation แต่ไม่เปลี่ยนทุกเฟรม
-        max_frames = self.anim_config[self.state]['cols']  # 1 คอลัมน์
-        # 1 คอลัมน์ ไม่ต้องเปลี่ยนเฟรม แต่ยังคงเรียก update_frame เพื่อเปลี่ยนทิศทาง
-        if random.random() < 0.1:  # ลดความถี่ให้นิ่งขึ้น
+        if self.is_animated:
+            # NPC5 มี animation ตลอดเวลา
+            max_frames = self.anim_config[self.state]['cols']  # 1 คอลัมน์
             self.frame_index = (self.frame_index + 1) % max_frames
-        self.update_frame()
+            self.update_frame()
+        else:
+            # NPCs อื่นๆ นิ่ง
+            max_frames = self.anim_config[self.state]['cols']  # 1 คอลัมน์
+            # 1 คอลัมน์ ไม่ต้องเปลี่ยนเฟรม แต่ยังคงเรียก update_frame เพื่อเปลี่ยนทิศทาง
+            if random.random() < 0.1:  # ลดความถี่ให้นิ่งขึ้น
+                self.frame_index = (self.frame_index + 1) % max_frames
+            self.update_frame()
     
     def update(self, dt):
-        # อัปเดตการเปลี่ยนทิศทางอัตโนมัติ
-        self.direction_change_timer += dt
-        if self.direction_change_timer >= self.direction_change_interval:
-            self.direction_change_timer = 0
-            # เลือกทิศทางใหม่แบบสุ่ม (แต่ไม่ซ้ำทิศทางปัจจุบัน)
-            current_direction = self.direction
-            available_directions = [d for d in self.directions if d != current_direction]
-            self.direction = random.choice(available_directions)
-            self.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
+        if self.is_animated:
+            # NPC5 เปลี่ยนทิศทางอัตโนมัติเพื่อความหลากหลายใน animation
+            self.direction_change_timer += dt
+            if self.direction_change_timer >= self.direction_change_interval:
+                self.direction_change_timer = 0
+                # เลือกทิศทางใหม่แบบสุ่ม (แต่ไม่ซ้ำทิศทางปัจจุบัน)
+                current_direction = self.direction
+                available_directions = [d for d in self.directions if d != current_direction]
+                self.direction = random.choice(available_directions)
+                self.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
+        else:
+            # NPCs อื่นๆ อยู่ในท่า down เสมอเมื่อไม่ได้เคลื่อนไหว
+            pass
     
     def check_player_collision(self, player_rect):
-        npc_rect = [self.x, self.y, NPC_WIDTH, NPC_HEIGHT]
+        # ใช้ hitbox เฉพาะส่วนฐาน/เท้า (4px จากขอบล่างสุด)
+        hitbox_y = self.y + (NPC_VISUAL_HEIGHT - NPC_HEIGHT)
+        npc_rect = [self.x, hitbox_y, NPC_WIDTH, NPC_HEIGHT]
         player_rect_list = [player_rect.pos[0], player_rect.pos[1], 
                            player_rect.size[0], player_rect.size[1]]
         

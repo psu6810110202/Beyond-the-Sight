@@ -28,8 +28,10 @@ STAMINA_DRAIN = MAX_STAMINA / (4 * FPS)  # ใช้เวลา 4 วินา�
 STAMINA_REGEN = MAX_STAMINA / (5 * FPS)  # ใช้เวลา 5 วินาทีในการฟื้นฟูจนเต็ม
 
 # NPC Settings
-NPC_WIDTH = 64
-NPC_HEIGHT = 64
+NPC_WIDTH = 16  # Hitbox width
+NPC_HEIGHT = 4  # Hitbox height (feet only)
+NPC_VISUAL_WIDTH = 32  # Visual sprite size
+NPC_VISUAL_HEIGHT = 32  # Visual sprite size
 NPC_SPEED = 1
 NPC_COUNT = 5
 
@@ -39,8 +41,10 @@ NPC_SPRITE_HEIGHT = 48
 NPC_ANIMATION_SPEED = 0.2
 
 # Reaper Settings
-REAPER_WIDTH = 80
-REAPER_HEIGHT = 64
+REAPER_WIDTH = 16  # Hitbox width
+REAPER_HEIGHT = 4  # Hitbox height (feet only)
+REAPER_VISUAL_WIDTH = 64  # Visual sprite size
+REAPER_VISUAL_HEIGHT = 64  # Visual sprite size
 REAPER_SPEED = 1.5
 SAFE_ZONE_RADIUS = 80
 REAPER_DETECTION_RADIUS = 150
