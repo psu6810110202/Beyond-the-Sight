@@ -3,6 +3,11 @@ from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from settings import *
 import math
+import random
+ENEMY_START_POSITIONS = [
+    (800, 800), 
+    (800, 800)
+]
 
 class Enemy:
     def __init__(self, canvas, x, y):
