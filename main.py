@@ -17,7 +17,7 @@ from player import Player
 from npc import NPC
 from reaper import Reaper
 from heart import HeartUI
-from enemy import Enemy
+from enemy import Enemy, ENEMY_START_POSITIONS
 from map_loader import KivyTiledMap
 
 class GameWidget(Widget): 
@@ -66,8 +66,8 @@ class GameWidget(Widget):
         self.npcs = []
         self.create_npcs()
         
-        # 3. สร้าง Reaper
-        self.reaper = Reaper(self.canvas, 400, 400)
+        # 3. สร้าง Reaper (ตำแหน่งเริ่มต้นจัดการใน reaper.py)
+        self.reaper = Reaper(self.canvas)
         
         # 4. สร้าง Enemies
         self.enemies = []
@@ -78,6 +78,13 @@ class GameWidget(Widget):
         # Draw Map Foreground (Roofs, hanging objects, etc) - in the foreground layer
         with self.canvas.after:
             self.game_map.draw_foreground(self.canvas.after)
+            
+            # Debug: Draw Solid Hitboxes (Draw once, inside camera matrix)
+            # You can comment this out once you're done testing
+            for r in self.game_map.solid_rects:
+                Color(1, 0, 0, 0.4) 
+                Rectangle(pos=(r[0], r[1]), size=(r[2], r[3]))
+                
             PopMatrix()
             
         # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป (เพื่อให้วาดหน้าจอ Screen Space ทับ PopMatrix)
@@ -147,7 +154,7 @@ class GameWidget(Widget):
 
     def move_step(self, dt):
         self.update_camera()
-
+        
         # อัปเดต Debug Label แสดงข้อมูลโดยรวมแบบบรรทัดเดียวแต่จัดให้เป็นระเบียบ
         px, py = self.player.logic_pos
         grid_x, grid_y = px // TILE_SIZE, py // TILE_SIZE
@@ -162,7 +169,7 @@ class GameWidget(Widget):
         # update dynamic map chunks based on camera center
         self.game_map.update_chunks(px, py)
         
-        self.player.move(self.pressed_keys, self.npcs, self.reaper)  # ส่ง npcs และ reaper ไปด้วย
+        self.player.move(self.pressed_keys, self.npcs, self.reaper, self.game_map.solid_rects)  # ส่ง npcs, reaper และ map_rects ไปด้วย
         
         # อัปเดตแถบ Stamina ของผู้เล่น
         stamina_ratio = max(0.0, self.player.stamina / self.player.max_stamina)
@@ -285,7 +292,7 @@ class GameWidget(Widget):
                 if self.dialogue_bg:
                     self.canvas.remove(self.dialogue_bg)
                     self.dialogue_bg = None
-    
+                    
     def update_interaction_hints(self):
         """อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้"""
         # ลบปุ่ม E เก่าทั้งหมด
@@ -365,39 +372,24 @@ class GameWidget(Widget):
             self.interaction_hints.append(hint_text)
                 
     def create_npcs(self):
-        # กำหนดตำแหน่ง NPC แบบตายตัว และระบุรูปภาพของแต่ละตัว
-        NPC1x = (896 // TILE_SIZE) * TILE_SIZE
-        NPC1y = (256 // TILE_SIZE) * TILE_SIZE
-        NPC2x = (544 // TILE_SIZE) * TILE_SIZE
-        NPC2y = (288 // TILE_SIZE) * TILE_SIZE
-        NPC3x = (528 // TILE_SIZE) * TILE_SIZE
-        NPC3y = (272 // TILE_SIZE) * TILE_SIZE
-        NPC4x = (560 // TILE_SIZE) * TILE_SIZE
-        NPC4y = (272 // TILE_SIZE) * TILE_SIZE
-        NPC5x = (560 // TILE_SIZE) * TILE_SIZE
-        NPC5y = (256 // TILE_SIZE) * TILE_SIZE
-
+        # สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน npc.py
         npc_data = [
-            ((NPC1x, NPC1y), 'assets/NPC/NPC1.png'),   # NPC 1
-            ((NPC2x, NPC2y), 'assets/NPC/NPC2.png'),       # NPC 2
-            ((NPC3x, NPC3y), 'assets/NPC/NPC3.png'),       # NPC 3
-            ((NPC4x, NPC4y), 'assets/NPC/NPC4.png'),       # NPC 4
-            ((NPC5x, NPC5y), 'assets/NPC/NPC5.png')        # NPC 5
+            'assets/NPC/NPC1.png',   # NPC 1
+            'assets/NPC/NPC2.png',   # NPC 2
+            'assets/NPC/NPC3.png',   # NPC 3
+            'assets/NPC/NPC4.png',   # NPC 4
+            'assets/NPC/NPC5.png'    # NPC 5
         ]
         
         for i in range(NPC_COUNT):
-            (x, y), img_path = npc_data[i]
-            npc = NPC(self.canvas, x, y, image_path=img_path)
+            img_path = npc_data[i]
+            npc = NPC(self.canvas, image_path=img_path)
             self.npcs.append(npc)
 
     def create_enemies(self):
         # สร้างศัตรูชั่วคราว ดักจับตำแหน่งให้อยู่บน Grid ของช่อง 32x32 
         # ย้ายตำแหน่งศัตรูมาใกล้ๆ จุดเกิดตรงกลาง
-        enemy_positions = [
-            (800 + 64, 800 + 64), 
-            (800 - 128, 800 - 128)
-        ]
-        for x, y in enemy_positions:
+        for x, y in ENEMY_START_POSITIONS:
             enemy = Enemy(self.canvas, x, y)
             self.enemies.append(enemy)
     

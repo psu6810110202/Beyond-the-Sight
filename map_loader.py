@@ -22,6 +22,13 @@ class KivyTiledMap:
         self.textures = {}  # Map gid to texture
         self.core_images = [] # Prevent garbage collection of loaded images
         self.map_group = InstructionGroup()
+        self.solid_rects = []
+        self.well_fg_gids = set()
+        self.well_solid_gids = set()
+        
+        # Prepare mesh groups once
+        self.bg_group = InstructionGroup()
+        self.fg_group = InstructionGroup()
         
         # Load JSON map
         try:
@@ -88,6 +95,8 @@ class KivyTiledMap:
                 margin = int(root.get('margin', 0))
                 spacing = int(root.get('spacing', 0))
                 
+                self.setup_well(tsx_name, firstgid, columns, tilecount)
+                
                 # Load image texture
                 core_image = CoreImage(image_path)
                 self.core_images.append(core_image) # Keep reference so it doesn't get destroyed
@@ -97,8 +106,7 @@ class KivyTiledMap:
                 tex.min_filter = 'nearest'
                 
                 # Small padding to prevent visible bleeding gaps (anti-pixel bleeding)
-                pad_x = 0.05 / tex.width
-                pad_y = 0.05 / tex.height
+                pad_x, pad_y = self._get_uv_padding(tex)
                 
                 for i in range(tilecount):
                     gid = firstgid + i
@@ -133,11 +141,18 @@ class KivyTiledMap:
                             
             except Exception as e:
                 print(f"Error loading tileset {tsx_path}: {e}")
-                
-        # Prepare mesh groups once
-        self.bg_group = InstructionGroup()
-        self.fg_group = InstructionGroup()
+    def _get_uv_padding(self, tex):
+        """Calculate small padding to prevent visible bleeding gaps."""
+        return 0.05 / tex.width, 0.05 / tex.height
 
+    def setup_well(self, tsx_name, firstgid, columns, tilecount):
+        if "Well1" in tsx_name:
+            well_cols = columns
+            fg_row_limit = 1
+            fg_end_index = firstgid + (well_cols * fg_row_limit)
+            
+            self.well_fg_gids.update(range(firstgid, fg_end_index))
+            self.well_solid_gids.update(range(fg_end_index, firstgid + tilecount))
         
     def find_file(self, filename, search_dir):
         # Check if absolute path directly exists
@@ -163,6 +178,7 @@ class KivyTiledMap:
         self.chunk_groups_bg = {}
         self.chunk_groups_fg = {}
         self.visible_chunks = set()
+        self.solid_rects = [] # ล้างข้อมูล Hitbox เก่าออกให้หมดก่อนเริ่มสร้างใหม่
         
         CHUNK_SIZE = 16
         chunk_world_size = TILE_SIZE * CHUNK_SIZE
@@ -178,8 +194,16 @@ class KivyTiledMap:
                 continue
                 
             layer_name = layer.get('name', '')
+            # เลเยอร์ที่ต้องการให้มี hitbox (solid)
+            # ใช้การตรวจสอบแบบแม่นยำขึ้น เพื่อไม่ให้ well2 หรือชื่ออื่นมาปน
+            clean_name = layer_name.strip().lower()
+            is_solid_layer = ("ผนังบ้าน" in clean_name)
+            
+            # เฉพาะเลเยอร์ "well1" เท่านั้นที่จะใช้ตรรกะแยกส่วนและ hitbox ของบ่อน้ำ
+            is_well_layer = (clean_name == "well1")
+            
             # Determine if this layer is foreground (e.g. "หลังคา", "หลังคา2 ชั้น", etc)
-            is_foreground = ("หลังคา" in layer_name or layer_name.lower().startswith("roof"))
+            is_foreground = ("หลังคา" in layer_name or "หลังคา2 ชั้น" in layer_name)
             
             instances = []
             
@@ -219,7 +243,10 @@ class KivyTiledMap:
                     col = i % width
                     row = i // width
                     x = col * self.tile_w * scale
-                    y = (height - 1 - row) * self.tile_h * scale
+                    y = (height - 1 - row) * self.tile_h * scale # Kivy Y-up coordinate
+                    
+                    gid = global_id & ~ALL_FLAGS
+                    
                     instances.append((global_id, x, y, None, None))
                     
             elif layer_type == 'objectgroup':
@@ -239,7 +266,8 @@ class KivyTiledMap:
                     instances.append((global_id, x, y, w, h))
             
             # We will group tiles in this layer by chunk
-            layer_chunk_meshes = {} # (cx, cy) -> {tex: {'vertices': [], 'indices': []}}
+            layer_chunk_meshes_fg = {} # For tiles that should be foreground
+            layer_chunk_meshes_bg = {} # For tiles that should be background
             
             for global_id, x, y, custom_w, custom_h in instances:
                 gid = global_id & ~ALL_FLAGS
@@ -264,13 +292,80 @@ class KivyTiledMap:
                 w = obj_px_w * scale
                 h = obj_px_h * scale
                 
+                # Decide if this specific tile is foreground or background
+                is_tile_fg = False
+                potential_well = is_well_layer and (gid in self.well_fg_gids or gid in self.well_solid_gids)
+                
+                if potential_well and (obj_px_w != ts_tile_w or obj_px_h != ts_tile_h):
+                    # Special split for 'Well 1' if placed as a single large object
+                    # We create two separate mesh entries: bottom (BG+Solid) and top (FG)
+                    
+                    # 1. Bottom Half (Background + Solid)
+                    bh_px_h = int(obj_px_h * 0.75)
+                    bh_h = bh_px_h * scale
+                    bh_inv_y = tex_inv_y + ts_tile_h - bh_px_h
+                    bh_region = tex.get_region(tex_x, bh_inv_y, obj_px_w, bh_px_h)
+                    
+                    pad_x, pad_y = self._get_uv_padding(tex)
+                    bu0, bv0 = bh_region.tex_coords[0] + pad_x, bh_region.tex_coords[1] + pad_y
+                    bu1, bv1 = bh_region.tex_coords[4] - pad_x, bh_region.tex_coords[5] - pad_y
+                    
+                    # Vertices for bottom half
+                    b_verts = [
+                        x, y, bu0, bv0,
+                        x + w, y, bu1, bv0,
+                        x + w, y + bh_h, bu1, bv1,
+                        x, y + bh_h, bu0, bv1
+                    ]
+                    
+                    # Add to BG meshes and Solid Rects
+                    # Shrink hitbox slightly so player can get closer to the stones (natural feel)
+                    hitbox_padding = 4 * scale
+                    new_rect = [x + hitbox_padding, y, w - (hitbox_padding * 2), bh_h]
+                    if new_rect not in self.solid_rects:
+                        self.solid_rects.append(new_rect)
+                    
+                    self._add_to_mesh_data(layer_chunk_meshes_bg, cx, cy, tex, b_verts)
+                    
+                    # 2. Top Half (Foreground)
+                    th_px_h = obj_px_h - bh_px_h
+                    th_h = th_px_h * scale
+                    th_y = y + bh_h
+                    th_inv_y = bh_inv_y - th_px_h
+                    th_region = tex.get_region(tex_x, th_inv_y, obj_px_w, th_px_h)
+                    
+                    tu0, tv0 = th_region.tex_coords[0] + pad_x, th_region.tex_coords[1] + pad_y
+                    tu1, tv1 = th_region.tex_coords[4] - pad_x, th_region.tex_coords[5] - pad_y
+                    
+                    # Vertices for top half
+                    t_verts = [
+                        x, th_y, tu0, tv0,
+                        x + w, th_y, tu1, tv0,
+                        x + w, th_y + th_h, tu1, tv1,
+                        x, th_y + th_h, tu0, tv1
+                    ]
+                    
+                    # Add to FG meshes
+                    self._add_to_mesh_data(layer_chunk_meshes_fg, cx, cy, tex, t_verts)
+                    continue # Skip the standard processing since we've split it
+                
+                # Standard processing for single tiles or non-well objects
+                if is_solid_layer:
+                    new_rect = [x, y, w, h]
+                    if new_rect not in self.solid_rects:
+                        self.solid_rects.append(new_rect)
+                elif is_well_layer and gid in self.well_solid_gids:
+                    # In well1, even if it's not a large object (split above), we apply the solid check
+                    new_rect = [x, y, w, h]
+                    if new_rect not in self.solid_rects:
+                        self.solid_rects.append(new_rect)
+                
                 if obj_px_w != ts_tile_w or obj_px_h != ts_tile_h:
                     # The user placed a 64x64 component from a 16x16 tileset. Extract the larger UV region securely.
                     new_inv_y = tex_inv_y + ts_tile_h - obj_px_h
                     region = tex.get_region(tex_x, new_inv_y, obj_px_w, obj_px_h)
                     
-                    pad_x = 0.05 / tex.width
-                    pad_y = 0.05 / tex.height
+                    pad_x, pad_y = self._get_uv_padding(tex)
                     
                     u0 = region.tex_coords[0] + pad_x
                     v0 = region.tex_coords[1] + pad_y
@@ -299,45 +394,54 @@ class KivyTiledMap:
                     x, y + h, uvs[6], uvs[7]
                 ]
                 
-                if (cx, cy) not in layer_chunk_meshes:
-                    layer_chunk_meshes[(cx, cy)] = {}
-                    
-                if tex not in layer_chunk_meshes[(cx, cy)]:
-                    layer_chunk_meshes[(cx, cy)][tex] = {'vertices': [], 'indices': []}
-                    
-                mesh_data = layer_chunk_meshes[(cx, cy)][tex]
-                idx_offset = len(mesh_data['vertices']) // 4
+                # Decide if this specific tile is foreground or background
+                if gid in self.well_fg_gids:
+                    is_tile_fg = True
+                elif gid in self.well_solid_gids:
+                    is_tile_fg = False
+                else:
+                    is_tile_fg = is_foreground
                 
-                mesh_data['vertices'].extend(verts)
-                mesh_data['indices'].extend([
-                    idx_offset, idx_offset + 1, idx_offset + 2,
-                    idx_offset + 2, idx_offset + 3, idx_offset
-                ])
-                
+                target_meshes = layer_chunk_meshes_fg if is_tile_fg else layer_chunk_meshes_bg
+                self._add_to_mesh_data(target_meshes, cx, cy, tex, verts)
+
             opacity = layer.get('opacity', 1.0)
-            target_dict = chunk_data_fg if is_foreground else chunk_data_bg
             
-            for chunk_coord, tex_dict in layer_chunk_meshes.items():
-                if chunk_coord not in target_dict:
-                    target_dict[chunk_coord] = []
-                target_dict[chunk_coord].append((opacity, tex_dict))
+            for chunk_coord, tex_dict in layer_chunk_meshes_fg.items():
+                if chunk_coord not in chunk_data_fg:
+                    chunk_data_fg[chunk_coord] = []
+                chunk_data_fg[chunk_coord].append((opacity, tex_dict))
+                
+            for chunk_coord, tex_dict in layer_chunk_meshes_bg.items():
+                if chunk_coord not in chunk_data_bg:
+                    chunk_data_bg[chunk_coord] = []
+                chunk_data_bg[chunk_coord].append((opacity, tex_dict))
                 
         # Now construct the Kivy InstructionGroups for each chunk
-        for chunk_coord, layers in chunk_data_bg.items():
-            grp = InstructionGroup()
-            for opacity, tex_dict in layers:
-                grp.add(Color(1, 1, 1, opacity))
-                for tex, mesh_data in tex_dict.items():
-                    grp.add(Mesh(
-                        vertices=mesh_data['vertices'],
-                        indices=mesh_data['indices'],
-                        fmt=[(b'vPosition', 2, 'float'), (b'vTexCoords0', 2, 'float')],
-                        texture=tex,
-                        mode='triangles'
-                    ))
-            self.chunk_groups_bg[chunk_coord] = grp
+        self.chunk_groups_bg = self._create_chunk_instruction_groups(chunk_data_bg)
+        self.chunk_groups_fg = self._create_chunk_instruction_groups(chunk_data_fg)
+
+    def _add_to_mesh_data(self, meshes_dict, cx, cy, tex, verts):
+        """Helper to append vertex data and generate indices for a specific mesh."""
+        if (cx, cy) not in meshes_dict:
+            meshes_dict[(cx, cy)] = {}
             
-        for chunk_coord, layers in chunk_data_fg.items():
+        if tex not in meshes_dict[(cx, cy)]:
+            meshes_dict[(cx, cy)][tex] = {'vertices': [], 'indices': []}
+            
+        mesh_data = meshes_dict[(cx, cy)][tex]
+        idx_offset = len(mesh_data['vertices']) // 4
+        
+        mesh_data['vertices'].extend(verts)
+        mesh_data['indices'].extend([
+            idx_offset, idx_offset + 1, idx_offset + 2,
+            idx_offset + 2, idx_offset + 3, idx_offset
+        ])
+
+    def _create_chunk_instruction_groups(self, chunk_data):
+        """Helper to create Kivy InstructionGroups for chunk meshes."""
+        chunk_groups = {}
+        for chunk_coord, layers in chunk_data.items():
             grp = InstructionGroup()
             for opacity, tex_dict in layers:
                 grp.add(Color(1, 1, 1, opacity))
@@ -349,7 +453,8 @@ class KivyTiledMap:
                         texture=tex,
                         mode='triangles'
                     ))
-            self.chunk_groups_fg[chunk_coord] = grp
+            chunk_groups[chunk_coord] = grp
+        return chunk_groups
 
     def update_chunks(self, cam_x, cam_y):
         CHUNK_SIZE = 16

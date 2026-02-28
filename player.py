@@ -107,7 +107,7 @@ class Player:
             
         self.update_frame()
         
-    def move(self, pressed_keys, npcs=None, reaper=None):  # เพิ่ม npcs parameter
+    def move(self, pressed_keys, npcs=None, reaper=None, map_rects=None):  # เพิ่ม map_rects parameter
         # 1. อัปเดตตำแหน่งก่อน หากเดินอยู่ให้เดินจนจบช่อง
         if self.is_moving:
             self.continue_move()
@@ -136,7 +136,7 @@ class Player:
                         self.turn_delay = 6  # จำนวนเฟรมที่รอก่อนเดิน (ประมาน 0.1 วินาที)
                         self.update_frame()
                     else:
-                        self.start_move(dx, dy, npcs, reaper)  # ส่ง npcs และ reaper ไปด้วย
+                        self.start_move(dx, dy, npcs, reaper, map_rects)  # ส่ง npcs, reaper, map_rects ไปด้วย
 
         # 3. คำนวณความเร็วและ FPS จากค่าความจริงของ self.is_moving ที่เพิ่งได้รับการอัปเดตอย่างต่อเนื่องแล้วเท่านั้น
         is_running = 'shift' in pressed_keys and self.is_moving
@@ -182,12 +182,17 @@ class Player:
             self.frame_index = 0
             self.update_frame()
 
-    def start_move(self, dx, dy, npcs=None, reaper=None):
+    def start_move(self, dx, dy, npcs=None, reaper=None, map_rects=None):
         new_x = self.logic_pos[0] + dx
         new_y = self.logic_pos[1] + dy
         
         # ตรวจสอบขอบเขตกำแพงล่องหนของแผนที่ (1600x1600)
         if 0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE:
+            # ตรวจสอบกำแพงจากแผนที่
+            if map_rects and self.check_map_collision(new_x, new_y, map_rects):
+                # print("Cannot move - Wall blocking!") # ปิด log เพื่อไม่ให้รกจอ
+                return
+                
             # ตรวจสอบการชนกับ NPC
             if npcs and self.check_npc_collision(new_x, new_y, npcs):
                 print("Cannot move - NPC blocking!")
@@ -198,8 +203,22 @@ class Player:
                 print("Cannot move - Reaper blocking!")
                 return
             
+            
             self.target_pos = [new_x, new_y]
             self.is_moving = True
+            
+    def check_map_collision(self, new_x, new_y, map_rects):
+        """ตรวจสอบว่าตำแหน่งใหม่จะชนกับกำแพง (Map tiles) หรือไม่"""
+        player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
+        
+        for r in map_rects:
+            # ใช้ Logic กล่องแบบห้ามซ้อนทับกันเต็มขนาด (ถ้ามากกว่าคือทับ)
+            if (player_rect[0] < r[0] + r[2] and
+                player_rect[0] + player_rect[2] > r[0] and
+                player_rect[1] < r[1] + r[3] and
+                player_rect[1] + player_rect[3] > r[1]):
+                return True
+        return False
     
     def check_npc_collision(self, new_x, new_y, npcs):
         """ตรวจสอบว่าตำแหน่งใหม่จะชนกับ NPC หรือไม่"""
