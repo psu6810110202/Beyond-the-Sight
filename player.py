@@ -206,17 +206,15 @@ class Player:
         player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
         
         for npc in npcs:
-            # ใช้พื้นที่บล็อคของ NPC เป็น 1x1 (32x32) เหมือน Player
-            # คำนวณตำแหน่งศูนย์กลางของ NPC แล้วลดขนาดลงเป็น 1x1
-            npc_center_x = npc.x + (NPC_WIDTH - TILE_SIZE) / 2
-            npc_center_y = npc.y + (NPC_HEIGHT - TILE_SIZE) / 2
-            npc_rect = [npc_center_x, npc_center_y, TILE_SIZE, TILE_SIZE]
+            # ใช้พิกัด x, y ตัวแปรหลักของระบบ Hitbox ใหม่ 
+            npc_rect = [npc.x, npc.y, TILE_SIZE, TILE_SIZE]
             
             # ตรวจสอบการชนระหว่างสี่เหลี่ยม
             if (player_rect[0] < npc_rect[0] + npc_rect[2] and
                 player_rect[0] + player_rect[2] > npc_rect[0] and
                 player_rect[1] < npc_rect[1] + npc_rect[3] and
                 player_rect[1] + player_rect[3] > npc_rect[1]):
+                print(f"DEBUG: Blocked by NPC physically located at {npc.x}, {npc.y}")
                 return True
         
         return False
@@ -225,11 +223,8 @@ class Player:
         """ตรวจสอบว่าตำแหน่งใหม่จะชนกับ Reaper หรือไม่"""
         player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
         
-        # ใช้พื้นที่บล็อคของ Reaper เป็น 1x1 (32x32) เหมือน Player
-        # คำนวณตำแหน่งศูนย์กลางของ Reaper แล้วลดขนาดลงเป็น 1x1
-        reaper_center_x = reaper.x + (REAPER_WIDTH - TILE_SIZE) / 2
-        reaper_center_y = reaper.y + (REAPER_HEIGHT - TILE_SIZE) / 2
-        reaper_rect = [reaper_center_x, reaper_center_y, TILE_SIZE, TILE_SIZE]
+        # ใช้พิกัด x, y ตัวแปรหลักของระบบ Hitbox ใหม่ 
+        reaper_rect = [reaper.x, reaper.y, TILE_SIZE, TILE_SIZE]
         
         # ตรวจสอบการชนระหว่างสี่เหลี่ยม
         if (player_rect[0] < reaper_rect[0] + reaper_rect[2] and

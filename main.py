@@ -175,14 +175,13 @@ class GameWidget(Widget):
         for npc in self.npcs:
             npc.update(dt)
             # Check collision with player
-            if npc.check_player_collision(self.player.rect):
+            if npc.check_player_collision(self.player.logic_pos):
                 # Handle collision - you can add custom behavior here
                 # For now, just print a message
                 print("NPC collided with player!")
         
         # Update Reaper
-        player_pos = self.player.rect.pos
-        self.reaper.update(dt, player_pos)
+        self.reaper.update(dt, self.player.logic_pos)
         
         # Collision cooldown to prevent message spam
         if not hasattr(self, 'reaper_collision_cooldown'):
@@ -192,7 +191,7 @@ class GameWidget(Widget):
             self.reaper_collision_cooldown -= dt
         
         # Check Reaper collision with player (friendly interaction)
-        if self.reaper.check_player_collision(self.player.rect) and self.reaper_collision_cooldown <= 0:
+        if self.reaper.check_player_collision(self.player.logic_pos) and self.reaper_collision_cooldown <= 0:
             print("You touched the friendly Reaper!")
             self.reaper_collision_cooldown = 1.0  # 1 second cooldown
         
@@ -368,14 +367,22 @@ class GameWidget(Widget):
     def create_npcs(self):
         # กำหนดตำแหน่ง NPC แบบตายตัว และระบุรูปภาพของแต่ละตัว
         NPC1x = (896 // TILE_SIZE) * TILE_SIZE
-        NPC1y = (272 // TILE_SIZE) * TILE_SIZE
+        NPC1y = (256 // TILE_SIZE) * TILE_SIZE
+        NPC2x = (544 // TILE_SIZE) * TILE_SIZE
+        NPC2y = (288 // TILE_SIZE) * TILE_SIZE
+        NPC3x = (528 // TILE_SIZE) * TILE_SIZE
+        NPC3y = (272 // TILE_SIZE) * TILE_SIZE
+        NPC4x = (560 // TILE_SIZE) * TILE_SIZE
+        NPC4y = (272 // TILE_SIZE) * TILE_SIZE
+        NPC5x = (560 // TILE_SIZE) * TILE_SIZE
+        NPC5y = (256 // TILE_SIZE) * TILE_SIZE
 
         npc_data = [
             ((NPC1x, NPC1y), 'assets/NPC/NPC1.png'),   # NPC 1
-            ((300, 200), 'assets/NPC/NPC2.png'),       # NPC 2
-            ((500, 150), 'assets/NPC/NPC3.png'),       # NPC 3
-            ((200, 350), 'assets/NPC/NPC4.png'),       # NPC 4
-            ((700, 250), 'assets/NPC/NPC5.png')        # NPC 5
+            ((NPC2x, NPC2y), 'assets/NPC/NPC2.png'),       # NPC 2
+            ((NPC3x, NPC3y), 'assets/NPC/NPC3.png'),       # NPC 3
+            ((NPC4x, NPC4y), 'assets/NPC/NPC4.png'),       # NPC 4
+            ((NPC5x, NPC5y), 'assets/NPC/NPC5.png')        # NPC 5
         ]
         
         for i in range(NPC_COUNT):

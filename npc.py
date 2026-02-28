@@ -97,16 +97,20 @@ class NPC:
         
         # Create visual elements
         with canvas:
+            # DEBUG: Hitbox ของ NPC เหมือนกับที่ Player มองเห็น (1 ช่อง TILE_SIZE)
+            Color(1, 1, 0, 0.3)
+            self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
+            
             if self.idle_texture:
                 # ใช้สีขาวปกติเพื่อให้เห็นภาพชัด
                 Color(1, 1, 1, 1)
             else:
                 # ใช้สีแดงถ้าโหลดรูปไม่ได้
                 Color(1, 0, 0, 1)
-            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ตำแหน่งตาม x,y (center of hitbox)
-            visual_x = self.x - (NPC_VISUAL_WIDTH - NPC_WIDTH) // 2
-            visual_y = self.y - (NPC_VISUAL_HEIGHT - NPC_HEIGHT) // 2
-            self.rect = Rectangle(pos=(visual_x, visual_y), size=(NPC_VISUAL_WIDTH, NPC_VISUAL_HEIGHT))
+            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ชดเชยตำแหน่งให้มาอยู่ตรงกลางช่องเหนือพื้นขึ้นไป
+            offset_x = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
+            offset_y = TILE_SIZE / 2
+            self.rect = Rectangle(pos=(self.x + offset_x, self.y + offset_y), size=(NPC_VISUAL_WIDTH, NPC_VISUAL_HEIGHT))
         
         self.update_frame()
         self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)
@@ -168,12 +172,10 @@ class NPC:
             # NPCs อื่นๆ อยู่ในท่า down เสมอเมื่อไม่ได้เคลื่อนไหว
             pass
     
-    def check_player_collision(self, player_rect):
-        # ใช้ hitbox เฉพาะส่วนฐาน/เท้า (4px จากขอบล่างสุด)
-        hitbox_y = self.y + (NPC_VISUAL_HEIGHT - NPC_HEIGHT)
-        npc_rect = [self.x, hitbox_y, NPC_WIDTH, NPC_HEIGHT]
-        player_rect_list = [player_rect.pos[0], player_rect.pos[1], 
-                           player_rect.size[0], player_rect.size[1]]
+    def check_player_collision(self, player_logic_pos):
+        # ใช้ 1 ช่อง TILE_SIZE x TILE_SIZE เป็นฐาน Hitbox
+        npc_rect = [self.x, self.y, TILE_SIZE, TILE_SIZE]
+        player_rect_list = [player_logic_pos[0], player_logic_pos[1], TILE_SIZE, TILE_SIZE]
         
         return (npc_rect[0] < player_rect_list[0] + player_rect_list[2] and
                 npc_rect[0] + npc_rect[2] > player_rect_list[0] and

@@ -65,16 +65,20 @@ class Reaper:
         
         # Create visual elements
         with canvas:
+            # DEBUG: แถบสีเหลืองจำลองแสดง Hitbox (1 ช่อง 16x16)
+            Color(1, 1, 0, 0.3)
+            self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
+            
             if self.idle_texture:
                 # ใช้สีขาวปกติเพื่อให้เห็นภาพชัด
                 Color(1, 1, 1, 1)
             else:
                 # ใช้สีแดงถ้าโหลดรูปไม่ได้
                 Color(1, 0, 0, 1)
-            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ตำแหน่งตาม x,y (center of hitbox)
-            visual_x = self.x - (REAPER_VISUAL_WIDTH - REAPER_WIDTH) // 2
-            visual_y = self.y - (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT) // 2
-            self.rect = Rectangle(pos=(visual_x, visual_y), size=(REAPER_VISUAL_WIDTH, REAPER_VISUAL_HEIGHT))
+            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ชดเชยเพื่อให้ยืนพื้นปกติ
+            offset_x = (TILE_SIZE - REAPER_VISUAL_WIDTH) / 2
+            offset_y = TILE_SIZE / 2
+            self.rect = Rectangle(pos=(self.x + offset_x, self.y + offset_y), size=(REAPER_VISUAL_WIDTH, REAPER_VISUAL_HEIGHT))
             
             # Safe zone visualization (protective green circle)
             Color(0, 1, 0, 0.2)  # เขียวเข้มขึ้น - ดูปลอดภัย
@@ -168,10 +172,13 @@ class Reaper:
 
         self.x, self.y = cur_x, cur_y
         
-        # อัปเดตตำแหน่งของ Rectangle (ใช้ตำแหน่งภาพตาม visual size)
-        visual_x = self.x - (REAPER_VISUAL_WIDTH - REAPER_WIDTH) // 2
-        visual_y = self.y - (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT) // 2
-        self.rect.pos = (visual_x, visual_y)
+        # อัปเดตตำแหน่งของ Rectangle ตาม offset
+        offset_x = (TILE_SIZE - REAPER_VISUAL_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect.pos = (self.x + offset_x, self.y + offset_y)
+        
+        # อัปเดต Debug Hitbox สีเหลือง
+        self.debug_rect.pos = (self.x, self.y)
         
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False
@@ -205,12 +212,9 @@ class Reaper:
         # สามารถเพิ่มเอฟเฟกต์การปกป้องได้ที่นี่
         print("Reaper is protecting you in the safe zone!")
     
-    def check_player_collision(self, player_rect):
-        # ใช้ hitbox เฉพาะส่วนฐาน/เท้า (4px จากขอบล่างสุด)
-        hitbox_y = self.y + (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT)
-        reaper_rect = [self.x, hitbox_y, REAPER_WIDTH, REAPER_HEIGHT]
-        player_rect_list = [player_rect.pos[0], player_rect.pos[1], 
-                           player_rect.size[0], player_rect.size[1]]
+    def check_player_collision(self, player_logic_pos):
+        reaper_rect = [self.x, self.y, TILE_SIZE, TILE_SIZE]
+        player_rect_list = [player_logic_pos[0], player_logic_pos[1], TILE_SIZE, TILE_SIZE]
         
         # Reaper ไม่ทำอันตรายผู้เล่น - แค่สัมผัสกันได้
         return (reaper_rect[0] < player_rect_list[0] + player_rect_list[2] and
@@ -218,11 +222,9 @@ class Reaper:
                 reaper_rect[1] < player_rect_list[1] + player_rect_list[3] and
                 reaper_rect[1] + reaper_rect[3] > player_rect_list[1])
 
-    def check_player_collision_logic(self, player_pos, tile_size):
-        # ใช้ hitbox เฉพาะส่วนฐาน/เท้า (4px จากขอบล่างสุด)
-        hitbox_y = self.y + (REAPER_VISUAL_HEIGHT - REAPER_HEIGHT)
-        reaper_rect = [self.x, hitbox_y, REAPER_WIDTH, REAPER_HEIGHT]
-        player_rect_list = [player_pos[0], player_pos[1], tile_size, tile_size]
+    def check_player_collision_logic(self, player_logic_pos, tile_size):
+        reaper_rect = [self.x, self.y, tile_size, tile_size]
+        player_rect_list = [player_logic_pos[0], player_logic_pos[1], tile_size, tile_size]
         
         return (reaper_rect[0] < player_rect_list[0] + player_rect_list[2] and
                 reaper_rect[0] + reaper_rect[2] > player_rect_list[0] and

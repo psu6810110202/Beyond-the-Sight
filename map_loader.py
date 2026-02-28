@@ -48,7 +48,12 @@ class KivyTiledMap:
                 continue
                 
             # Search for the tsx file in the map directory and subdirectories
-            tsx_path = self.find_file(source, self.map_dir)
+            # The user explicitly requested to read from the .tsx directory
+            tsx_name = os.path.basename(source)
+            tsx_path = os.path.join(self.map_dir, '.tsx', tsx_name)
+            
+            if not os.path.exists(tsx_path):
+                tsx_path = self.find_file(source, self.map_dir)
             
             if not tsx_path or not os.path.exists(tsx_path):
                 print(f"Warning: Tileset file '{source}' not found. Please ensure .tsx and image files are present in assets/Tiles/!")
@@ -65,7 +70,12 @@ class KivyTiledMap:
                 image_source = image_element.get('source')
                 
                 # Search for the image file
-                image_path = self.find_file(image_source, self.map_dir)
+                # Prioritize prop directory for images
+                image_name = os.path.basename(image_source)
+                image_path = os.path.join(self.map_dir, 'prop', image_name)
+                
+                if not os.path.exists(image_path):
+                    image_path = self.find_file(image_source, self.map_dir)
                 
                 if not image_path or not os.path.exists(image_path):
                     print(f"Warning: Image file '{image_source}' not found. Map will be missing textures.")
@@ -117,10 +127,10 @@ class KivyTiledMap:
                     u1_pad = u1 - pad_x
                     v1_pad = v1 - pad_y
                     
-                    # Store as tuple: (atlas texture, [BL_u, BL_v, TR_u, TR_v], specific_tile_w, specific_tile_h)
+                    # Store as tuple: (atlas texture, [BL_u, BL_v, TR_u, TR_v], specific_tile_w, specific_tile_h, x, inv_y)
                     # We store just the corners, and calculate others during draw
-                    self.textures[gid] = (tex, (u0_pad, v0_pad, u1_pad, v1_pad), tile_w, tile_h)
-                    
+                    self.textures[gid] = (tex, (u0_pad, v0_pad, u1_pad, v1_pad), tile_w, tile_h, x, inv_y)
+                            
             except Exception as e:
                 print(f"Error loading tileset {tsx_path}: {e}")
                 
@@ -163,49 +173,75 @@ class KivyTiledMap:
         chunk_data_fg = {}
         
         for layer in self.map_data.get('layers', []):
-            if layer.get('type') != 'tilelayer' or not layer.get('visible', True):
+            layer_type = layer.get('type')
+            if layer_type not in ('tilelayer', 'objectgroup') or not layer.get('visible', True):
                 continue
                 
             layer_name = layer.get('name', '')
             # Determine if this layer is foreground (e.g. "หลังคา", "หลังคา2 ชั้น", etc)
             is_foreground = ("หลังคา" in layer_name or layer_name.lower().startswith("roof"))
             
-            data = layer.get('data')
-            encoding = layer.get('encoding')
-            compression = layer.get('compression')
+            instances = []
             
-            width = layer.get('width', self.width)
-            height = layer.get('height', self.height)
-            
-            tiles = []
-            if encoding == 'base64':
-                try:
-                    decoded = base64.b64decode(data)
-                    if compression == 'zlib':
-                        decompressed = zlib.decompress(decoded)
-                    elif compression == 'gzip':
-                        import gzip
-                        decompressed = gzip.decompress(decoded)
-                    else:
-                        decompressed = decoded
-                        
-                    format_str = f"<{width * height}I"
-                    tiles = struct.unpack(format_str, decompressed)
-                except Exception as e:
-                    print(f"Error parsing layer {layer.get('name')}: {e}")
+            if layer_type == 'tilelayer':
+                data = layer.get('data')
+                encoding = layer.get('encoding')
+                compression = layer.get('compression')
+                
+                width = layer.get('width', self.width)
+                height = layer.get('height', self.height)
+                
+                tiles = []
+                if encoding == 'base64':
+                    try:
+                        decoded = base64.b64decode(data)
+                        if compression == 'zlib':
+                            decompressed = zlib.decompress(decoded)
+                        elif compression == 'gzip':
+                            import gzip
+                            decompressed = gzip.decompress(decoded)
+                        else:
+                            decompressed = decoded
+                            
+                        format_str = f"<{width * height}I"
+                        tiles = struct.unpack(format_str, decompressed)
+                    except Exception as e:
+                        print(f"Error parsing layer {layer.get('name')}: {e}")
+                        continue
+                elif type(data) is list:
+                    tiles = data
+                else:
                     continue
-            elif type(data) is list:
-                tiles = data
-            else:
-                continue
+                
+                for i, global_id in enumerate(tiles):
+                    if global_id == 0:
+                        continue
+                    col = i % width
+                    row = i // width
+                    x = col * self.tile_w * scale
+                    y = (height - 1 - row) * self.tile_h * scale
+                    instances.append((global_id, x, y, None, None))
+                    
+            elif layer_type == 'objectgroup':
+                total_height_px = self.height * self.tile_h
+                for obj in layer.get('objects', []):
+                    global_id = obj.get('gid', 0)
+                    if global_id == 0:
+                        continue
+                    px = obj.get('x', 0)
+                    py = obj.get('y', 0)
+                    x = px * scale
+                    y = (total_height_px - py) * scale
+                    pw = obj.get('width')
+                    ph = obj.get('height')
+                    w = pw * scale if pw is not None else None
+                    h = ph * scale if ph is not None else None
+                    instances.append((global_id, x, y, w, h))
             
             # We will group tiles in this layer by chunk
             layer_chunk_meshes = {} # (cx, cy) -> {tex: {'vertices': [], 'indices': []}}
             
-            for i, global_id in enumerate(tiles):
-                if global_id == 0:
-                    continue
-                    
+            for global_id, x, y, custom_w, custom_h in instances:
                 gid = global_id & ~ALL_FLAGS
                 flip_h = bool(global_id & FLIPPED_HORIZONTALLY_FLAG)
                 flip_v = bool(global_id & FLIPPED_VERTICALLY_FLAG)
@@ -216,26 +252,37 @@ class KivyTiledMap:
                     continue
                 
                 # Fetch raw atlas, base padded UVs, and actual size of this specific tile
-                tex, base_uvs, ts_tile_w, ts_tile_h = tex_data
+                tex, base_uvs, ts_tile_w, ts_tile_h, tex_x, tex_inv_y = tex_data
                 
-                col = i % width
-                row = i // width
+                cx = int(x // chunk_world_size)
+                cy = int(y // chunk_world_size)
                 
-                cx = col // CHUNK_SIZE
-                # Tiled generates map top-to-bottom. Kivy draws Y-up.
-                # row 0 is at max height. So chunks are partitioned by col, row.
-                cy = (height - 1 - row) // CHUNK_SIZE
+                # Check if this is a custom-sized object differing from the tileset's standard tile size
+                obj_px_w = int(custom_w / scale) if custom_w is not None else ts_tile_w
+                obj_px_h = int(custom_h / scale) if custom_h is not None else ts_tile_h
                 
-                # Align bottom-left to the grid cell
-                x = col * self.tile_w * scale
-                y = (height - 1 - row) * self.tile_h * scale
+                w = obj_px_w * scale
+                h = obj_px_h * scale
                 
-                # Actual quad size based on the tileset's tile dimensions
-                w = ts_tile_w * scale
-                h = ts_tile_h * scale
+                if obj_px_w != ts_tile_w or obj_px_h != ts_tile_h:
+                    # The user placed a 64x64 component from a 16x16 tileset. Extract the larger UV region securely.
+                    new_inv_y = tex_inv_y + ts_tile_h - obj_px_h
+                    region = tex.get_region(tex_x, new_inv_y, obj_px_w, obj_px_h)
+                    
+                    pad_x = 0.05 / tex.width
+                    pad_y = 0.05 / tex.height
+                    
+                    u0 = region.tex_coords[0] + pad_x
+                    v0 = region.tex_coords[1] + pad_y
+                    u1 = region.tex_coords[4] - pad_x
+                    v1 = region.tex_coords[5] - pad_y
+                    
+                    obj_uvs = (u0, v0, u1, v1)
+                else:
+                    obj_uvs = base_uvs
                 
                 # Extrapolate full UV corners mapped to Tiled flip requests
-                u0, v0, u1, v1 = base_uvs
+                u0, v0, u1, v1 = obj_uvs
                 if flip_h: u0, u1 = u1, u0
                 if flip_v: v0, v1 = v1, v0
                 
