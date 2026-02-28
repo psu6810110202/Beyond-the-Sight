@@ -3,7 +3,6 @@ from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from settings import *
 import math
-import random
 
 class Enemy:
     def __init__(self, canvas, x, y):

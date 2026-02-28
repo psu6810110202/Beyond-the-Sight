@@ -5,11 +5,13 @@ from settings import *
 import math
 import random
 
+REAPER_START_POS = (864, 80)
+
 class Reaper:
-    def __init__(self, canvas, x, y, color=(1, 0, 0, 1)):
+    def __init__(self, canvas, x=None, y=None, color=(1, 0, 0, 1)):
         self.canvas = canvas
-        self.x = x
-        self.y = y
+        self.x = x if x is not None else REAPER_START_POS[0]
+        self.y = y if y is not None else REAPER_START_POS[1]
         self.color = color
         
         # ใช้รูป Reaper เฉพาะ
@@ -53,10 +55,10 @@ class Reaper:
         
         # Reaper-specific properties
         self.speed = REAPER_SPEED
-        self.target_pos = [x, y]
+        self.target_pos = [self.x, self.y]
         self.is_moving = False
         self.safe_zone_radius = SAFE_ZONE_RADIUS
-        self.detection_radius = REAPER_DETECTION_RADIUS
+        self.detection_radius = SAFE_ZONE_RADIUS
         self.is_patrolling = True
         self.patrol_direction = 1
         self.patrol_timer = 0
@@ -80,19 +82,11 @@ class Reaper:
             offset_y = TILE_SIZE / 2
             self.rect = Rectangle(pos=(self.x + offset_x, self.y + offset_y), size=(REAPER_VISUAL_WIDTH, REAPER_VISUAL_HEIGHT))
             
-            # Safe zone visualization (protective green circle)
-            Color(0, 1, 0, 0.2)  # เขียวเข้มขึ้น - ดูปลอดภัย
-            self.safe_zone_circle = Ellipse(
-                pos=(x - self.safe_zone_radius + REAPER_WIDTH//2, 
-                     y - self.safe_zone_radius + REAPER_HEIGHT//2),
-                size=(self.safe_zone_radius * 2, self.safe_zone_radius * 2)
-            )
-            
             # Protection aura (gentle blue glow)
             Color(0.3, 0.7, 1.0, 0.1)  # สีฟ้าพาสเทลอ่อนๆ
             self.protection_circle = Ellipse(
-                pos=(x - self.detection_radius + REAPER_WIDTH//2, 
-                     y - self.detection_radius + REAPER_HEIGHT//2),
+                pos=(self.x - self.detection_radius + REAPER_WIDTH//2, 
+                    self.y - self.detection_radius + REAPER_HEIGHT//2),
                 size=(self.detection_radius * 2, self.detection_radius * 2)
             )
         
@@ -184,12 +178,6 @@ class Reaper:
             self.is_moving = False
     
     def update_visual_positions(self):
-        # Update safe zone circle position
-        self.safe_zone_circle.pos = (
-            self.x - self.safe_zone_radius + REAPER_WIDTH//2,
-            self.y - self.safe_zone_radius + REAPER_HEIGHT//2
-        )
-        
         # Update protection circle position
         self.protection_circle.pos = (
             self.x - self.detection_radius + REAPER_WIDTH//2,

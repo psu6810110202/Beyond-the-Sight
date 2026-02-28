@@ -4,11 +4,17 @@ from kivy.clock import Clock
 from settings import *
 import random
 
+NPC_START_POSITIONS = {
+    'NPC1': (896, 256),
+    'NPC2': (544, 288),
+    'NPC3': (704, 1472),
+    'NPC4': (1392, 1072),
+    'NPC5': (560, 256)
+}
+
 class NPC:
-    def __init__(self, canvas, x, y, image_path=None, color=(1, 0, 0, 1)):
+    def __init__(self, canvas, x=None, y=None, image_path=None, color=(1, 0, 0, 1)):
         self.canvas = canvas
-        self.x = x
-        self.y = y
         self.color = color
         
         # ถ้ามีการกำหนด image_path มาให้ใช้ค่านั้น ถ้าไม่ให้สุ่ม
@@ -17,6 +23,17 @@ class NPC:
         else:
             npc_images = ['assets/NPC/NPC1.png', 'assets/NPC/NPC2.png', 'assets/NPC/NPC3.png', 'assets/NPC/NPC4.png', 'assets/NPC/NPC5.png']
             self.image_path = random.choice(npc_images)
+            
+        # Set x, y from dictionary if not provided
+        if x is None or y is None:
+            for name, (px, py) in NPC_START_POSITIONS.items():
+                if name in self.image_path:
+                    self.x = (px // TILE_SIZE) * TILE_SIZE
+                    self.y = (py // TILE_SIZE) * TILE_SIZE
+                    break
+        else:
+            self.x = x
+            self.y = y
         
         # กำหนด spritesheet สำหรับแต่ละ NPC
         if 'NPC1' in self.image_path:
