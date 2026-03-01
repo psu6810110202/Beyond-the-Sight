@@ -1,6 +1,7 @@
 from kivy.config import Config
 from settings import *
-from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix, Ellipse
+from kivy.graphics import Color, Rectangle, Ellipse
+from camera import Camera
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget as KivyWidget
 from kivy.uix.floatlayout import FloatLayout
@@ -27,14 +28,7 @@ class GameWidget(Widget):
         super().__init__(**kwargs) 
 
         # Setup Camera
-        with self.canvas.before:
-            PushMatrix()
-            self.cam_trans_center = Translate(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
-            self.cam_scale = Scale(1, 1, 1)
-            self.cam_trans_pos = Translate(0, 0)
-        
-        with self.canvas.after:
-            pass 
+        self.camera = Camera(self.canvas.before)
 
         self.debug_label = Label(
             text="", 
@@ -90,7 +84,7 @@ class GameWidget(Widget):
                 Color(1, 0, 0, 0.4) 
                 Rectangle(pos=(r[0], r[1]), size=(r[2], r[3]))
                 
-            PopMatrix()
+        self.camera.end_camera(self.canvas.after)
             
         # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป (เพื่อให้วาดหน้าจอ Screen Space ทับ PopMatrix)
         self.heart_ui = HeartUI(self.canvas)
@@ -107,27 +101,12 @@ class GameWidget(Widget):
         Clock.schedule_interval(self.move_step, 1.0 / FPS)  
 
     def update_camera(self):
-        # อัปเดตจุดศูนย์กลางกล้องให้เป็นกึ่งกลางของหน้าต่าง Application จริงๆ (เพื่อรองรับการขยายจอ)
-        self.cam_trans_center.xy = (self.width / 2, self.height / 2)
-
-        # คำนวณอัตราส่วนการซูม (Scale) 
-        # เพื่อให้หน้าจอแคบๆ (CAMERA_SIZE) ถูกขยายให้เต็มหน้าต่างเกม (self.width / self.height)
-        scale_x = self.width / CAMERA_WIDTH
-        scale_y = self.height / CAMERA_HEIGHT
-        
-        # เลือกซูมตามด้านที่น้อยที่สุด เพื่อไม่ให้ภาพเสียสัดส่วน (รักษาสัดส่วนเดิม)
-        scale_factor = min(scale_x, scale_y)
-        self.cam_scale.xyz = (scale_factor, scale_factor, 1)
-
-        # ศูนย์กลางของตัวละครให้แทร็กที่ logic_pos
-        px, py = self.player.logic_pos
-        pw, ph = TILE_SIZE, TILE_SIZE
-        
-        cam_x = px + pw / 2
-        cam_y = py + ph / 2
-        
-        # เลื่อนตำแหน่งตัวละครมาไว้ที่จุดศูนย์กลางของจอ
-        self.cam_trans_pos.xy = (-cam_x, -cam_y)
+        self.camera.update(
+            self.width, self.height,
+            self.player.logic_pos,
+            self.game_map.width,
+            self.game_map.height
+        )
 
     def update_ui_positions(self, *args):
         # เรียกปรับตำแหน่งของหัวใจเมื่อหน้าจอมีการเปลี่ยนแปลงขนาด
