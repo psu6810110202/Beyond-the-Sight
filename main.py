@@ -2,6 +2,8 @@ from kivy.config import Config
 from settings import *
 from kivy.graphics import Color, Rectangle, Translate, Scale, PushMatrix, PopMatrix, Ellipse
 from kivy.uix.label import Label
+from kivy.uix.widget import Widget as KivyWidget
+from kivy.uix.floatlayout import FloatLayout
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -50,6 +52,9 @@ class GameWidget(Widget):
         self.dialogue_bg = None
         self.dialogue_timer = 0
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
+        
+        # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
+        self.dialogue_root = None
 
         # Draw Map Background (Floor, Walls, etc) - in the background layer
         with self.canvas.before:
@@ -285,12 +290,14 @@ class GameWidget(Widget):
                     self.reaper.frame_index = 0
             
             if self.dialogue_timer <= 0:
-                # ลบข้อความและพื้นหลัง
+                # ลบ widget ข้อความและพื้นหลัง
                 if self.dialogue_text:
-                    self.remove_widget(self.dialogue_text)
+                    if self.dialogue_text.parent:
+                        self.dialogue_text.parent.remove_widget(self.dialogue_text)
                     self.dialogue_text = None
                 if self.dialogue_bg:
-                    self.canvas.remove(self.dialogue_bg)
+                    if self.dialogue_bg.parent:
+                        self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
                     self.dialogue_bg = None
                     
     def update_interaction_hints(self):
@@ -469,98 +476,136 @@ class GameWidget(Widget):
         print("ไม่มี NPC หรือ Reaper อยู่ใกล้ๆ")
     
     def show_dialogue_above_npc(self, npc, dialogue):
-        """แสดงข้อความคุยเหนือหัว NPC"""
-        # ลบข้อความเก่าถ้ามี
-        if self.dialogue_text:
-            self.remove_widget(self.dialogue_text)
-        
-        # สร้างพื้นหลังสีดำสำหรับข้อความ
-        with self.canvas:
-            Color(0, 0, 0, 0.8)  # สีดำโปร่งแสด 80%
-            self.dialogue_bg = Rectangle(
-                size=(160, 30),
-                pos=(npc.x + NPC_WIDTH/2 - 80, npc.y + NPC_HEIGHT + 8)
-            )
-        
-        # สร้าง Label สำหรับแสดงข้อความ
-        self.dialogue_text = Label(
-            text=dialogue,
-            size_hint=(None, None),
-            size=(140, 20),
-            pos=(npc.x + NPC_WIDTH/2 - 70, npc.y + NPC_HEIGHT + 10),
-            color=(1, 1, 1, 1),  # สีขาว
-            font_size=12,  # ลดขนาดฟอนต์
-            halign='center',
-            valign='middle'
-        )
-        
-        # เพิ่ม Label ลงใน widget
-        self.add_widget(self.dialogue_text)
-        
-        # ตั้ง timer ให้หายไปหลัง 3 วินาที
-        self.dialogue_timer = 3.0
-    
-    # must fix
-    def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
-        """สร้างข้อความพูดขึ้นมาตามระยะ"""
-        if distance_x <= TILE_SIZE and distance_y <= TILE_SIZE:
-            # ระยะใกล้มาก (1 ช่อง)
-            return f"[{npc_name}]: เจ้ามาอยู่ใกล้มาก! ฉันชื่อ {npc_name}"
-        elif distance_x <= TILE_SIZE * 1.5 and distance_y <= TILE_SIZE * 1.5:
-            # ระยะปานกลาง (1.5 ช่อง)
-            return f"[{npc_name}ะ]: โอ... มีอะไรให้ช่วยเหรือ?"
-        elif distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
-            # ระยะไกล (2 ช่อง)
-            return f"[{npc_name}]: สวัสดี! ฉันชื่อ {npc_name}"
-        else:
-            return None
-    
+        """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        npc_name = f"NPC{self.npcs.index(npc) + 1}"
+        self._draw_vn_dialogue_box(npc_name, dialogue)
+
     def show_dialogue_above_reaper(self, dialogue):
-        """แสดงข้อความคุยเหนือหัว Reaper"""
-        # ลบข้อความเก่าถ้ามี
-        if self.dialogue_text:
-            self.remove_widget(self.dialogue_text)
+        """แสดงข้อความคุยของ Reaper สไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        self._draw_vn_dialogue_box("Reaper", dialogue)
+
+    def show_vn_dialogue(self, character_name, dialogue):
+        """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        self._draw_vn_dialogue_box(character_name, dialogue)
+
+    def show_text_box(self, text, duration=3.0):
+        """สร้างข้อความในกล่องข้อความ - ฟังก์ชันใหม่ที่ง่ายต่อการใช้งาน"""
+        self._draw_vn_dialogue_box("", text)
+        self.dialogue_timer = duration
+
+    def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
+        """คืนค่าข้อความคุยตามระยะห่างของ NPC"""
+        dialogues = {
+            "NPC1": [
+                "สวัสดี! ยินดีที่ได้พบคุณ",
+                "ฉันชอบที่นี่มาก... มันเงียบสงบ",
+                "คุณเคยเห็น Reaper ตัวนั้นไหม?"
+            ],
+            "NPC2": [
+                "โอ้... ทุกอย่างดูมืดมน",
+                "ฉันรู้สึกหนาว... ช่วยฉันด้วย",
+                "ไม่เคยคิดว่าจะมาถึงที่แห่งนี้"
+            ],
+            "NPC3": [
+                "คุณมาจากไหนกัน?",
+                "ที่นี่มีเรื่องลึกลับมากมาย",
+                "ระวังศัตรูให้ดีๆ นะ"
+            ],
+            "NPC4": [
+                "ฉันกำลังมองหาทางออก...",
+                "คุณเห็นทางออกไหม?",
+                "อย่าทอดทิ้งฉัน!"
+            ],
+            "NPC5": [
+                "เราต้องร่วมมือกัน",
+                "มีอะไรแปลกๆ เกิดขึ้นที่นี่",
+                "เราจะผ่านไปได้แน่ๆ"
+            ]
+        }
         
-        # สร้างพื้นหลังสีดำสำหรับข้อความ
-        with self.canvas:
-            Color(0, 0, 0, 0.8)  # สีดำโปร่งแสด 80%
-            self.dialogue_bg = Rectangle(
-                size=(160, 30),
-                pos=(self.reaper.x + REAPER_WIDTH/2 - 80, self.reaper.y + REAPER_HEIGHT + 8)
-            )
-        
-        # สร้าง Label สำหรับแสดงข้อความ
-        self.dialogue_text = Label(
-            text=dialogue,
-            size_hint=(None, None),
-            size=(140, 20),
-            pos=(self.reaper.x + REAPER_WIDTH/2 - 70, self.reaper.y + REAPER_HEIGHT + 10),
-            color=(1, 1, 1, 1),  # สีขาว
-            font_size=12,  # ลดขนาดฟอนต์
-            halign='center',
-            valign='middle'
-        )
-        
-        # เพิ่ม Label ลงใน widget
-        self.add_widget(self.dialogue_text)
-        
-        # ตั้ง timer ให้หายไปหลัง 3 วินาที
-        self.dialogue_timer = 3.0
-    
+        import random
+        if npc_name in dialogues:
+            return random.choice(dialogues[npc_name])
+        return "..."
+
     def get_reaper_dialogue(self, distance_x, distance_y):
-        """สร้างข้อความพูดของ Reaper ขึ้นมาตามระยะ"""
-        if distance_x <= TILE_SIZE and distance_y <= TILE_SIZE:
-            # ระยะใกล้มาก (1 ช่อง)
-            return "[Reaper]: เจ้ามาอยู่ใกล้มาก! ฉันคือ Reaper ผู้้มคุ้มคุ้ม"
-        elif distance_x <= TILE_SIZE * 1.5 and distance_y <= TILE_SIZE * 1.5:
-            # ระยะปานกลาง (1.5 ช่อง)
-            return "[Reaper]: โอ... มีอะไรให้ช่วยเหรือ? ฉันจะปกป้องเจ้า"
-        elif distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
-            # ระยะไกล (2 ช่อง)
-            return "[Reaper]: สวัสดี! ฉันคือ Reaper ผู้้มคุ้มคุ้ม"
+        """คืนค่าข้อความคุยของ Reaper"""
+        dialogues = [
+            "ความตายมาเยือน... แต่ยังไม่ถึงเวลาของเธอ",
+            "ฉันไม่ใช่ศัตรู... ฉันมาเพื่อพาเธอไป",
+            "โลกนี้มืดมน... แต่ยังมีความหวัง",
+            "เธอกำลังมองหาคำตอบอยู่ใช่ไหม?",
+            "ทุกชีวิตต้องจบลง... แต่ไม่ใช่วันนี้",
+            "มาติดต่อกันซะบ้าง... มันเหงาเหลือเกิน"
+        ]
+        
+        import random
+        return random.choice(dialogues)
+
+    def _draw_vn_dialogue_box(self, name, dialogue):
+        """ฟังก์ชันตัวช่วยสำหรับวาดกล่องข้อความใน screen space (ไม่ถูก camera transform)"""
+        # กำหนด root สำหรับวาด — ถ้า dialogue_root ถูก set โดย MyApp.build ให้ใช้นั้น
+        # ถ้าไม่มีก็ fallback ไปใช้ self
+        root = self.dialogue_root if self.dialogue_root else self
+
+        # 1. ลบ widget เก่าทิ้ง
+        if hasattr(self, 'dialogue_text') and self.dialogue_text:
+            if self.dialogue_text.parent:
+                self.dialogue_text.parent.remove_widget(self.dialogue_text)
+            self.dialogue_text = None
+        if hasattr(self, 'dialogue_bg') and self.dialogue_bg:
+            if self.dialogue_bg.parent:
+                self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
+            self.dialogue_bg = None
+
+        # 2. กำหนดขนาดกล่องข้อความ (สำหรับ Visual Novel Style)
+        box_height = 150
+        box_width = root.width - 40  # กว้างเกือบเต็มหน้าจอ
+        padding = 20
+
+        # 3. คำนวณตำแหน่งด้านล่างของหน้าจอ
+        dialogue_x = (root.width - box_width) / 2
+        dialogue_y = 20  # ห่างจากขอบล่าง 20 พิกเซล
+
+        # 4. สร้าง Widget พื้นหลังสีดำ (วาดใน screen space)
+        bg_widget = KivyWidget(
+            size_hint=(None, None),
+            size=(box_width, box_height),
+            pos=(dialogue_x, dialogue_y)
+        )
+        with bg_widget.canvas:
+            Color(0, 0, 0, 0.8)
+            Rectangle(size=(box_width, box_height), pos=(0, 0))
+        root.add_widget(bg_widget)
+        self.dialogue_bg = bg_widget
+
+        # 5. จัดรูปแบบข้อความ (แสดงชื่อและข้อความคุย)
+        if name:
+            formatted_text = f"[color=#ffff00]{name}:[/color] {dialogue}"
         else:
-            return None
-    
+            formatted_text = dialogue
+
+        # 6. สร้าง Label ให้พอดีกับกล่องข้อความ
+        text_area_width = box_width - (padding * 2)
+        text_area_height = box_height - (padding * 2)
+
+        self.dialogue_text = Label(
+            text=formatted_text,
+            markup=True,
+            font_name='assets/Fonts/edit-undo.brk.ttf',
+            size_hint=(None, None),
+            size=(text_area_width, text_area_height),
+            text_size=(text_area_width, text_area_height),
+            pos=(dialogue_x + padding, dialogue_y + padding),
+            color=(1, 1, 1, 1),
+            font_size=22,
+            halign='left',
+            valign='top'
+        )
+
+        root.add_widget(self.dialogue_text)
+        self.dialogue_timer = 3.0
+
     def check_npc_wall_collision(self, rect, wall_obj):
         # rect = [x, y, w, h]
         # wall_obj.pos/size
@@ -581,6 +626,9 @@ class MyApp(App):
         # สร้างตัวเกม
         game = GameWidget()
         root.add_widget(game)
+        
+        # บอก GameWidget ว่า root layout คืออะไร เพื่อให้ dialogue box วาดใน screen space
+        game.dialogue_root = root
         
         # นำ debug_label แปะที่ FloatLayout (UI หน้าจอจริงๆ) ให้พ้นจากกล้องซูม/หมุน
         game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
