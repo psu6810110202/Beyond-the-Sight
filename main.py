@@ -1,17 +1,19 @@
 from kivy.config import Config
 from settings import *
+
+Config.set('graphics', 'width', str(WINDOW_WIDTH))
+Config.set('graphics', 'height', str(WINDOW_HEIGHT))
+Config.set('graphics', 'resizable', '1')
+Config.set('graphics', 'position', 'auto')
+Config.set('graphics', 'multisampling', '2')
+Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
+
 from kivy.graphics import Color, Rectangle, Ellipse
 from camera import Camera
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget as KivyWidget
 from kivy.uix.floatlayout import FloatLayout
-
-Config.set('graphics', 'width', str(WINDOW_WIDTH))
-Config.set('graphics', 'height', str(WINDOW_HEIGHT)) # Changed back to WINDOW_HEIGHT
-Config.set('graphics', 'resizable', '0')
-Config.set('graphics', 'position', 'auto')
-Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
-
+from screen import SplashScreen
 from kivy.app import App 
 from kivy.uix.widget import Widget 
 from kivy.core.window import Window 
@@ -124,11 +126,10 @@ class GameWidget(Widget):
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         key_name = keycode[1]
-        print(f"Key pressed: {key_name}")  # Debug: แสดงปุ่มที่กด
+        key_code = keycode[0]
+        print(f"Key pressed: {key_name} (code: {key_code})")  # Debug: แสดงปุ่มที่กด
         
-        if key_name == 'f11':
-            Window.fullscreen = 'auto' if not Window.fullscreen else False
-        elif key_name == 'e':
+        if key_name == 'e':
             print("E key detected - checking NPC interaction")
             # ตรวจสอบว่า Player อยู่ใกล้ NPC หรือไม่
             self.check_npc_interaction()
@@ -585,20 +586,47 @@ class MyApp(App):
         self.title = TITLE
         
         from kivy.uix.floatlayout import FloatLayout
-        root = FloatLayout()
+        self.root = FloatLayout()
+        
+        # แสดงหน้าจอปกเกมที่เริ่มเล่น (กด Enter เพื่อเริ่ม)
+        splash = SplashScreen(
+            'assets/Covers/ปกเกม.png',
+            self.show_game
+        )
+        self.root.add_widget(splash)
+        
+        return self.root
+    
+    def show_game(self):
+        """แสดงเกมหลังจบหน้าปกเกม"""
+        # ลบ splash screen
+        self.root.clear_widgets()
         
         # สร้างตัวเกม
         game = GameWidget()
-        root.add_widget(game)
+        self.root.add_widget(game)
         
         # บอก GameWidget ว่า root layout คืออะไร เพื่อให้ dialogue box วาดใน screen space
-        game.dialogue_root = root
+        game.dialogue_root = self.root
         
         # นำ debug_label แปะที่ FloatLayout (UI หน้าจอจริงๆ) ให้พ้นจากกล้องซูม/หมุน
         game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
-        root.add_widget(game.debug_label)
-        
-        return root 
+        self.root.add_widget(game.debug_label) 
 
+    def on_start(self):
+        # ผูกเหตุการณ์คีย์บอร์ดระดับ Window เพื่อให้กด F11 ได้ทุกหน้าจอ
+        Window.bind(on_key_down=self._on_window_key_down)
+
+    def _on_window_key_down(self, window, key, scancode, codepoint, modifiers):
+        # 292 คือ keycode ของ F11
+        if key == 292:
+            print("F11 detected (Global) - toggling fullscreen")
+            if Window.fullscreen:
+                Window.fullscreen = False
+            else:
+                Window.fullscreen = 'auto'
+            return True # บอกว่าประมวลผลคีย์นี้แล้ว
+        return False
+        
 if __name__ == '__main__': 
     MyApp().run()
