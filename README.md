@@ -7,6 +7,6 @@ Story by Parichat Hongsuwanwattana
 
 Art 
 Player by Parichat Hongsuwanwattana 
-NPC by Punchita 
-Reaper by Punchita 
-Code by Parichat Hongsuwanwattana and Punchita 
+NPC by Phunchita Thongkum
+Reaper by Phunchita Thongkum
+Code by Parichat Hongsuwanwattana and Phunchita Thongkum
