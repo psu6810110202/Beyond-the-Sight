@@ -18,12 +18,16 @@ from kivy.app import App
 from kivy.uix.widget import Widget 
 from kivy.core.window import Window 
 from kivy.clock import Clock 
-from player import Player
+import os # นำเข้า os สำหรับจัดการโฟลเดอร์เซฟ
+
+from characters.player import Player
 from npc import NPC
 from reaper import Reaper
-from heart import HeartUI
 from enemy import Enemy, ENEMY_START_POSITIONS
+
+from heart import HeartUI
 from map_loader import KivyTiledMap
+from load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
 
 class GameWidget(Widget): 
     def __init__(self, **kwargs): 
@@ -435,6 +439,9 @@ class GameWidget(Widget):
             if self.dialogue_bg.parent:
                 self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
+
+        # จำชื่อตัวละครไว้ก่อนรีเซ็ต
+        last_character = self.current_character_name
         
         # คืนสถานะการคุย
         self.is_dialogue_active = False
@@ -442,6 +449,34 @@ class GameWidget(Widget):
         self.current_dialogue_queue = []
         self.current_dialogue_index = 0
         self.current_character_name = ""
+        
+        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ
+        if last_character == "Reaper":
+            self.show_save_screen()
+
+    def show_save_screen(self):
+        """เปิดหน้าจอเลือกสล็อตเพื่อเซฟเกม"""
+        save_screen = SaveLoadScreen(
+            mode="SAVE",
+            callback=self.on_save_confirmed
+        )
+        # นำไปแปะไว้ใน dialogue_root (FloatLayout หลัก)
+        if self.dialogue_root:
+            self.dialogue_root.add_widget(save_screen)
+
+    def on_save_confirmed(self, slot_id):
+        # สร้างโฟลเดอร์ saves ถ้ายังไม่มี
+        if not os.path.exists('saves'):
+            os.makedirs('saves')
+            
+        # สร้างไฟล์เซฟจำลอง (ในอนาคตจะเก็บข้อมูล Day/Heart จริงๆ)
+        file_path = f'saves/slot_{slot_id}.json'
+        with open(file_path, 'w') as f:
+            f.write('{"day": 1, "heart": 3}')
+            
+        print(f"Game saved to Slot {slot_id} at {file_path}")
+        # ปิดหน้าจอเซฟและกลับสู่เกม
+        # (คุณอาจต้องเรียก close() บน SaveLoadScreen หากเพิ่ม logic นั้น)
 
     def next_dialogue(self):
         """ไปยังข้อความถัดไปในคิว"""
