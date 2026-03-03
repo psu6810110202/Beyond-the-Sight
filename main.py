@@ -464,19 +464,27 @@ class GameWidget(Widget):
         if self.dialogue_root:
             self.dialogue_root.add_widget(save_screen)
 
-    def on_save_confirmed(self, slot_id):
+    def on_save_confirmed(self, slot_id, save_screen=None):
         # สร้างโฟลเดอร์ saves ถ้ายังไม่มี
         if not os.path.exists('saves'):
             os.makedirs('saves')
             
-        # สร้างไฟล์เซฟจำลอง (ในอนาคตจะเก็บข้อมูล Day/Heart จริงๆ)
+        # เก็บข้อมูลจริงจากตัวเกม
+        import json
+        save_data = {
+            "day": 1, # ในอนาคตใช้ตัวแปร day จริงๆ ของเกม
+            "heart": self.player.health if hasattr(self.player, 'health') else 3
+        }
+        
         file_path = f'saves/slot_{slot_id}.json'
         with open(file_path, 'w') as f:
-            f.write('{"day": 1, "heart": 3}')
+            json.dump(save_data, f)
             
-        print(f"Game saved to Slot {slot_id} at {file_path}")
-        # ปิดหน้าจอเซฟและกลับสู่เกม
-        # (คุณอาจต้องเรียก close() บน SaveLoadScreen หากเพิ่ม logic นั้น)
+        print(f"Game saved to Slot {slot_id}: {save_data}")
+        
+        # ปิดหน้าจอเซฟทันทีและกลับสู่เกม
+        if save_screen:
+            save_screen.close()
 
     def next_dialogue(self):
         """ไปยังข้อความถัดไปในคิว"""
