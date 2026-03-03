@@ -24,6 +24,9 @@ class SaveSlot(FloatLayout):
             # พื้นหลังสีดำ
             self.bg_color = Color(0, 0, 0, 0.8)
             self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+            # ไฮไลท์สีขาวจางๆ เมื่อเลือก
+            self.sel_color = Color(1, 1, 1, 0)
+            self.sel_rect = Rectangle(pos=self.pos, size=self.size)
             # เส้นขอบสีขาว
             self.highlight_color = Color(1, 1, 1, 0)
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1.5)
@@ -65,7 +68,7 @@ class SaveSlot(FloatLayout):
             # 3. รูปตัวละคร
             try:
                 # โหลด texture หลัก
-                full_texture = CoreImage('assets/players/player_idle.png').texture
+                full_texture = CoreImage('assets/characters/player/player_idle.png').texture
                 # บังคับความคมชัดตั้งแต่ต้นฉบับ
                 full_texture.min_filter = 'nearest'
                 full_texture.mag_filter = 'nearest'
@@ -116,6 +119,8 @@ class SaveSlot(FloatLayout):
     def _update_graphics(self, *args):
         self.bg_rect.pos = self.pos
         self.bg_rect.size = self.size
+        self.sel_rect.pos = self.pos
+        self.sel_rect.size = self.size
         self.border.rectangle = (self.x, self.y, self.width, self.height)
         self.corner1.points = [self.x, self.y + self.height - 10, self.x, self.y + self.height, self.x + 10, self.y + self.height]
         self.corner2.points = [self.x + self.width - 10, self.y, self.x + self.width, self.y, self.x + self.width, self.y + 10]
@@ -123,6 +128,7 @@ class SaveSlot(FloatLayout):
     def set_selected(self, selected):
         self.is_selected = selected
         self.highlight_color.a = 1.0 if selected else 0
+        self.sel_color.a = 0.15 if selected else 0 # สีขาวจางๆ 15%
         if selected:
             self.day_label.color = (1, 1, 1, 1)
         elif not self.data:

@@ -4,15 +4,15 @@ from kivy.core.image import Image as CoreImage
 from settings import WINDOW_HEIGHT
 
 class HeartUI:
-    def __init__(self, canvas):
+    def __init__(self, canvas, initial_health=3):
         self.canvas = canvas
         self.heart_size = 48
         self.pad = 5
         self.start_x = 10
         self.max_health = 3
-        self.current_health = 3
+        self.current_health = initial_health
         
-        # โหลด Texture ของหัวใจและตั้งค่าให้เป็นแบบ 'nearest' เพื่อไม่ให้ภาพเบลอเวลาขยาย (Pixel Perfect)
+        # โหลด Texture ของหัวใจ
         self.tex_heart_full = CoreImage('assets/Heart/หัวใจ-1.png').texture
         self.tex_heart_full.mag_filter = 'nearest'
         self.tex_heart_full.min_filter = 'nearest'
@@ -29,8 +29,10 @@ class HeartUI:
         
         with self.canvas.after:
             Color(1, 1, 1, 1)
-            for _ in range(self.max_health):
-                rect = Rectangle(texture=self.tex_heart_full, size=(self.heart_size, self.heart_size))
+            for i in range(self.max_health):
+                # กำหนดรูปหัวใจตามเลือดที่มี
+                tex = self.tex_heart_full if i < self.current_health else self.tex_heart_empty
+                rect = Rectangle(texture=tex, size=(self.heart_size, self.heart_size))
                 self.hearts.append(rect)
                 
             # Stamina Bar Border

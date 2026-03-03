@@ -48,24 +48,27 @@ class MenuButton(ButtonBehavior, FloatLayout):
         # ปรับขนาดเส้นขอบให้เล็กลงนิดนึงเพื่อให้ดูเหมือนกรอบล้อมรอบตัวอักษร
         self.border.rectangle = (self.x, self.y, self.width, self.height)
 
-    def set_selected(self, selected, disabled=False):
+    def set_selected(self, selected, is_disabled=False):
         self.is_selected = selected
-        if disabled:
+        if is_disabled:
             self.label.color = (0.3, 0.3, 0.3, 1) # สีเทาเข้มเมื่อปิดใช้งาน
             self.highlight_color.a = 0
-        elif selected:
+            return
+
+        if selected:
             self.highlight_color.a = 1.0 
             self.label.color = (1, 1, 1, 1) # สีขาว
         else:
             self.highlight_color.a = 0 
-            self.label.color = (1, 1, 1, 1) # สีขาวปกติ (ตามที่ผู้ใช้ต้องการให้ขาวทั้งหมด)
+            self.label.color = (1, 1, 1, 1) # สีขาวปกติ
             
 class GameMenu(FloatLayout):
     """Container for menu buttons with box styling and keyboard support."""
-    def __init__(self, items, callback, **kwargs):
+    def __init__(self, items, callback, disabled_indices=None, **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (None, None)
         self.callback = callback
+        self.disabled_indices = disabled_indices or []
         
         # จัดการการเลือก
         self.items = items
@@ -112,18 +115,30 @@ class GameMenu(FloatLayout):
         self.layout_buttons() # อัปเดตตำแหน่งปุ่มทุกครั้งที่มีการ Resize
 
     def move_selection(self, direction):
-        if direction == 'up':
-            self.index = (self.index - 1) % len(self.items)
-        elif direction == 'down':
-            self.index = (self.index + 1) % len(self.items)
+        old_index = self.index
+        count = len(self.items)
+        
+        # วนลูปหาปุ่มที่ไม่ได้ disabled
+        for _ in range(count):
+            if direction == 'up':
+                self.index = (self.index - 1) % count
+            else:
+                self.index = (self.index + 1) % count
+            
+            if self.index not in self.disabled_indices:
+                break
+        else:
+            self.index = old_index # ป้องกันค้างถ้าโดนปิดหมด
             
         self.update_selection()
 
     def update_selection(self):
         for i, btn in enumerate(self.buttons):
-            btn.set_selected(i == self.index)
+            btn.set_selected(i == self.index, is_disabled=(i in self.disabled_indices))
 
     def select_current(self):
+        if self.index in self.disabled_indices:
+            return # กดไม่ได้
         if self.callback:
             self.callback(self.items[self.index])
 
@@ -176,11 +191,26 @@ class SplashScreen(FloatLayout):
         self.add_widget(self.title_beyond)
         self.add_widget(self.title_the)
         self.add_widget(self.title_sight)
+        
+        # ตรวจสอบว่ามีไฟล์เซฟหรือไม่
+        has_saves = False
+        if os.path.exists('saves'):
+            for i in range(1, 6):
+                if os.path.exists(f'saves/slot_{i}.json'):
+                    has_saves = True
+                    break
+        
+        # รายการเมนูทั้งหมด
+        menu_items = ["New Game", "Load Game", "Exit"]
+        disabled_list = []
+        if not has_saves:
+            disabled_list.append(1) # Index 1 (Load Game) ปิดใช้งาน
 
         # เมนูแบบใหม่สไตล์ Visual Novel / RPG
         self.menu = GameMenu(
-            items=["New Game", "Load Game", "Exit"],
+            items=menu_items,
             callback=self.on_menu_select,
+            disabled_indices=disabled_list,
             # ขยับลงมาข้างล่างเพื่อให้ห่างจากชื่อเรื่อง
             pos_hint={'center_x': 0.75, 'center_y': 0.28}
         )
@@ -202,9 +232,33 @@ class SplashScreen(FloatLayout):
         elif choice == "Exit":
             Window.close()
 
-    def on_slot_selected(self, slot_id):
-        print(f"Slot {slot_id} selected! Starting game...")
-        self.finish_splash() # เริ่มเกม (ในอนาคตจะโหลดข้อมูลจาก slot)
+    def on_slot_selected(self, slot_id, load_screen=None):
+        import json
+        save_path = f'saves/slot_{slot_id}.json'
+        data = None
+        
+        if os.path.exists(save_path):
+            try:
+                with open(save_path, 'r') as f:
+                    data = json.load(f)
+                print(f"Loaded Slot {slot_id}: {data}")
+            except Exception as e:
+                print(f"Error loading save: {e}")
+        
+        if load_screen:
+            load_screen.close()
+            
+        self.finish_splash(initial_data=data)
+
+    def finish_splash(self, initial_data=None):
+        if self._keyboard:
+            self._keyboard.unbind(on_key_down=self._on_key_down)
+            self._keyboard = None
+        if self.callback:
+            # ส่งข้อมูลที่โหลดมากลับไปที่ show_game ใน MyApp
+            self.callback(initial_data=initial_data)
+        if self.parent:
+            self.parent.remove_widget(self)
 
     def start_animations(self):
         anim = Animation(opacity=0.7, duration=1.5) + Animation(opacity=1, duration=1.5)
@@ -266,14 +320,6 @@ class SplashScreen(FloatLayout):
             Color(0, 0, 0, 0.3)
             Rectangle(pos=(self.x + w*0.5, self.y), size=(w*0.5, h))
     
-    def finish_splash(self):
-        if self._keyboard:
-            self._keyboard.unbind(on_key_down=self._on_key_down)
-            self._keyboard = None
-        if self.callback:
-            self.callback()
-        if self.parent:
-            self.parent.remove_widget(self)
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         key = keycode[1]
