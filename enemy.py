@@ -4,15 +4,18 @@ from kivy.clock import Clock
 from settings import *
 import math
 import random
+
 ENEMY_START_POSITIONS = [
     (800, 800), 
-    (800, 800)]
+    (850, 850)  # เพิ่มตำแหน่งสำหรับ Enemy2
+]
 
 class Enemy:
-    def __init__(self, canvas, x, y):
+    def __init__(self, canvas, x, y, enemy_type=1):
         self.canvas = canvas
         self.x = x
         self.y = y
+        self.enemy_type = enemy_type  # 1 หรือ 2
         self.speed = ENEMY_SPEED
         self.detection_radius = ENEMY_DETECTION_RADIUS
         self.safe_zone_radius = ENEMY_SAFE_ZONE_RADIUS
@@ -28,36 +31,53 @@ class Enemy:
         self.direction_change_interval = 3.0  # เปลี่ยนทิศทางทุก 3 วินาที
         self.directions = ['down', 'left', 'right', 'up']
         
-        # โหลด Texture (เหมือน player)
-        try:
-            self.idle_texture = CoreImage('assets/Enemy/Enemy1_idle.png').texture
-            self.walk_texture = CoreImage('assets/Enemy/Enemy1_walk.png').texture
-            print(f"Enemy loaded idle: assets/Enemy/Enemy1_idle.png")
-            print(f"Enemy loaded walk: assets/Enemy/Enemy1_walk.png")
-        except Exception as e:
-            print(f"Failed to load Enemy texture: {e}")
-            self.idle_texture = None
-            self.walk_texture = None
+        # โหลด Texture ตามประเภทของ enemy
+        if enemy_type == 1:
+            try:
+                self.idle_texture = CoreImage('assets/Enemy/Enemy1_idle.png').texture
+                self.walk_texture = CoreImage('assets/Enemy/Enemy1_walk.png').texture
+                print(f"Enemy1 loaded idle: assets/Enemy/Enemy1_idle.png")
+                print(f"Enemy1 loaded walk: assets/Enemy/Enemy1_walk.png")
+            except Exception as e:
+                print(f"Failed to load Enemy1 texture: {e}")
+                self.idle_texture = None
+                self.walk_texture = None
+        elif enemy_type == 2:
+            try:
+                self.idle_texture = CoreImage('assets/Enemy/Enemy2_idle.png').texture
+                self.walk_texture = CoreImage('assets/Enemy/Enemy2_idle.png').texture  # ใช้ไฟล์เดียวกัน
+                print(f"Enemy2 loaded: assets/Enemy/Enemy2_idle.png")
+            except Exception as e:
+                print(f"Failed to load Enemy2 texture: {e}")
+                self.idle_texture = None
+                self.walk_texture = None
         
         # กำหนด spritesheet สำหรับ Enemy
-        self.anim_config = {
-            'idle': {'tex': self.idle_texture, 'cols': 1, 'rows': 4},
-            'walk': {'tex': self.walk_texture, 'cols': 3, 'rows': 4}
-        }
+        if enemy_type == 1:
+            self.anim_config = {
+                'idle': {'tex': self.idle_texture, 'cols': 1, 'rows': 4},
+                'walk': {'tex': self.walk_texture, 'cols': 3, 'rows': 4}
+            }
+        elif enemy_type == 2:
+            # Enemy2 ใช้ spritesheet แบบเดียว (1x4 frames)
+            self.anim_config = {
+                'idle': {'tex': self.idle_texture, 'cols': 1, 'rows': 4},
+                'walk': {'tex': self.walk_texture, 'cols': 1, 'rows': 4}
+            }
         
-        # สลับตัวเลข 0, 1, 2, 3 เพื่อให้ตรงกับแถวในรูป Spritesheet (เหมือน player)
+        # สลับตัวเลข 0, 1, 2, 3 เพื่อให้ตรงกับแถวในรูป Spritesheet (ตาม spritesheet จริง)
         self.anim_row_map = {
             'idle': {
-                'down': 3, 
+                'down': 2, 
                 'left': 0, 
                 'right': 1, 
-                'up': 2
+                'up': 3
             },
             'walk': {
-                'down': 3, 
+                'down': 2, 
                 'left': 0, 
                 'right': 1, 
-                'up': 2
+                'up': 3
             }
         }
         
@@ -103,6 +123,9 @@ class Enemy:
                 row_index = self.anim_row_map[self.state][self.direction]
             except KeyError:
                 row_index = 0 # Fallback
+                
+            # Debug: แสดงข้อมูล animation
+            print(f"Enemy{self.enemy_type} animation: state={self.state}, dir={self.direction}, row={row_index}, frame={self.frame_index}")
                 
             # คำนวณแถว (เหมือน player)
             v = 1.0 - ((row_index + 1) * h)
@@ -173,6 +196,9 @@ class Enemy:
         move_x, move_y = 0, 0
         new_dir = self.direction
         
+        # Debug: แสดงทิศทางที่จะเดิน
+        print(f"Enemy{self.enemy_type} chasing: dx={dx}, dy={dy}, current_dir={self.direction}")
+        
         # เลือกเดินแกนที่ระยะห่างเยอะกว่าก่อน (หรือสุ่มก็ได้) แบบ Grid Movement
         if abs(dx) > abs(dy):
             if dx > 0:
@@ -185,10 +211,14 @@ class Enemy:
             else:
                 move_y = -TILE_SIZE; new_dir = 'down'
                 
+        print(f"Enemy{self.enemy_type} will move: ({move_x}, {move_y}), new_dir={new_dir}")
+                
         if move_x != 0 or move_y != 0:
             if self.direction != new_dir:
                 self.direction = new_dir
+                self.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
                 self.turn_delay = 6
+                print(f"Enemy{self.enemy_type} changed direction to {new_dir}")
             else:
                 # ตรวจสอบว่าตำแหน่งใหม่อยู่ใน safe zone หรือไม่
                 new_x = self.x + move_x
@@ -200,9 +230,11 @@ class Enemy:
                     
                     # ถ้าตำแหน่งใหม่อยู่ใน safe zone ให้หยุดเดิน
                     if distance_from_reaper < self.safe_zone_radius:
+                        print(f"Enemy{self.enemy_type} stopped - safe zone")
                         return  # ไม่เดินเข้าไปใน safe zone
                 
                 self.start_move(move_x, move_y)
+                print(f"Enemy{self.enemy_type} started moving to ({new_x}, {new_y})")
 
     def start_move(self, dx, dy):
         self.target_pos = [self.x + dx, self.y + dy]
