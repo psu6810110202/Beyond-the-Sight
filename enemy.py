@@ -5,14 +5,15 @@ from settings import *
 import math
 import random
 ENEMY_START_POSITIONS = [
-    (800, 800), 
+    (1280, 240), 
     (800, 800)]
 
 class Enemy:
-    def __init__(self, canvas, x, y):
+    def __init__(self, canvas, x, y, enemy_id):
         self.canvas = canvas
         self.x = x
         self.y = y
+        self.id = enemy_id
         self.speed = ENEMY_SPEED
         self.detection_radius = ENEMY_DETECTION_RADIUS
         self.safe_zone_radius = ENEMY_SAFE_ZONE_RADIUS

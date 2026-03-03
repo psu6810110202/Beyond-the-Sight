@@ -18,16 +18,24 @@ from kivy.app import App
 from kivy.uix.widget import Widget 
 from kivy.core.window import Window 
 from kivy.clock import Clock 
-from player import Player
+import os # นำเข้า os สำหรับจัดการโฟลเดอร์เซฟ
+
+from characters.player import Player
 from npc import NPC
 from reaper import Reaper
-from heart import HeartUI
 from enemy import Enemy, ENEMY_START_POSITIONS
+
+from heart import HeartUI
 from map_loader import KivyTiledMap
+from load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
 
 class GameWidget(Widget): 
-    def __init__(self, **kwargs): 
+    def __init__(self, initial_data=None, **kwargs): 
         super().__init__(**kwargs) 
+        self.initial_data = initial_data
+        
+        # จัดการข้อมูลศัตรูที่ถูกกำจัดไปแล้ว (ไม่เกิดใหม่)
+        self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
 
         # Setup Camera
         self.camera = Camera(self.canvas.before)
@@ -92,8 +100,9 @@ class GameWidget(Widget):
                 
         self.camera.end_camera(self.canvas.after)
             
-        # สร้างคลาสหัวใจโดยส่ง canvas เข้าไป (เพื่อให้วาดหน้าจอ Screen Space ทับ PopMatrix)
-        self.heart_ui = HeartUI(self.canvas)
+        initial_health = initial_data.get('heart', 3) if initial_data else 3
+        # สร้างคลาสหัวใจโดยส่ง canvas และเลือดเริ่มต้นเข้าไป
+        self.heart_ui = HeartUI(self.canvas, initial_health=initial_health)
             
         # Initial chunk update setup
         self.game_map.update_chunks(self.player.logic_pos[0], self.player.logic_pos[1])
@@ -105,6 +114,17 @@ class GameWidget(Widget):
         self.update_ui_positions()
             
         Clock.schedule_interval(self.move_step, 1.0 / FPS)  
+
+    def request_keyboard_back(self):
+        """ขอคีย์บอร์ดกลับมาให้ GameWidget อีกครั้ง (ใช้หลังปิดเมนู/หน้าจอโหลด)"""
+        if self._keyboard:
+            self._on_keyboard_closed()
+            
+        self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
+        self._keyboard.bind(on_key_down=self._on_key_down) 
+        self._keyboard.bind(on_key_up=self._on_key_up) 
+        # เคลียร์ปุ่มที่ค้างอยู่ป้องกันตัวละครเดินค้าง
+        self.pressed_keys.clear()
 
     def update_camera(self):
         self.camera.update(
@@ -209,10 +229,13 @@ class GameWidget(Widget):
             reaper_pos = (self.reaper.x, self.reaper.y)
             enemy.update(dt, player_pos, reaper_pos)
             if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
+                # บันทึก ID ศัตรูที่โดนทำลายลงในลิสต์ (เพื่อไม่ให้เกิดใหม่ตอนโหลดเซฟ)
+                self.destroyed_enemies.append(enemy.id)
+                
                 enemy.destroy()           # ลบรูปสี่เหลี่ยมออกจากจอ
                 self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ
-                self.heart_ui.take_damage() # ลดเลือดผู้เล่นและเปลี่ยนภาพ 1 -> 2 -> 3
-                print("Enemy attacked player and disappeared!")
+                self.heart_ui.take_damage() # ลดเลือดผู้เล่น
+                print(f"Enemy {enemy.id} attacked player and was removed!")
                     
     def update_interaction_hints(self):
         """อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้"""
@@ -309,9 +332,12 @@ class GameWidget(Widget):
 
     def create_enemies(self):
         # สร้างศัตรูชั่วคราว ดักจับตำแหน่งให้อยู่บน Grid ของช่อง 32x32 
-        # ย้ายตำแหน่งศัตรูมาใกล้ๆ จุดเกิดตรงกลาง
-        for x, y in ENEMY_START_POSITIONS:
-            enemy = Enemy(self.canvas, x, y)
+        for i, (x, y) in enumerate(ENEMY_START_POSITIONS):
+            # ถ้าศัตรูตัวนี้ (ID ตาม index) ถูกกำจัดไปแล้วในเซฟนี้ ไม่ต้องสร้างใหม่
+            if i in self.destroyed_enemies:
+                continue
+                
+            enemy = Enemy(self.canvas, x, y, enemy_id=i)
             self.enemies.append(enemy)
     
     def check_npc_interaction(self):
@@ -435,6 +461,9 @@ class GameWidget(Widget):
             if self.dialogue_bg.parent:
                 self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
+
+        # จำชื่อตัวละครไว้ก่อนรีเซ็ต
+        last_character = self.current_character_name
         
         # คืนสถานะการคุย
         self.is_dialogue_active = False
@@ -442,6 +471,47 @@ class GameWidget(Widget):
         self.current_dialogue_queue = []
         self.current_dialogue_index = 0
         self.current_character_name = ""
+        
+        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ
+        if last_character == "Reaper":
+            self.show_save_screen()
+
+    def show_save_screen(self):
+        """เปิดหน้าจอเลือกสล็อตเพื่อเซฟเกม"""
+        save_screen = SaveLoadScreen(
+            mode="SAVE",
+            callback=self.on_save_confirmed
+        )
+        # นำไปแปะไว้ใน dialogue_root (FloatLayout หลัก)
+        if self.dialogue_root:
+            self.dialogue_root.add_widget(save_screen)
+
+    def on_save_confirmed(self, slot_id, save_screen=None):
+        # สร้างโฟลเดอร์ saves ถ้ายังไม่มี
+        if not os.path.exists('saves'):
+            os.makedirs('saves')
+            
+        # เก็บข้อมูลจริงจากตัวเกม
+        import json
+        save_data = {
+            "day": 1, 
+            "heart": self.heart_ui.current_health,
+            "destroyed_enemies": self.destroyed_enemies
+        }
+        
+        file_path = f'saves/slot_{slot_id}.json'
+        with open(file_path, 'w') as f:
+            json.dump(save_data, f)
+            
+        print(f"Game saved to Slot {slot_id}: {save_data}")
+        
+        # ปิดหน้าจอเซฟทันทีและกลับสู่เกม
+        if save_screen:
+            save_screen.close()
+        
+        # คืนค่าสถานะเพื่อให้ตัวละครเดินได้และรับคีย์บอร์ดได้อีกครั้ง
+        self.is_dialogue_active = False
+        self.request_keyboard_back()
 
     def next_dialogue(self):
         """ไปยังข้อความถัดไปในคิว"""
@@ -597,13 +667,13 @@ class MyApp(App):
         
         return self.root
     
-    def show_game(self):
+    def show_game(self, initial_data=None):
         """แสดงเกมหลังจบหน้าปกเกม"""
         # ลบ splash screen
         self.root.clear_widgets()
         
-        # สร้างตัวเกม
-        game = GameWidget()
+        # สร้างตัวเกมโดยส่งข้อมูลเริ่มต้นไป (ถ้ามี)
+        game = GameWidget(initial_data=initial_data)
         self.root.add_widget(game)
         
         # บอก GameWidget ว่า root layout คืออะไร เพื่อให้ dialogue box วาดใน screen space

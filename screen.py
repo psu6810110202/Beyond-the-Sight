@@ -7,92 +7,140 @@ from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
 from kivy.animation import Animation
 import os
+from load import SaveLoadScreen # นำเข้าหน้าโหลดเซฟ
 
 from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.image import Image
 
 class MenuButton(ButtonBehavior, FloatLayout):
-    """Custom button that stays perfectly in proportion to its image source."""
+    """Custom button used within GameMenu."""
     def __init__(self, text="", **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (None, None)
-        self.size = (320, 80) # Initial size for stability
+        self.size = (200, 50)
+        self.is_selected = False
         
-        # Determine aspect ratio from the image
-        try:
-            tex = CoreImage('assets/button/button0.png').texture
-            self.image_ratio = tex.width / tex.height
-        except:
-            self.image_ratio = 4.0  # Safe fallback
+        with self.canvas.before:
+            # พื้นหลังสีดำจางๆ หรือโปร่งใสตามสไตล์ในรูป
+            self.bg_color = Color(0, 0, 0, 0) 
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+            # เส้นขอบที่จะแสดงเมื่อเลือก (Highlight) - เปลี่ยนเป็นสีขาว
+            self.highlight_color = Color(1, 1, 1, 0) # สีขาว โปร่งใสเริ่มต้น
+            self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1.5)
             
-        # Background Image - perfectly fitted
-        self.bg_image = Image(
-            source='assets/button/button0.png',
-            allow_stretch=True,
-            keep_ratio=True,
-            size_hint=(1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
-        )
-        # ตั้งค่าให้รูปภาพคมชัด (Pixel Art) โดยใช้ Nearest Filter
-        self.bg_image.bind(texture=self._set_nearest_filter)
-        self.add_widget(self.bg_image)
-        
-        # ตรวจสอบและตั้งค่า Filter ทันที (แก้ปัญหาเบลอตอนไม่กด)
-        if self.bg_image.texture:
-            self._set_nearest_filter(None, self.bg_image.texture)
-        
-        # Label - precisely centered
         self.label = Label(
             text=text,
             font_name='assets/Fonts/edit-undo.brk.ttf',
-            color=(1, 1, 1, 1),
+            color=(0.7, 0.7, 0.7, 1), # สีเทาเริ่มต้น
             size_hint=(1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.52}, # Slightly up for visual balance
-            halign='center',
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
+            halign='center', # เปลี่ยนเป็นอยู่ตรงกลาง
             valign='middle'
         )
+        self.label.bind(size=self.label.setter('text_size'))
         self.add_widget(self.label)
         
-        # ผูกเหตุการณ์เมาส์ชี้เพื่อให้ปุ่มมืดลง (แยกทำงานทีละปุ่ม)
-        self._mouse_callback = self.on_mouse_move
-        Window.bind(mouse_pos=self._mouse_callback)
+        self.bind(pos=self._update_graphics, size=self._update_graphics)
 
-    def _set_nearest_filter(self, instance, texture):
-        if texture:
-            texture.min_filter = 'nearest'
-            texture.mag_filter = 'nearest'
+    def _update_graphics(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
+        # ปรับขนาดเส้นขอบให้เล็กลงนิดนึงเพื่อให้ดูเหมือนกรอบล้อมรอบตัวอักษร
+        self.border.rectangle = (self.x, self.y, self.width, self.height)
 
-    def on_state(self, instance, value):
-        # เปลี่ยนรูปภาพตามสถานะการกด
-        if value == 'down':
-            self.bg_image.source = 'assets/button/button1.png'
-            # ตัวอักษรยุบลงตามปุ่ม
-            self.label.pos_hint = {'center_x': 0.5, 'center_y': 0.48}
+    def set_selected(self, selected, is_disabled=False):
+        self.is_selected = selected
+        if is_disabled:
+            self.label.color = (0.3, 0.3, 0.3, 1) # สีเทาเข้มเมื่อปิดใช้งาน
+            self.highlight_color.a = 0
+            return
+
+        if selected:
+            self.highlight_color.a = 1.0 
+            self.label.color = (1, 1, 1, 1) # สีขาว
         else:
-            self.bg_image.source = 'assets/button/button0.png'
-            # ตัวอักษรกลับมาตำแหน่งปกติ
-            self.label.pos_hint = {'center_x': 0.5, 'center_y': 0.52}
+            self.highlight_color.a = 0 
+            self.label.color = (1, 1, 1, 1) # สีขาวปกติ
             
-        # บังคับให้ตรวจสอบ Filter อีกครั้งเมื่อเปลี่ยนรูปเพื่อให้คมชัดเสมอ
-        if self.bg_image.texture:
-            self._set_nearest_filter(None, self.bg_image.texture)
+class GameMenu(FloatLayout):
+    """Container for menu buttons with box styling and keyboard support."""
+    def __init__(self, items, callback, disabled_indices=None, **kwargs):
+        super().__init__(**kwargs)
+        self.size_hint = (None, None)
+        self.callback = callback
+        self.disabled_indices = disabled_indices or []
+        
+        # จัดการการเลือก
+        self.items = items
+        self.buttons = []
+        self.index = 0
+        
+        with self.canvas.before:
+            # กรอบเมนูสีดำขอบขาว
+            Color(0, 0, 0, 0.9) # พื้นหลังดำเกือบสนิท
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+            Color(1, 1, 1, 1) # ขอบสีขาว
+            self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=2)
+            
+            # ตกแต่งมุม
+            # มุมซ้ายบน
+            Line(points=[self.x, self.y + self.height - 15, self.x, self.y + self.height, self.x + 15, self.y + self.height], width=2)
+            # มุมขวาล่าง
+            Line(points=[self.x + self.width - 15, self.y, self.x + self.width, self.y, self.x + self.width, self.y + 15], width=2)
 
-    def on_mouse_move(self, window, pos):
-        # ใช้ collide_point(*pos) ตรงๆ เพราะ pos จาก Window มาเป็นพิกัดหน้าต่างอยู่แล้ว
-        # วิธีนี้จะทำให้เช็คโดนเฉพาะปุ่มที่เมาส์ชี้จริงๆ (แยกกันทำงาน)
-        if self.collide_point(*pos):
-            self.bg_image.color = (0.7, 0.7, 0.7, 1) # มืดลงเฉพาะปุ่มที่โดนชี้
+        # สร้างปุ่ม
+        for text in items:
+            btn = MenuButton(text=text)
+            self.add_widget(btn)
+            self.buttons.append(btn)
+        
+        self.layout_buttons() # เรียกใช้ฟังก์ชันจัดเลย์เอาต์ครั้งแรก
+        self.update_selection()
+        self.bind(pos=self._update_all, size=self._update_all)
+
+    def layout_buttons(self):
+        """จัดการตำแหน่งและขนาดของปุ่มทั้งหมดให้สมดุลและกึ่งกลาง (จุดปรับแต่งจุดเดียว)"""
+        btn_h = self.height * 0.25 # ปรับความสูงปุ่ม
+        spacing = self.height * 0.28 # ระยะห่างระหว่างปุ่ม
+        start_y = (self.height / 2) + spacing - (btn_h / 2)
+        
+        for i, btn in enumerate(self.buttons):
+            btn.size = (self.width - 40, btn_h)
+            btn.pos = (self.x + 20, self.y + start_y - (i * spacing))
+
+    def _update_all(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
+        self.border.rectangle = (self.x, self.y, self.width, self.height)
+        self.layout_buttons() # อัปเดตตำแหน่งปุ่มทุกครั้งที่มีการ Resize
+
+    def move_selection(self, direction):
+        old_index = self.index
+        count = len(self.items)
+        
+        # วนลูปหาปุ่มที่ไม่ได้ disabled
+        for _ in range(count):
+            if direction == 'up':
+                self.index = (self.index - 1) % count
+            else:
+                self.index = (self.index + 1) % count
+            
+            if self.index not in self.disabled_indices:
+                break
         else:
-            self.bg_image.color = (1, 1, 1, 1) # กลับมาสีปกติ
+            self.index = old_index # ป้องกันค้างถ้าโดนปิดหมด
+            
+        self.update_selection()
 
-    def unbind_mouse(self):
-        """ยกเลิกการตรวจเมาส์เมื่อจบหน้า Splash"""
-        Window.unbind(mouse_pos=self._mouse_callback)
+    def update_selection(self):
+        for i, btn in enumerate(self.buttons):
+            btn.set_selected(i == self.index, is_disabled=(i in self.disabled_indices))
 
-    @property
-    def font_size(self): return self.label.font_size
-    @font_size.setter
-    def font_size(self, value): self.label.font_size = value
+    def select_current(self):
+        if self.index in self.disabled_indices:
+            return # กดไม่ได้
+        if self.callback:
+            self.callback(self.items[self.index])
 
 class SplashScreen(FloatLayout):
     """title screen that displays before gameplay"""
@@ -108,7 +156,7 @@ class SplashScreen(FloatLayout):
         # Draw background cover
         Clock.schedule_once(self.load_cover_image, 0)
         
-        # Keyboard binding for backup
+        # Keyboard binding - สำคัญมากสำหรับการเลื่อนเมนู
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_key_down)
 
@@ -143,25 +191,74 @@ class SplashScreen(FloatLayout):
         self.add_widget(self.title_beyond)
         self.add_widget(self.title_the)
         self.add_widget(self.title_sight)
-
-        # Buttons on the right - ปรับตำแหน่งให้เหมาะสมกับขนาดที่เล็กลง
-        self.btn_start = MenuButton(
-            text="START GAME",
-            pos_hint={'center_x': 0.75, 'center_y': 0.34}
-        )
-        self.btn_start.bind(on_release=lambda x: self.finish_splash())
         
-        self.btn_exit = MenuButton(
-            text="EXIT GAME",
-            pos_hint={'center_x': 0.75, 'center_y': 0.22}
-        )
-        self.btn_exit.bind(on_release=lambda x: Window.close())
+        # ตรวจสอบว่ามีไฟล์เซฟหรือไม่
+        has_saves = False
+        if os.path.exists('saves'):
+            for i in range(1, 6):
+                if os.path.exists(f'saves/slot_{i}.json'):
+                    has_saves = True
+                    break
+        
+        # รายการเมนูทั้งหมด
+        menu_items = ["New Game", "Load Game", "Exit"]
+        disabled_list = []
+        if not has_saves:
+            disabled_list.append(1) # Index 1 (Load Game) ปิดใช้งาน
 
-        self.add_widget(self.btn_start)
-        self.add_widget(self.btn_exit)
+        # เมนูแบบใหม่สไตล์ Visual Novel / RPG
+        self.menu = GameMenu(
+            items=menu_items,
+            callback=self.on_menu_select,
+            disabled_indices=disabled_list,
+            # ขยับลงมาข้างล่างเพื่อให้ห่างจากชื่อเรื่อง
+            pos_hint={'center_x': 0.75, 'center_y': 0.28}
+        )
+        self.add_widget(self.menu)
 
         # Pulsing animation for title
         self.start_animations()
+
+    def on_menu_select(self, choice):
+        if choice == "New Game":
+            self.finish_splash()
+        elif choice == "Load Game":
+            # แสดงหน้าจอโหลดเซฟ 5 สล็อต
+            load_screen = SaveLoadScreen(
+                mode="LOAD", 
+                callback=self.on_slot_selected
+            )
+            self.add_widget(load_screen)
+        elif choice == "Exit":
+            Window.close()
+
+    def on_slot_selected(self, slot_id, load_screen=None):
+        import json
+        save_path = f'saves/slot_{slot_id}.json'
+        data = None
+        
+        if os.path.exists(save_path):
+            try:
+                with open(save_path, 'r') as f:
+                    data = json.load(f)
+                print(f"Loaded Slot {slot_id}: {data}")
+            except Exception as e:
+                print(f"Error loading save: {e}")
+        
+        if load_screen:
+            load_screen.close()
+            
+        self.finish_splash(initial_data=data)
+
+    def finish_splash(self, initial_data=None):
+        if self._keyboard:
+            self._keyboard.unbind(on_key_down=self._on_key_down)
+            self._keyboard = None
+        if self.callback:
+            # ส่งข้อมูลที่โหลดมากลับไปที่ show_game ใน MyApp
+            self.callback(initial_data=initial_data)
+        if self.parent:
+            self.parent.remove_widget(self)
 
     def start_animations(self):
         anim = Animation(opacity=0.7, duration=1.5) + Animation(opacity=1, duration=1.5)
@@ -184,23 +281,18 @@ class SplashScreen(FloatLayout):
         self._update_font_sizes()
 
     def _update_font_sizes(self):
-        """ปรับขนาดตัวอักษรและขนาดปุ่มตามความสูงของหน้าจอ"""
+        """ปรับขนาดตัวอักษรชื่อเกมตามความสูงของหน้าจอ"""
         scale = self.height / 540.0
         
-        # ปรับขนาดตัวอักษรชื่อเกม
+        # ปรับความสูงของฟอนต์ชื่อเกม
         self.title_beyond.font_size = f'{int(80 * scale)}sp'
         self.title_the.font_size = f'{int(30 * scale)}sp'
         self.title_sight.font_size = f'{int(90 * scale)}sp'
         
-        # ปรับขนาดปุ่มทั้งสองให้เล็กลงอีกเพื่อความสวยงาม (Base Width 220)
-        btn_width = 220 * scale
-        btn_font = f'{int(14 * scale)}sp'
-        
-        for btn in [self.btn_start, self.btn_exit]:
-            # คำนวณความสูงจากสัดส่วนจริงของรูปภาพ
-            btn_height = btn_width / btn.image_ratio
-            btn.size = (btn_width, btn_height)
-            btn.font_size = btn_font
+        # ปรับขนาดกล่องเมนูให้ขยายตามหน้าจอ (สัดส่วน 240x130 สำหรับ 3 ปุ่ม)
+        self.menu.size = (240 * scale, 130 * scale)
+        for btn in self.menu.buttons:
+            btn.label.font_size = f'{int(22 * scale)}sp'
 
     def update_image_position(self, *args):
         if not self.image_texture:
@@ -228,23 +320,15 @@ class SplashScreen(FloatLayout):
             Color(0, 0, 0, 0.3)
             Rectangle(pos=(self.x + w*0.5, self.y), size=(w*0.5, h))
     
-    def finish_splash(self):
-        # ยกเลิกการตรวจเมาส์ของปุ่มก่อนเปลี่ยนหน้า
-        self.btn_start.unbind_mouse()
-        self.btn_exit.unbind_mouse()
-        
-        if self._keyboard:
-            self._keyboard.unbind(on_key_down=self._on_key_down)
-            self._keyboard = None
-        if self.callback:
-            self.callback()
-        if self.parent:
-            self.parent.remove_widget(self)
 
-    # Keep keyboard as backup
     def _on_key_down(self, keyboard, keycode, text, modifiers):
-        if keycode[1] == 'enter':
-            self.finish_splash()
+        key = keycode[1]
+        if key == 'up':
+            self.menu.move_selection('up')
+        elif key == 'down':
+            self.menu.move_selection('down')
+        elif key in ('enter', 'space'):
+            self.menu.select_current()
     
     def _on_keyboard_closed(self):
         pass
