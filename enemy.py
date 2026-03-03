@@ -22,36 +22,43 @@ class Enemy:
         self.turn_delay = 0
         self.direction = 'down'  # Enemy เริ่มต้นหันลง
         
-        # Animation properties (เหมือน NPC)
-        self.current_fps = 1  # ลด FPS เหลือ 1 เพื่อไม่ให้กระพริบ
-        self.is_animated = False  # Enemy ไม่มี animation ตลอดเวลา
+        # Animation properties (เหมือน player)
+        self.current_fps = 8  # FPS สำหรับ animation
         self.direction_change_timer = 0
-        self.direction_change_interval = 3.0  # เปลี่ยนทิศทางทุก 3 วินาที (ช้าขึ้น)
+        self.direction_change_interval = 3.0  # เปลี่ยนทิศทางทุก 3 วินาที
         self.directions = ['down', 'left', 'right', 'up']
         
-        # โหลด Texture (เหมือน NPC)
+        # โหลด Texture (เหมือน player)
         try:
-            self.idle_texture = CoreImage('assets/Enemy/Enemy1.png').texture
-            print(f"Enemy loaded: assets/Enemy/Enemy1.png, size: {self.idle_texture.size}")
+            self.idle_texture = CoreImage('assets/Enemy/Enemy1_idle.png').texture
+            self.walk_texture = CoreImage('assets/Enemy/Enemy1_walk.png').texture
+            print(f"Enemy loaded idle: assets/Enemy/Enemy1_idle.png")
+            print(f"Enemy loaded walk: assets/Enemy/Enemy1_walk.png")
         except Exception as e:
             print(f"Failed to load Enemy texture: {e}")
             self.idle_texture = None
+            self.walk_texture = None
         
-        # กำหนด spritesheet สำหรับ Enemy (เหมือน NPC)
-        self.cols = 1
-        self.rows = 4  # สมมตว่าว่าเป็น spritesheet 4 แถวเหมือน NPC
+        # กำหนด spritesheet สำหรับ Enemy
+        self.anim_config = {
+            'idle': {'tex': self.idle_texture, 'cols': 1, 'rows': 4},
+            'walk': {'tex': self.walk_texture, 'cols': 3, 'rows': 4}
+        }
+        
+        # สลับตัวเลข 0, 1, 2, 3 เพื่อให้ตรงกับแถวในรูป Spritesheet (เหมือน player)
         self.anim_row_map = {
             'idle': {
                 'down': 3, 
                 'left': 0, 
                 'right': 1, 
                 'up': 2
+            },
+            'walk': {
+                'down': 3, 
+                'left': 0, 
+                'right': 1, 
+                'up': 2
             }
-        }
-        
-        # ตั้งค่า animation config (ใช้ spritesheet แบบไดนามิก)
-        self.anim_config = {
-            'idle': {'tex': self.idle_texture, 'cols': self.cols, 'rows': self.rows}
         }
         
         self.state = 'idle'
@@ -80,16 +87,16 @@ class Enemy:
         self.anim_event.cancel()
             
     def update_frame(self):
-        # ใช้ spritesheet แบบเดียวกับ NPC
+        # ใช้ spritesheet แบบเดียวกับ player
         config = self.anim_config[self.state]
         tex = config['tex']
         
         if tex:
-            # คำนวณขนาดของแต่ละเฟรมใน spritesheet
-            w = 1.0 / config['cols']  # ความกว้างของแต่ละเฟรม
-            h = 1.0 / config['rows']  # ความสูงของแต่ละเฟรม
+            # คำนวณขนาดของแต่ละเฟรมใน spritesheet (เหมือน player)
+            w = 1.0 / config['cols']
+            h = 1.0 / config['rows']
             
-            u = 0  # 1 คอลัมน์ ดังนั้น u จะเป็น 0 เสมอ
+            u = self.frame_index * w
             
             # Get row index based on state and direction
             try:
@@ -97,28 +104,31 @@ class Enemy:
             except KeyError:
                 row_index = 0 # Fallback
                 
-            # คำนวณแถว - ปรับพิกัดให้ภาพไม่แหว่ง
-            v = (row_index * h)
+            # คำนวณแถว (เหมือน player)
+            v = 1.0 - ((row_index + 1) * h)
             
             self.rect.texture = tex
-            # ปรับ tex_coords ให้ภาพอยู่ในกรอบ
+            # Flip texture vertically by swapping v and v + h (เหมือน player)
             self.rect.tex_coords = (u, v + h, u + w, v + h, u + w, v, u, v)
         else:
             # ไม่มี texture ให้แสดงสี่เหลี่ยมสีแดง
             self.rect.texture = None
     
     def animate(self, dt):
-        if self.is_animated:
-            # Enemy มี animation แบบ NPC
-            max_frames = self.anim_config[self.state]['cols']  # 1 คอลัมน์
-            # 1 คอลัมน์ ไม่ต้องเปลี่ยนเฟรม แต่ยังคงเรียก update_frame เพื่อเปลี่ยนทิศทาง
-            if random.random() < 0.1:  # ลดความถี่ให้นิ่งขึ้น
-                self.frame_index = (self.frame_index + 1) % max_frames
-            self.update_frame()
-        else:
-            # Enemy ไม่มี animation ใช้ภาพเดียว
-            # แต่ยังคงเรียก update_frame เพื่อความสมานธรร
-            self.update_frame()
+        # ตรวจสอบ state ปัจจุบันว่าควรจะเป็นอะไร (เหมือน player)
+        new_state = 'walk' if self.is_moving else 'idle'
+        
+        # ถ้ามีการสลับระหว่าง "ยืนนิ่ง" กับ "เดิน" ให้ทำการรีเซ็ตเฟรมอนิเมชันกลับไปเริ่มที่ 0
+        if self.state != new_state:
+            self.state = new_state
+            self.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยน state
+        
+        # คำนวณจำนวนเฟรมสูงสุดตาม state ปัจจุบัน
+        max_frames = self.anim_config[self.state]['cols']
+        
+        # เปลี่ยนเฟรม animation
+        self.frame_index = (self.frame_index + 1) % max_frames
+        self.update_frame()
             
     def update(self, dt, player_pos, reaper_pos=None):
         # 1. ขยับตัวละครถ้าอยู่ในสถานะเดิน
