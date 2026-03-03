@@ -12,78 +12,64 @@ from kivy.uix.behaviors import ButtonBehavior
 from kivy.uix.image import Image
 
 class MenuButton(ButtonBehavior, FloatLayout):
-    """Custom button that stays perfectly in proportion to its image source."""
+    """Custom button that is a plain rectangle."""
     def __init__(self, text="", **kwargs):
         super().__init__(**kwargs)
         self.size_hint = (None, None)
-        self.size = (320, 80) # Initial size for stability
+        self.size = (320, 80)
         
-        # Determine aspect ratio from the image
-        try:
-            tex = CoreImage('assets/button/button0.png').texture
-            self.image_ratio = tex.width / tex.height
-        except:
-            self.image_ratio = 4.0  # Safe fallback
+        # We'll use a fixed 4:1 ratio for procedural buttons
+        self.image_ratio = 4.0 
+        
+        with self.canvas.before:
+            # ใช้ Color และ Rectangle แทนปุ่มรูปภาพเพื่อให้เป็นสี่เหลี่ยมธรรมดา
+            self.bg_color = Color(0.1, 0.1, 0.1, 1) # สีพื้นหลังทึบ
+            self.bg_rect = Rectangle(pos=self.pos, size=self.size)
+            # เพิ่มเส้นขอบเพื่อให้ดูเป็นทรงสี่เหลี่ยมที่สะอาดตา
+            self.line_color = Color(0.8, 0.8, 0.8, 1)
+            self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=1.5)
             
-        # Background Image - perfectly fitted
-        self.bg_image = Image(
-            source='assets/button/button0.png',
-            allow_stretch=True,
-            keep_ratio=True,
-            size_hint=(1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.5}
-        )
-        # ตั้งค่าให้รูปภาพคมชัด (Pixel Art) โดยใช้ Nearest Filter
-        self.bg_image.bind(texture=self._set_nearest_filter)
-        self.add_widget(self.bg_image)
-        
-        # ตรวจสอบและตั้งค่า Filter ทันที (แก้ปัญหาเบลอตอนไม่กด)
-        if self.bg_image.texture:
-            self._set_nearest_filter(None, self.bg_image.texture)
-        
         # Label - precisely centered
         self.label = Label(
             text=text,
             font_name='assets/Fonts/edit-undo.brk.ttf',
             color=(1, 1, 1, 1),
             size_hint=(1, 1),
-            pos_hint={'center_x': 0.5, 'center_y': 0.52}, # Slightly up for visual balance
+            pos_hint={'center_x': 0.5, 'center_y': 0.5},
             halign='center',
             valign='middle'
         )
         self.add_widget(self.label)
         
-        # ผูกเหตุการณ์เมาส์ชี้เพื่อให้ปุ่มมืดลง (แยกทำงานทีละปุ่ม)
+        # ผูกการอัปเดตตำแหน่งและขนาดของ Canvas
+        self.bind(pos=self._update_graphics, size=self._update_graphics)
+        
+        # ผูกเหตุการณ์เมาส์ชี้เพื่อให้มีการตอบสนอง (Hover effect)
         self._mouse_callback = self.on_mouse_move
         Window.bind(mouse_pos=self._mouse_callback)
 
-    def _set_nearest_filter(self, instance, texture):
-        if texture:
-            texture.min_filter = 'nearest'
-            texture.mag_filter = 'nearest'
+    def _update_graphics(self, *args):
+        self.bg_rect.pos = self.pos
+        self.bg_rect.size = self.size
+        self.border.rectangle = (self.x, self.y, self.width, self.height)
 
     def on_state(self, instance, value):
-        # เปลี่ยนรูปภาพตามสถานะการกด
+        # เปลี่ยนสี/ตำแหน่งข้อความเมื่อกด
         if value == 'down':
-            self.bg_image.source = 'assets/button/button1.png'
-            # ตัวอักษรยุบลงตามปุ่ม
+            self.bg_color.rgba = (0.3, 0.3, 0.3, 1) # สีเมื่อกด
             self.label.pos_hint = {'center_x': 0.5, 'center_y': 0.48}
         else:
-            self.bg_image.source = 'assets/button/button0.png'
-            # ตัวอักษรกลับมาตำแหน่งปกติ
-            self.label.pos_hint = {'center_x': 0.5, 'center_y': 0.52}
-            
-        # บังคับให้ตรวจสอบ Filter อีกครั้งเมื่อเปลี่ยนรูปเพื่อให้คมชัดเสมอ
-        if self.bg_image.texture:
-            self._set_nearest_filter(None, self.bg_image.texture)
+            # คืนค่าสีตามสถานะเมาส์
+            self.bg_color.rgba = (0.2, 0.2, 0.2, 1) if self.collide_point(*Window.mouse_pos) else (0.1, 0.1, 0.1, 1)
+            self.label.pos_hint = {'center_x': 0.5, 'center_y': 0.5}
 
     def on_mouse_move(self, window, pos):
-        # ใช้ collide_point(*pos) ตรงๆ เพราะ pos จาก Window มาเป็นพิกัดหน้าต่างอยู่แล้ว
-        # วิธีนี้จะทำให้เช็คโดนเฉพาะปุ่มที่เมาส์ชี้จริงๆ (แยกกันทำงาน)
         if self.collide_point(*pos):
-            self.bg_image.color = (0.7, 0.7, 0.7, 1) # มืดลงเฉพาะปุ่มที่โดนชี้
+            if self.state != 'down':
+                self.bg_color.rgba = (0.2, 0.2, 0.2, 1) # สว่างขึ้นเมื่อเมาส์ชี้
         else:
-            self.bg_image.color = (1, 1, 1, 1) # กลับมาสีปกติ
+            if self.state != 'down':
+                self.bg_color.rgba = (0.1, 0.1, 0.1, 1) # กลับมาปกติ
 
     def unbind_mouse(self):
         """ยกเลิกการตรวจเมาส์เมื่อจบหน้า Splash"""
