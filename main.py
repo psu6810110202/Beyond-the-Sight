@@ -21,9 +21,9 @@ from kivy.clock import Clock
 import os # นำเข้า os สำหรับจัดการโฟลเดอร์เซฟ
 
 from characters.player import Player
-from npc import NPC
-from reaper import Reaper
-from enemy import Enemy, ENEMY_START_POSITIONS
+from characters.npc import NPC
+from characters.reaper import Reaper
+from characters.enemy import Enemy, ENEMY_START_POSITIONS
 
 from heart import HeartUI
 from map_loader import KivyTiledMap
@@ -190,9 +190,8 @@ class GameWidget(Widget):
         
         self.player.move(self.pressed_keys, self.npcs, self.reaper, self.game_map.solid_rects)  # ส่ง npcs, reaper และ map_rects ไปด้วย
         
-        # อัปเดตแถบ Stamina ของผู้เล่น
-        stamina_ratio = max(0.0, self.player.stamina / self.player.max_stamina)
-        self.heart_ui.update_stamina(stamina_ratio)
+        # Update Player's Stamina Bar
+        self.heart_ui.update_stamina(self.player.get_stamina_ratio())
         
         # อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้
         self.update_interaction_hints()
@@ -318,11 +317,11 @@ class GameWidget(Widget):
     def create_npcs(self):
         # สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน npc.py
         npc_data = [
-            'assets/NPC/NPC1.png',   # NPC 1
-            'assets/NPC/NPC2.png',   # NPC 2
-            'assets/NPC/NPC3.png',   # NPC 3
-            'assets/NPC/NPC4.png',   # NPC 4
-            'assets/NPC/NPC5.png'    # NPC 5
+            'assets/characters/NPC/NPC1.png',   # NPC 1
+            'assets/characters/NPC/NPC2.png',   # NPC 2
+            'assets/characters/NPC/NPC3.png',   # NPC 3
+            'assets/characters/NPC/NPC4.png',   # NPC 4
+            'assets/characters/NPC/NPC5.png'    # NPC 5
         ]
         
         for i in range(NPC_COUNT):

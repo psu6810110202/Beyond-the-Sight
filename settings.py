@@ -4,6 +4,8 @@ WINDOW_HEIGHT = 540
 FPS = 60
 TITLE = "Beyond the Sight"
 
+SAFE_ZONE_RADIUS = 80
+
 # Map Settings
 MAP_WIDTH = 1600
 MAP_HEIGHT = 1600
@@ -46,12 +48,9 @@ REAPER_HEIGHT = 4  # Hitbox height (feet only)
 REAPER_VISUAL_WIDTH = 64  # Visual sprite size
 REAPER_VISUAL_HEIGHT = 64  # Visual sprite size
 REAPER_SPEED = 1.5
-SAFE_ZONE_RADIUS = 80
-REAPER_DETECTION_RADIUS = 150
 
 # Enemy Settings
 ENEMY_WIDTH = 32
 ENEMY_HEIGHT = 32
 ENEMY_SPEED = WALK_SPEED
 ENEMY_DETECTION_RADIUS = 200
-ENEMY_SAFE_ZONE_RADIUS = 150  # รัศมี safe zone สำหรับ enemy ไม่สามารถเข้ามาได้

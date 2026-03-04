@@ -36,7 +36,7 @@ class HeartUI:
                 self.hearts.append(rect)
                 
             # Stamina Bar Border
-            Color(0, 0.2, 0, 1)  # สีเขียวเข้มขึ้นกว่าเดิมมาก
+            Color(0.2, 0.4, 0.6, 1)  # สีฟ้าเข้ม (สำหรับขอบ)
             self.stamina_border = RoundedRectangle(size=(0, 6), radius=[3])
             
             # Stamina Bar Background
@@ -44,7 +44,7 @@ class HeartUI:
             self.stamina_bg = RoundedRectangle(size=(0, 6), radius=[2])
             
             # Stamina Bar Foreground
-            Color(0, 1, 0, 1)
+            Color(0.3, 0.7, 1.0, 1)  # สีฟ้าอ่อนๆ (Stamina)
             self.stamina_bar = RoundedRectangle(size=(0, 6), radius=[2])
             
         self.current_ui_scale = 1.0
@@ -67,48 +67,42 @@ class HeartUI:
             Clock.schedule_once(change_to_empty, 0.5)
 
     def update_position(self, width, height):
-        # คำนวณอัตราส่วน (scale) UI เมื่อขยายจอ
-        # โดยอิงจากความสูงของหน้าจอโปรแกรมในปัจจุบันเทียบกับค่า WINDOW_HEIGHT เริ่มต้น
+        # Calculate UI scale based on window height
         ui_scale = height / WINDOW_HEIGHT
         self.current_ui_scale = ui_scale
         
+        # UI sizing constants
         current_heart_size = self.heart_size * ui_scale
         current_pad = self.pad * ui_scale
         current_start_x = self.start_x * ui_scale
-        current_top_margin = 10 * ui_scale
+        top_margin = 10 * ui_scale
+        self.stamina_height = 6 * ui_scale
         
-        start_y = height - current_heart_size - current_top_margin
-        
+        # Position hearts at the top left
+        start_y = height - current_heart_size - top_margin
         for i, rect in enumerate(self.hearts):
             rect.size = (current_heart_size, current_heart_size)
-            # ขยับแกน x ตามลำดับหัวใจ
             rect.pos = (current_start_x + i * (current_heart_size + current_pad), start_y)
 
-        # คำนวณความกว้างรวมของหัวใจเพื่อเป็นความกว้างของแถบ Stamina
-        total_width = (self.max_health * current_heart_size) + ((self.max_health - 1) * current_pad)
-        
-        stamina_y = start_y - (10 * ui_scale) # ลงมาใต้หัวใจ 10px (เผื่อพื้นที่ให้หลอดหนาขึ้น)
-        
-        # ขอบหลอด Stamina (ขยายความหนาเป็น 2px ทุกด้าน คูณด้วยสเกลหน้าจอ)
+        # Calculate stamina bar dimensions
+        self.stamina_max_width = (self.max_health * current_heart_size) + ((self.max_health - 1) * current_pad)
+        stamina_y = start_y - (10 * ui_scale)
         border_thickness = 2 * ui_scale
+        
+        # Update stamina UI components
         self.stamina_border.pos = (current_start_x - border_thickness, stamina_y - border_thickness)
-        self.stamina_border.size = (total_width + (border_thickness * 2), (6 * ui_scale) + (border_thickness * 2))
+        self.stamina_border.size = (self.stamina_max_width + (border_thickness * 2), self.stamina_height + (border_thickness * 2))
         self.stamina_border.radius = [3 * ui_scale]
         
         self.stamina_bg.pos = (current_start_x, stamina_y)
-        self.stamina_bg.size = (total_width, 6 * ui_scale)
+        self.stamina_bg.size = (self.stamina_max_width, self.stamina_height)
         self.stamina_bg.radius = [2 * ui_scale]
         
         self.stamina_bar.pos = (current_start_x, stamina_y)
-        self.stamina_bar.size = (total_width, 6 * ui_scale)
+        self.stamina_bar.size = (self.stamina_max_width, self.stamina_height)
         self.stamina_bar.radius = [2 * ui_scale]
 
     def update_stamina(self, ratio):
-        if hasattr(self, 'current_ui_scale'):
-            ui_scale = self.current_ui_scale
-            current_heart_size = self.heart_size * ui_scale
-            current_pad = self.pad * ui_scale
-            total_width = (self.max_health * current_heart_size) + ((self.max_health - 1) * current_pad)
-            
-            # ปรับความกว้างของแถบสีเขียวตาม Stamina ที่เหลือ (สูงสุด 100%)
-            self.stamina_bar.size = (total_width * ratio, 6 * ui_scale)
+        """Updates the stamina bar width based on the current ratio (0.0 - 1.0)."""
+        if hasattr(self, 'stamina_max_width'):
+            self.stamina_bar.size = (self.stamina_max_width * ratio, self.stamina_height)

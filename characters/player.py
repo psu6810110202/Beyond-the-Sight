@@ -138,49 +138,50 @@ class Player:
                     else:
                         self.start_move(dx, dy, npcs, reaper, map_rects)  # ส่ง npcs, reaper, map_rects ไปด้วย
 
-        # 3. คำนวณความเร็วและ FPS จากค่าความจริงของ self.is_moving ที่เพิ่งได้รับการอัปเดตอย่างต่อเนื่องแล้วเท่านั้น
+        # 3. Handling stamina and animation speed
         is_running = 'shift' in pressed_keys and self.is_moving
-        
-        # ถ้าเหนื่อยหอบ (Stamina = 0) จะต้องรอคูลดาวน์ให้หลอดเต็ม 100% (ใช้เวลา 5 วิ) ถึงจะกลับมาวิ่งได้
-        if self.exhausted and self.stamina >= self.max_stamina:
-            self.exhausted = False
-
-        if self.is_moving:
-            if is_running and not self.exhausted:
-                self.current_speed = RUN_SPEED
-                self.stamina -= STAMINA_DRAIN
-                if self.stamina <= 0:
-                    self.stamina = 0
-                    self.exhausted = True  # เหนื่อยหอบแล้ว ต้องปล่อย Shift ก่อน
-                target_fps = 12
-            else:
-                self.current_speed = WALK_SPEED
-                if self.stamina < self.max_stamina:
-                    self.stamina += STAMINA_REGEN
-                target_fps = 8
-        else:
-            # ไม่ได้เดินอยู่ (ยืนเฉยๆ) ให้ฟื้นฟู Stamina และคำนวณ FPS
-            if self.stamina < self.max_stamina:
-                self.stamina += STAMINA_REGEN
-                # พักฟื้นหลังวิ่ง -> ใช้ 3 FPS
-                target_fps = 3
-            else:
-                # ยืนปกติ พลังเต็ม -> ใช้ 2 FPS
-                target_fps = 2
+        self.update_stamina(is_running)
+        self.update_animation_speed()
             
-            self.current_speed = WALK_SPEED
-            
-        # ปรับความเร็วอนิเมชันให้เหมาะสมตามสถานะ
-        if getattr(self, 'current_fps', 8) != target_fps:
-            self.current_fps = target_fps
-            self.anim_event.cancel()
-            self.anim_event = Clock.schedule_interval(self.animate, 1.0 / target_fps)
-            
-        # 4. บังคับอัปเดตกลับไปยืน Idle ทันทีเมื่อผู้เล่นปล่อยปุ่มเดิน
+        # 4. Return to idle instantly if not moving
         if not self.is_moving and self.state != 'idle':
             self.state = 'idle'
             self.frame_index = 0
             self.update_frame()
+
+    def update_stamina(self, is_running):
+        """Manages stamina drain, regeneration, and exhausted state."""
+        # Handle exhaustion recovery
+        if self.exhausted and self.stamina >= self.max_stamina:
+            self.exhausted = False
+
+        if is_running and not self.exhausted:
+            self.current_speed = RUN_SPEED
+            self.stamina = max(0, self.stamina - STAMINA_DRAIN)
+            if self.stamina <= 0:
+                self.exhausted = True
+        else:
+            self.current_speed = WALK_SPEED
+            if self.stamina < self.max_stamina:
+                self.stamina = min(self.max_stamina, self.stamina + STAMINA_REGEN)
+
+    def update_animation_speed(self):
+        """Sets animation FPS based on movement state and fatigue."""
+        if self.is_moving:
+            is_running = self.current_speed == RUN_SPEED
+            target_fps = 12 if is_running else 8
+        else:
+            # Slower idle animation while recovering or resting
+            target_fps = 3 if self.stamina < self.max_stamina else 2
+        
+        if self.current_fps != target_fps:
+            self.current_fps = target_fps
+            self.anim_event.cancel()
+            self.anim_event = Clock.schedule_interval(self.animate, 1.0 / target_fps)
+
+    def get_stamina_ratio(self):
+        """Returns current stamina as a 0.0-1.0 ratio."""
+        return max(0.0, self.stamina / self.max_stamina)
 
     def start_move(self, dx, dy, npcs=None, reaper=None, map_rects=None):
         new_x = self.logic_pos[0] + dx
