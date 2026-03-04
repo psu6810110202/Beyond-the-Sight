@@ -68,7 +68,7 @@ class SaveSlot(FloatLayout):
             # 3. รูปตัวละคร
             try:
                 # โหลด texture หลัก
-                full_texture = CoreImage('assets/characters/player/player_idle.png').texture
+                full_texture = CoreImage(PLAYER_IDLE_IMG).texture
                 # บังคับความคมชัดตั้งแต่ต้นฉบับ
                 full_texture.min_filter = 'nearest'
                 full_texture.mag_filter = 'nearest'

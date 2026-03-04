@@ -15,8 +15,8 @@ class Player:
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
         
         # โหลด Texture
-        self.idle_texture = CoreImage('assets/characters/player/player_idle.png').texture
-        self.walk_texture = CoreImage('assets/characters/player/player_walk.png').texture
+        self.idle_texture = CoreImage(PLAYER_IDLE_IMG).texture
+        self.walk_texture = CoreImage(PLAYER_WALK_IMG).texture
         
         # ตั้งชื่อให้ตรงกันทั้งหมด (ใช้ anim_config และ key 'tex')
         self.anim_config = {

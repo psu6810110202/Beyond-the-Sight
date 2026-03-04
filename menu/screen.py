@@ -12,6 +12,7 @@ from kivy.animation import Animation
 import os
 
 from menu.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
+from settings import GAME_FONT
 
 class MenuButton(ButtonBehavior, FloatLayout):
     """Custom button used within GameMenu."""
@@ -31,7 +32,7 @@ class MenuButton(ButtonBehavior, FloatLayout):
             
         self.label = Label(
             text=text,
-            font_name='assets/Fonts/edit-undo.brk.ttf',
+            font_name=GAME_FONT,
             color=(0.7, 0.7, 0.7, 1), # สีเทาเริ่มต้น
             size_hint=(1, 1),
             pos_hint={'center_x': 0.5, 'center_y': 0.5},
@@ -165,7 +166,7 @@ class SplashScreen(FloatLayout):
         self.title_beyond = Label(
             text="Beyond",
             font_size='80sp',
-            font_name='assets/Fonts/edit-undo.brk.ttf',
+            font_name=GAME_FONT,
             color=(1, 1, 1, 1),
             size_hint=(None, None),
             pos_hint={'center_x': 0.7, 'center_y': 0.8}
@@ -174,16 +175,17 @@ class SplashScreen(FloatLayout):
         self.title_the = Label(
             text="the",
             font_size='30sp',
-            font_name='assets/Fonts/edit-undo.brk.ttf',
+            font_name=GAME_FONT,
             color=(1, 1, 1, 1),
             size_hint=(None, None),
             pos_hint={'center_x': 0.85, 'center_y': 0.7}
         )
 
+
         self.title_sight = Label(
             text="Sight",
             font_size='90sp',
-            font_name='assets/Fonts/edit-undo.brk.ttf',
+            font_name=GAME_FONT,
             color=(1, 1, 1, 1),
             size_hint=(None, None),
             pos_hint={'center_x': 0.75, 'center_y': 0.55}

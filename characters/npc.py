@@ -21,14 +21,7 @@ class NPC:
         if image_path:
             self.image_path = image_path
         else:
-            npc_images = [
-                            'assets/characters/NPC/NPC1.png',
-                            'assets/characters/NPC/NPC2.png', 
-                            'assets/characters/NPC/NPC3.png', 
-                            'assets/characters/NPC/NPC4.png', 
-                            'assets/characters/NPC/NPC5.png'
-                        ]
-            self.image_path = random.choice(npc_images)
+            self.image_path = random.choice(NPC_IMAGE_LIST)
             
         # Set x, y from dictionary if not provided
         if x is None or y is None:

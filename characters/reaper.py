@@ -18,7 +18,7 @@ class Reaper:
         self.y = y if y is not None else REAPER_START_POS[1]
         
         # Appearance configuration
-        self.image_path = 'assets/characters/Reaper/Reaper.png'
+        self.image_path = REAPER_IMG
         self.cols = 1
         self.rows = 4
         
