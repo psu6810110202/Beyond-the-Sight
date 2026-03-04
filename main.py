@@ -33,7 +33,10 @@ from menu.camera import Camera
 from menu.pause import PauseMenu
 
 from storygame.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
-from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, INTRO_DIALOGUE, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
+from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, INTRO_DIALOGUE, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
+from storygame.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
+from storygame.story import is_npc_visible, check_story_triggers # นำเข้าตรรกะเนื้อเรื่อง
+from storygame.quest import QuestManager # นำเข้าหน้าจอกองเควส
 
 class GameWidget(Widget): 
     def __init__(self, initial_data=None, **kwargs): 
@@ -42,6 +45,14 @@ class GameWidget(Widget):
         
         # จัดการข้อมูลศัตรูที่ถูกกำจัดไปแล้ว (ไม่เกิดใหม่)
         self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
+        
+        # สถานะวันปัจจุบัน (ค่าเริ่มต้นคือ Day 1)
+        self.current_day = initial_data.get('current_day', 1) if initial_data else 1
+        self.warning_triggered = False # ป้องกันแจ้งเตือนรัว
+        self.warning_dismissed = False # ป้องกันแจ้งเตือนซ้ำหลังจากเลือกที่จะไปต่อ
+        
+        # ระบบเวลาเล่น (Play Time)
+        self.play_time = initial_data.get('play_time', 0) if initial_data else 0
 
         # Setup Camera
         self.camera = Camera(self.canvas.before)
@@ -65,13 +76,22 @@ class GameWidget(Widget):
         self.current_dialogue_queue = []  # คิวข้อความสำหรับการคุยแบบหลายบรรทัด
         self.current_dialogue_index = 0  # ดัชนีข้อความปัจจุบัน
         self.current_character_name = ""  # ชื่อตัวละครที่กำลังคุย
+        self.current_choices = []        # เก็บรายการ Choice ปัจจุบัน
         self.name_label = None           # Label สำหรับแสดงชื่อโดยเฉพาะ
+        self.choice_layout = None        # Widget ที่เก็บปุ่มทางเลือก
+        self.choice_buttons = []         # ลิสต์เก็บปุ่มทางเลือก
+        self.choice_index = 0            # ดัชนีตัวเลือกที่ถูกเลือกอยู่
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
         self.is_paused = False
         self.pause_menu = None
         
         # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
         self.dialogue_root = None
+        
+        # จัดการเควส
+        self.quest_manager = QuestManager(self)
+        if initial_data and 'quests' in initial_data:
+            self.quest_manager.from_dict(initial_data['quests'])
 
         # Draw Map Background
         with self.canvas.before:
@@ -104,12 +124,6 @@ class GameWidget(Widget):
         # Draw Map Foreground (Roofs, hanging objects, etc) - in the foreground layer
         with self.canvas.after:
             self.game_map.draw_foreground(self.canvas.after)
-            
-            # Debug: Draw Solid Hitboxes (Draw once, inside camera matrix)
-            # You can comment this out once you're done testing
-            for r in self.game_map.solid_rects:
-                Color(1, 0, 0, 0.4) 
-                Rectangle(pos=(r[0], r[1]), size=(r[2], r[3]))
                 
         self.camera.end_camera(self.canvas.after)
             
@@ -183,9 +197,25 @@ class GameWidget(Widget):
             self.check_npc_interaction()
         elif key_name == 'enter':
             print("Enter key detected - next dialogue")
-            # ถ้ากำลังคุยอยู่ ให้ไปข้อความถัดไป
+            # ถ้ากำลังคุยอยู่
             if self.is_dialogue_active:
-                self.next_dialogue()
+                # ถ้ามี Choice ให้เลือกตัวเลือกที่ไฮไลท์อยู่
+                if self.choice_buttons:
+                    self.on_choice_selected(self.current_choices[self.choice_index])
+                else:
+                    self.next_dialogue()
+        
+        # จัดการการเลื่อน Choice ด้วยลูกศร ขึ้น/ลง
+        elif self.is_dialogue_active and self.choice_buttons:
+            if key_name == 'up':
+                self.choice_index = (self.choice_index - 1) % len(self.choice_buttons)
+                update_choice_visuals(self)
+                return True
+            elif key_name == 'down':
+                self.choice_index = (self.choice_index + 1) % len(self.choice_buttons)
+                update_choice_visuals(self)
+                return True
+        
         elif key_name == 'escape':
             self.toggle_pause()
             return True
@@ -204,6 +234,9 @@ class GameWidget(Widget):
         # ถ้ากำลังคุยหรือพักเกมอยู่ ให้หยุดการอัปเดตเกม
         if self.is_dialogue_active or self.is_paused:
             return
+        
+        # อัปเดตเวลาเล่น
+        self.play_time += dt
         
         # อัปเดต Debug Label แสดงข้อมูลโดยรวมแบบบรรทัดเดียวแต่จัดให้เป็นระเบียบ
         px, py = self.player.logic_pos
@@ -224,6 +257,12 @@ class GameWidget(Widget):
         # Update Player's Stamina Bar
         self.heart_ui.update_stamina(self.player.get_stamina_ratio())
         
+        # อัปเดตกราฟิกตัวละคร
+        self.y_sorting()
+        
+        # ตรวจสอบ Trigger เนื้อเรื่องตามวัน (ดึงตรรกะมาจาก story.py)
+        check_story_triggers(self)
+
         # อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้
         self.update_interaction_hints()
         
@@ -275,8 +314,15 @@ class GameWidget(Widget):
         sortable_chars = [self.player, self.reaper] + self.npcs + self.enemies
         
         # เรียงลำดับจาก Y มากไปน้อย (Kivy Y เริ่มจากล่างขึ้นบน ดังนั้น Y มากคืออยู่หลัง)
-        # เราใช้จุดเท้า (logic_pos[1]) ในการตัดสิน
-        sortable_chars.sort(key=lambda char: char.y if hasattr(char, 'y') else char.logic_pos[1], reverse=True)
+        # เราใช้จุดเท้าในการตัดสิน และให้ Player มีลำดับความสำคัญสูงกว่าเล็กน้อยเมื่อยืนระนาบเดียวกัน (X-axis)
+        def get_sort_y(char):
+            base_y = char.y if hasattr(char, 'y') else char.logic_pos[1]
+            # ถ้าเป็น Player ให้ลบนิดหน่อยเพื่อให้ถูกจัดไว้ทีหลัง (บนสุด) เมื่อ Y เท่ากัน
+            if char == self.player:
+                return base_y - 0.1
+            return base_y
+
+        sortable_chars.sort(key=get_sort_y, reverse=True)
         
         # ล้าง Layer แล้วใส่กลับเข้าไปใหม่ตามลำดับที่เรียงแล้ว
         self.sorting_layer.clear()
@@ -426,6 +472,10 @@ class GameWidget(Widget):
     def create_npcs(self):
         # สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน settings.py
         for i in range(min(NPC_COUNT, len(NPC_IMAGE_LIST))):
+            # ตรรกะการแสดง NPC ตามวัน (ดึงมาจาก story.py)
+            if not is_npc_visible(self, i):
+                continue
+                
             img_path = NPC_IMAGE_LIST[i]
             npc = NPC(self.sorting_layer, image_path=img_path)
             self.npcs.append(npc)
@@ -461,17 +511,19 @@ class GameWidget(Widget):
 
         # 1. จัดการ Reaper
         if target_type == "reaper":
-            self.reaper.direction = 'left' # หันซ้ายตลอดตามคำขอ
-            
             if dist_x > dist_y:
                 if player_center_x > target_center_x:
+                    self.reaper.direction = 'right'
                     self.player.direction = 'left'
                 else:
+                    self.reaper.direction = 'left'
                     self.player.direction = 'right'
             else:
                 if player_center_y > target_center_y:
+                    self.reaper.direction = 'up'
                     self.player.direction = 'down'
                 else:
+                    self.reaper.direction = 'down'
                     self.player.direction = 'up'
             
             self.reaper.frame_index = 0
@@ -523,17 +575,20 @@ class GameWidget(Widget):
             first_text = self.current_dialogue_queue[0]
             self._draw_vn_dialogue_box(npc_name, first_text)
 
-    def show_dialogue_above_reaper(self, dialogue):
+    def show_dialogue_above_reaper(self, dialogue, choices=None):
         """แสดงข้อความคุยของ Reaper สไตล์ Visual Novel ด้านล่างหน้าจอ"""
         # ตั้งค่าคิวข้อความ
         self.current_dialogue_queue = dialogue
         self.current_dialogue_index = 0
         self.current_character_name = "Reaper"
+        self.current_choices = choices if choices else []
         
         # แสดงข้อความแรก
         if self.current_dialogue_queue:
             first_text = self.current_dialogue_queue[0]
-            self._draw_vn_dialogue_box("Reaper", first_text)
+            # แสดง Choice เฉพาะเมื่ออยู่หน้าสุดท้าย
+            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
+            self._draw_vn_dialogue_box("Reaper", first_text, choices=(self.current_choices if is_last else None))
 
     def show_vn_dialogue(self, character_name, dialogue):
         """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
@@ -556,8 +611,12 @@ class GameWidget(Widget):
         self.dialogue_text = None
         self.name_label = None
 
-        # จำชื่อตัวละครไว้ก่อนรีเซ็ต
+        # ลบวิดเจ็ตทางเลือก (ถ้ามี) - เรียกใช้จาก choice.py
+        clear_choices(self)
+
+        # จำสถานะ Choice ไว้ก่อนรีเซ็ต
         last_character = self.current_character_name
+        has_choices = len(self.current_choices) > 0
         
         # คืนสถานะการคุย
         self.is_dialogue_active = False
@@ -565,10 +624,15 @@ class GameWidget(Widget):
         self.current_dialogue_queue = []
         self.current_dialogue_index = 0
         self.current_character_name = ""
+        self.current_choices = []
         
-        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ
-        if last_character == "Reaper":
+        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ (ยกเว้นตอนที่เป็นการเตือนแบบมี Choice)
+        if last_character == "Reaper" and not has_choices:
             self.show_save_screen()
+            
+        # ถ้าคุยกับ NPC "The Sad Soul" จบ ให้เริ่มเควส
+        if last_character == "The Sad Soul":
+            self.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
 
     def show_save_screen(self):
         """เปิดหน้าจอเลือกสล็อตเพื่อเซฟเกม"""
@@ -588,9 +652,11 @@ class GameWidget(Widget):
         # เก็บข้อมูลจริงจากตัวเกม
         import json
         save_data = {
-            "day": 1, 
+            "day": self.current_day, 
             "heart": self.heart_ui.current_health,
-            "destroyed_enemies": self.destroyed_enemies
+            "destroyed_enemies": self.destroyed_enemies,
+            "quests": self.quest_manager.to_dict(),
+            "play_time": self.play_time
         }
         
         file_path = f'saves/slot_{slot_id}.json'
@@ -609,12 +675,17 @@ class GameWidget(Widget):
 
     def next_dialogue(self):
         """ไปยังข้อความถัดไปในคิว"""
+        # ถ้ามี Choice และเป็นหน้าสุดท้าย ห้ามกดข้าม
+        if self.current_choices and self.current_dialogue_index == len(self.current_dialogue_queue) - 1:
+            return
+
         self.current_dialogue_index += 1
         
         if self.current_dialogue_index < len(self.current_dialogue_queue):
             # แสดงข้อความถัดไป
             next_text = self.current_dialogue_queue[self.current_dialogue_index]
-            self._draw_vn_dialogue_box(self.current_character_name, next_text)
+            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
+            self._draw_vn_dialogue_box(self.current_character_name, next_text, choices=(self.current_choices if is_last else None))
         else:
             # หมดข้อความแล้ว ปิดกล่องข้อความ
             self.close_dialogue()
@@ -632,7 +703,7 @@ class GameWidget(Widget):
         selected_dialogues = random.sample(REAPER_DIALOGUES, min(3, len(REAPER_DIALOGUES)))
         return selected_dialogues
 
-    def _draw_vn_dialogue_box(self, name, dialogue):
+    def _draw_vn_dialogue_box(self, name, dialogue, choices=None):
         """วาดกล่องข้อความสไตล์ Visual Novel (ดึงค่าตั้งค่าจาก chat.py)"""
         root = self.dialogue_root if self.dialogue_root else self
         cfg = DIALOGUE_CONFIG
@@ -657,7 +728,7 @@ class GameWidget(Widget):
         root.add_widget(bg_widget)
         self.dialogue_bg = bg_widget
 
-        # 3. ชื่อตัวละคร (ใส่ลงใน bg_widget เพื่อให้เคลื่อนที่ไปด้วยกัน)
+        # 3. ชื่อตัวละคร
         if name:
             self.name_label = Label(
                 text=name,
@@ -673,7 +744,7 @@ class GameWidget(Widget):
             self.name_label.bind(size=self.name_label.setter('text_size'))
             bg_widget.add_widget(self.name_label)
 
-        # 4. ข้อความคุย (ใส่ลงใน bg_widget)
+        # 4. ข้อความคุย
         text_top_ratio = (cfg["top_padding"] + cfg["name_height"] + cfg["msg_margin_top"]) / cfg["box_height"]
         
         self.dialogue_text = Label(
@@ -691,9 +762,17 @@ class GameWidget(Widget):
         def update_msg_text_size(instance, value):
             instance.text_size = (instance.width - (cfg["side_padding"] * 2), instance.height)
         self.dialogue_text.bind(size=update_msg_text_size)
-        
         bg_widget.add_widget(self.dialogue_text)
+
+        # 5. Choices (ปุ่มเลือก)
+        if choices:
+            draw_choice_buttons(self, choices)
+
         self.is_dialogue_active = True
+
+    def on_choice_selected(self, choice):
+        """จัดการเมื่อผู้เล่นเลือก Choice (เรียกใช้ตรรกะจาก choice.py)"""
+        handle_choice_selection(self, choice)
 
     def check_npc_wall_collision(self, rect, wall_obj):
         # rect = [x, y, w, h]

@@ -272,17 +272,18 @@ class Player:
         elif cur_y > tar_y: cur_y = max(cur_y - self.current_speed, tar_y)
 
         self.logic_pos = [cur_x, cur_y]
-        
-        # จัดตำแหน่งรูปสไปรท์ใหม่เวลาเดิน
-        offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
-        offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
-        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
-        
-        # อัปเดตกรอบเช็คการชน (Hitbox) สีเหลืองตามการเดินให้เห็นชัดๆ ว่าแค่ 1 ช่อง
-        self.debug_rect.pos = self.logic_pos
+        self.sync_graphics_pos()
         
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False
+
+    def sync_graphics_pos(self):
+        """อัปเดตตำแหน่งภาพ (Graphics) ให้ตรงกับตำแหน่งทางตรรกะ (Logic)"""
+        cur_x, cur_y = self.logic_pos
+        offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
+        self.debug_rect.pos = self.logic_pos
 
     def interact(self, npcs, reaper):
         """

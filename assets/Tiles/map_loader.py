@@ -186,11 +186,12 @@ class KivyTiledMap:
             # Logic classifications
             is_fg = any(kw in name for kw in ("หลังคา", "roof"))
             # Solid implies physical collision.
-            # Specifically including 'funiture' and 'funiture2', but excluding 'funiture3'.
+            # ตรวจสอบเลเยอร์ที่เป็นของแข็ง (กำแพง, ผนัง, ขยะ, เฟอร์นิเจอร์)
+            # รองรับทั้งคำที่พิมพ์ผิดมาดั้งเดิม (funiture, resoures) และคำที่ถูก
             is_solid = not is_fg and (
-                any(kw in name for kw in ("ผนังบ้าน", "กำแพง", "ขยะ")) or
+                any(kw in name for kw in ("ผนังบ้าน", "กำแพง", "ขยะ", "wall")) or
                 name in ("funiture", "funiture2")
-            ) and "resoures" not in name
+            ) and not any(kw in name for kw in ("resoures", "resources"))
             is_well = "well1" in name
             
             opacity = layer.get('opacity', 1.0)

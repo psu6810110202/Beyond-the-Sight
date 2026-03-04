@@ -3,9 +3,10 @@
 # ข้อความคุยของ NPC ต่างๆ ในเกม
 NPC_DIALOGUES = {
     "The Sad Soul": [
-        "สวัสดี! ยินดีที่ได้พบคุณ",
-        "ฉันชอบที่นี่มาก... มันเงียบสงบ",
-        "คุณเคยเห็น Reaper ตัวนั้นไหม?"
+        "......",
+        "It's...it's gone. Everything is broken.",
+        "My friend...someone took the pieces away. I can't find them in the dark.",
+        "Please...it's so cold here...could you help me find them?"
     ],
     "NPC2": [
         "โอ้... ทุกอย่างดูมืดมน",
@@ -52,6 +53,12 @@ INTRO_DIALOGUE = [
     "If you're in trouble, just run back to me. I'll take care of the rest.",
     "Be careful, alright?"
 ]
+
+# ข้อความเตือนเมื่อเดินไปพิกัดอันตราย (Day 1)
+WARNING_DIALOGUE = [
+    "Are you sure you want to go? It's pretty dangerous in there."
+]
+WARNING_CHOICES = ["I'll go", "Ok"]
 
 # --- UI Settings สำหรับกล่องข้อความ ---
 DIALOGUE_CONFIG = {

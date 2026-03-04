@@ -73,10 +73,11 @@ class SaveSlot(FloatLayout):
                 full_texture.min_filter = 'nearest'
                 full_texture.mag_filter = 'nearest'
                 
-                # ท่าหันหน้าตรง (Down)
-                idle_down_tex = full_texture.get_region(0, 395, 128, 128)
+                # ท่าหันหน้าตรง (Down) - ปรับเป็นครึ่งตัว (Portrait)
+                # ดึงแค่ส่วนบนของตัวละคร (128x64px) จากพิกัดเดิม
+                idle_half_tex = full_texture.get_region(0, 395 + 40, 128, 88) 
                 self.player_img = Image(
-                    texture=idle_down_tex, 
+                    texture=idle_half_tex, 
                     size_hint=(None, None),
                     fit_mode='contain'
                 )
@@ -87,6 +88,21 @@ class SaveSlot(FloatLayout):
                 self.add_widget(self.player_img)
             except Exception as e:
                 print(f"Error slicing player texture: {e}")
+
+            # 4. ข้อมูลเวลาเล่น (Play Time)
+            seconds = data.get('play_time', 0)
+            h = int(seconds // 3600)
+            m = int((seconds % 3600) // 60)
+            s = int(seconds % 60)
+            time_text = f"{h:02d}:{m:02d}:{s:02d}"
+            
+            self.time_label = Label(
+                text=time_text,
+                font_name='assets/Fonts/edit-undo.brk.ttf',
+                size_hint=(None, None),
+                color=(1, 1, 1, 1) # เปลี่ยนเป็นสีขาวตามคำขอ
+            )
+            self.add_widget(self.time_label)
 
         self.update_layout(1.0)
         self.bind(pos=self._update_graphics, size=self._update_graphics)
@@ -103,10 +119,16 @@ class SaveSlot(FloatLayout):
             # แก้ไข: เอา * scale ออกเพื่อให้ระยะห่างคงที่เสมอ (ไม่ยืดตามจอ)
             heart.pos_hint = {'x': 0.15 + (i * 0.055), 'center_y': 0.5}
 
-        # ตัวละคร
+        # ตัวละคร (ปรับตำแหน่งให้โผล่พ้นขอบล่างขึ้นมา)
         if hasattr(self, 'player_img'):
-            self.player_img.size = (90 * scale, 90 * scale)
-            self.player_img.pos_hint = {'center_x': 0.90, 'center_y': 0.65}
+            self.player_img.size = (110 * scale, 110 * scale)
+            self.player_img.pos_hint = {'center_x': 0.90, 'center_y': 0.75}
+            
+        # เวลาเล่น
+        if hasattr(self, 'time_label'):
+            self.time_label.font_size = f'{int(18 * scale)}sp'
+            self.time_label.size = (150 * scale, 30 * scale)
+            self.time_label.pos_hint = {'center_x': 0.90, 'center_y': 0.2}
 
     def _update_text_size(self, instance, value):
         instance.text_size = instance.size
@@ -244,7 +266,8 @@ class SaveLoadScreen(FloatLayout):
             if self.callback:
                 self.callback(self.index + 1, self)
         elif key == 'escape':
-            self.close()
+            if self.mode == "LOAD":
+                self.close()
             return True
         return False
 
