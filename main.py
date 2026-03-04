@@ -32,6 +32,9 @@ from menu.screen import SplashScreen
 from menu.camera import Camera
 from menu.pause import PauseMenu
 
+from storygame.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
+from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, INTRO_DIALOGUE, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
+
 class GameWidget(Widget): 
     def __init__(self, initial_data=None, **kwargs): 
         super().__init__(**kwargs) 
@@ -62,6 +65,7 @@ class GameWidget(Widget):
         self.current_dialogue_queue = []  # คิวข้อความสำหรับการคุยแบบหลายบรรทัด
         self.current_dialogue_index = 0  # ดัชนีข้อความปัจจุบัน
         self.current_character_name = ""  # ชื่อตัวละครที่กำลังคุย
+        self.name_label = None           # Label สำหรับแสดงชื่อโดยเฉพาะ
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
         self.is_paused = False
         self.pause_menu = None
@@ -117,8 +121,16 @@ class GameWidget(Widget):
         
         # Manually force the first UI positioning update
         self.update_ui_positions()
+
+        # ตรวจสอบว่าต้องขึ้นบทนำ (คุยกับ Reaper ทันที) หรือไม่
+        if initial_data is None:
+            Clock.schedule_once(self._start_intro_dialogue, 1.0)
             
         Clock.schedule_interval(self.move_step, 1.0 / FPS)  
+
+    def _start_intro_dialogue(self, dt):
+        """เริ่มบทสนทนาแรกของเกมกับ Reaper โดยดึงข้อความจาก chat.py"""
+        self.show_dialogue_above_reaper(INTRO_DIALOGUE)
 
     def request_keyboard_back(self):
         """ขอคีย์บอร์ดกลับมาให้ GameWidget อีกครั้ง (ใช้หลังปิดเมนู/หน้าจอโหลด)"""
@@ -490,7 +502,8 @@ class GameWidget(Widget):
                         npc.direction = 'down'
                 npc.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
                 
-                npc_name = f"NPC{i+1}"
+                npc_index = i
+                npc_name = "The Sad Soul" if npc_index == 0 else f"NPC{npc_index + 1}"
                 dialogue = self.get_proximity_dialogue(npc_name, distance_x, distance_y)
                 if dialogue:
                     self.show_dialogue_above_npc(npc, dialogue)
@@ -500,7 +513,8 @@ class GameWidget(Widget):
     
     def show_dialogue_above_npc(self, npc, dialogue):
         """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        npc_name = f"NPC{self.npcs.index(npc) + 1}"
+        # คำนวณชื่อ NPC - ถ้าเป็นตัวแรก (index 0) ให้ชื่อ "The Sad Soul"
+        npc_name = "The Sad Soul" if self.npcs.index(npc) == 0 else f"NPC{self.npcs.index(npc) + 1}"
         
         # ตั้งค่าคิวข้อความ
         self.current_dialogue_queue = dialogue
@@ -540,6 +554,10 @@ class GameWidget(Widget):
             if self.dialogue_text.parent:
                 self.dialogue_text.parent.remove_widget(self.dialogue_text)
             self.dialogue_text = None
+        if self.name_label:
+            if self.name_label.parent:
+                self.name_label.parent.remove_widget(self.name_label)
+            self.name_label = None
         if self.dialogue_bg:
             if self.dialogue_bg.parent:
                 self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
@@ -609,119 +627,77 @@ class GameWidget(Widget):
             self.close_dialogue()
 
     def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยตามระยะห่างของ NPC"""
-        dialogues = {
-            "NPC1": [
-                "สวัสดี! ยินดีที่ได้พบคุณ",
-                "ฉันชอบที่นี่มาก... มันเงียบสงบ",
-                "คุณเคยเห็น Reaper ตัวนั้นไหม?"
-            ],
-            "NPC2": [
-                "โอ้... ทุกอย่างดูมืดมน",
-                "ฉันรู้สึกหนาว... ช่วยฉันด้วย",
-                "ไม่เคยคิดว่าจะมาถึงที่แห่งนี้"
-            ],
-            "NPC3": [
-                "คุณมาจากไหนกัน?",
-                "ที่นี่มีเรื่องลึกลับมากมาย",
-                "ระวังศัตรูให้ดีๆ นะ"
-            ],
-            "NPC4": [
-                "ฉันกำลังมองหาทางออก...",
-                "คุณเห็นทางออกไหม?",
-                "อย่าทอดทิ้งฉัน!"
-            ],
-            "NPC5": [
-                "เราต้องร่วมมือกัน",
-                "มีอะไรแปลกๆ เกิดขึ้นที่นี่",
-                "เราจะผ่านไปได้แน่ๆ"
-            ]
-        }
-        
-        if npc_name in dialogues:
-            return dialogues[npc_name]
+        """คืนค่าลิสต์ข้อความคุยตามระยะห่างของ NPC (ดึงจาก chat.py)"""
+        if npc_name in NPC_DIALOGUES:
+            return NPC_DIALOGUES[npc_name]
         return ["..."]
 
     def get_reaper_dialogue(self, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยของ Reaper"""
-        dialogues = [
-            "ความตายมาเยือน... แต่ยังไม่ถึงเวลาของเธอ",
-            "ฉันไม่ใช่ศัตรู... ฉันมาเพื่อพาเธอไป",
-            "โลกนี้มืดมน... แต่ยังมีความหวัง",
-            "เธอกำลังมองหาคำตอบอยู่ใช่ไหม?",
-            "ทุกชีวิตต้องจบลง... แต่ไม่ใช่วันนี้",
-            "มาติดต่อกันซะบ้าง... มันเหงาเหลือเกิน"
-        ]
-        
+        """คืนค่าลิสต์ข้อความคุยของ Reaper (ดึงจาก chat.py)"""
         import random
-        # สุ่มเลือกข้อความ 3 ข้อจากลิสต์
-        selected_dialogues = random.sample(dialogues, min(3, len(dialogues)))
+        # สุ่มเลือกข้อความ 3 ข้อจากลิสต์ที่ดึงมาจาก chat.py
+        selected_dialogues = random.sample(REAPER_DIALOGUES, min(3, len(REAPER_DIALOGUES)))
         return selected_dialogues
 
     def _draw_vn_dialogue_box(self, name, dialogue):
-        """ฟังก์ชันตัวช่วยสำหรับวาดกล่องข้อความใน screen space (ไม่ถูก camera transform)"""
-        # กำหนด root สำหรับวาด — ถ้า dialogue_root ถูก set โดย MyApp.build ให้ใช้นั้น
-        # ถ้าไม่มีก็ fallback ไปใช้ self
+        """วาดกล่องข้อความสไตล์ Visual Novel (ดึงค่าตั้งค่าจาก chat.py)"""
         root = self.dialogue_root if self.dialogue_root else self
+        cfg = DIALOGUE_CONFIG
 
         # 1. ลบ widget เก่าทิ้ง
-        if hasattr(self, 'dialogue_text') and self.dialogue_text:
-            if self.dialogue_text.parent:
-                self.dialogue_text.parent.remove_widget(self.dialogue_text)
+        if self.dialogue_text:
+            if self.dialogue_text.parent: self.dialogue_text.parent.remove_widget(self.dialogue_text)
             self.dialogue_text = None
-        if hasattr(self, 'dialogue_bg') and self.dialogue_bg:
-            if self.dialogue_bg.parent:
-                self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
+        if self.name_label:
+            if self.name_label.parent: self.name_label.parent.remove_widget(self.name_label)
+            self.name_label = None
+        if self.dialogue_bg:
+            if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
 
-        # 2. กำหนดขนาดกล่องข้อความ (สำหรับ Visual Novel Style)
-        box_height = 200  # เพิ่มความสูง
-        box_width = root.width  # กว้างเต็มจอตาม root widget
-        padding = 20
-
-        # 3. คำนวณตำแหน่งให้ตามด้านล่างของหน้าจอ
-        dialogue_x = 0  # เริ่มต้นที่ขอบซ้ายสุด
-        dialogue_y = 20  # ห่างจากขอบล่าง 20 พิกเซล
-
-        # 4. สร้าง Widget พื้นหลังสีดำ (วาดใน screen space)
-        bg_widget = KivyWidget(
-            size_hint=(None, None),
-            size=(box_width, box_height),
-            pos=(dialogue_x, dialogue_y)
-        )
+        # 2. พื้นหลัง
+        bg_widget = KivyWidget(size_hint=(None, None), size=(root.width, cfg["box_height"]), pos=(0, cfg["box_y"]))
         with bg_widget.canvas:
-            Color(0, 0, 0, 0.8)
-            Rectangle(size=(box_width, box_height), pos=(0, 0))
+            Color(0, 0, 0, cfg["bg_opacity"])
+            Rectangle(size=(root.width, cfg["box_height"]), pos=(0, 0))
         root.add_widget(bg_widget)
         self.dialogue_bg = bg_widget
 
-        # 5. จัดรูปแบบข้อความ (แสดงชื่อและข้อความคุย)
+        # 3. ชื่อตัวละคร (กลางแถว)
+        box_top = cfg["box_y"] + cfg["box_height"]
         if name:
-            formatted_text = f"[color=#ffff00]{name}:[/color] {dialogue}"
-        else:
-            formatted_text = dialogue
+            self.name_label = Label(
+                text=name,
+                font_name=GAME_FONT,
+                font_size=cfg["name_font_size"],
+                color=cfg["name_color"],
+                size_hint=(None, None),
+                size=(root.width, cfg["name_height"]),
+                pos=(0, box_top - cfg["top_padding"] - cfg["name_height"]),
+                halign='center',
+                valign='middle'
+            )
+            self.name_label.bind(size=self.name_label.setter('text_size'))
+            root.add_widget(self.name_label)
 
-        # 6. สร้าง Label ให้พอดีกับกล่องข้อความ
-        text_area_width = box_width - (padding * 2)
-        text_area_height = box_height - (padding * 2)
+        # 4. ข้อความคุย (กลางแถว อยู่ใต้ชื่อ)
+        text_y_limit = box_top - cfg["top_padding"] - cfg["name_height"] - cfg["msg_margin_top"]
+        available_height = text_y_limit - cfg["box_y"] - 10
 
         self.dialogue_text = Label(
-            text=formatted_text,
-            markup=True,
+            text=dialogue,
             font_name=GAME_FONT,
+            font_size=cfg["msg_font_size"],
+            color=cfg["msg_color"],
             size_hint=(None, None),
-            size=(text_area_width, text_area_height),
-            text_size=(text_area_width, text_area_height),
-            pos=(dialogue_x + padding, dialogue_y + padding),
-            color=(1, 1, 1, 1),
-            font_size=30,  # เพิ่มขนาดฟอนต์
-            halign='left',
+            size=(root.width - (cfg["side_padding"] * 2), available_height),
+            text_size=(root.width - (cfg["side_padding"] * 2), available_height),
+            pos=(cfg["side_padding"], cfg["box_y"] + 5),
+            halign='center',  # เปลี่ยนเป็นตรงกลางตามขอ
             valign='top'
         )
-
         root.add_widget(self.dialogue_text)
         
-        # ตั้งค่าสถานะการคุย
         self.is_dialogue_active = True
 
     def check_npc_wall_collision(self, rect, wall_obj):
@@ -751,10 +727,20 @@ class MyApp(App):
         return self.root
     
     def show_game(self, initial_data=None):
-        """แสดงเกมหลังจบหน้าปกเกม"""
-        # ลบ splash screen
+        """แสดงเกมหลังจบหน้าปกเกม หรือหน้าโหลดเซฟ"""
+        # ลบ splash screen หรือ UI ก่อนหน้า
         self.root.clear_widgets()
         
+        # ถ้าไม่มีข้อมูลโหลด (คือเลือก New Game) ให้แสดงหน้าจอ Day 1 ก่อน
+        if initial_data is None:
+            intro = IntroScreen(callback=lambda: self._start_actual_game(initial_data))
+            self.root.add_widget(intro)
+        else:
+            # ถ้าโหลดเซฟมา ให้ข้ามไปเริ่มเกมเลย
+            self._start_actual_game(initial_data)
+
+    def _start_actual_game(self, initial_data):
+        """รันตรรกะการสร้างตัวเกมจริงๆ หลังจบ Intro หรือ Load"""
         # สร้างตัวเกมโดยส่งข้อมูลเริ่มต้นไป (ถ้ามี)
         game = GameWidget(initial_data=initial_data)
         self.root.add_widget(game)
