@@ -27,6 +27,8 @@ class Enemy:
         self.detection_radius = ENEMY_DETECTION_RADIUS
         self.safe_zone_radius = SAFE_ZONE_RADIUS
         
+        # Position system (เหมือน player)
+        self.logic_pos = [x, y]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
         self.is_moving = False
         self.target_pos = [x, y]
         self.turn_delay = 0
@@ -75,16 +77,17 @@ class Enemy:
                 'walk': {'tex': None, 'cols': 1, 'rows': 4}
             }
 
-        # Row mapping (matches standard spritesheet order)
-        rows = {'down': 2, 'left': 0, 'right': 1, 'up': 3}
-        self.anim_row_map = {'idle': rows, 'walk': rows}
+        # Row mapping (แยกแถวระหว่าง idle และ walk)
+        idle_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
+        walk_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
+        self.anim_row_map = {'idle': idle_rows, 'walk': walk_rows}
 
     def _init_graphics(self):
-        """Create the Kivy canvas instructions for the enemy."""
+        """Create the Kivy canvas instructions for the enemy (เหมือน player)."""
         with self.canvas:
-            # DEBUG: Hitbox visualization
-            Color(1, 1, 0, 0.2)
-            self.debug_rect = Rectangle(pos=(self.x, self.y), size=(ENEMY_WIDTH, ENEMY_HEIGHT))
+            # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 16x16 ไม่เกิน 1 ช่อง
+            Color(1, 1, 0, 0.3)
+            self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
             
             # Sprite appearance
             if self.idle_texture:
@@ -92,7 +95,10 @@ class Enemy:
             else:
                 Color(1, 0, 0, 1) # Fallback to red
             
-            self.rect = Rectangle(pos=(self.x, self.y), size=(ENEMY_WIDTH, ENEMY_HEIGHT))
+            # จุดเกิดตอนแรก จัดแกน X ให้ตัวละครกึ่งกลางบล็อก และดันแกน Y ขึ้นเล็กน้อยเพื่อให้เท้าแตะกลางแผ่น
+            offset_x = (TILE_SIZE - ENEMY_WIDTH) / 2
+            offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
+            self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(ENEMY_WIDTH, ENEMY_HEIGHT))
 
     def destroy(self):
         """Cleans up canvas instructions and events when the enemy is removed."""
@@ -148,14 +154,10 @@ class Enemy:
             dist = self.calculate_distance(player_pos)
             if dist <= self.detection_radius:
                 self.chase_player_grid(player_pos, reaper_pos)
-                    
-        # Sync visuals
-        self.rect.pos = (self.x, self.y)
-        self.debug_rect.pos = (self.x, self.y)
         
     def calculate_distance(self, target_pos):
-        """Calculates distance between enemy and target."""
-        return math.sqrt((target_pos[0] - self.x)**2 + (target_pos[1] - self.y)**2)
+        """Calculates distance between enemy and target (เหมือน player)."""
+        return math.sqrt((target_pos[0] - self.logic_pos[0])**2 + (target_pos[1] - self.logic_pos[1])**2)
         
     def chase_player_grid(self, player_pos, reaper_pos=None):
         """Implements grid-based chasing logic with safe zone detection."""
@@ -163,8 +165,8 @@ class Enemy:
             self.turn_delay -= 1
             return
 
-        dx = player_pos[0] - self.x
-        dy = player_pos[1] - self.y
+        dx = player_pos[0] - self.logic_pos[0]
+        dy = player_pos[1] - self.logic_pos[1]
         move_x, move_y = 0, 0
         new_dir = self.direction
         
@@ -183,11 +185,13 @@ class Enemy:
                 self.frame_index = 0
                 self.turn_delay = 6 
             else:
-                # Check for safe zone entry
-                new_x, new_y = self.x + move_x, self.y + move_y
+                # Check safe zone
+                new_x = self.logic_pos[0] + move_x
+                new_y = self.logic_pos[1] + move_y
+                
                 if reaper_pos:
                     r_center_x, r_center_y = reaper_pos[0] + TILE_SIZE/2, reaper_pos[1] + TILE_SIZE/2
-                    e_center_x, e_center_y = new_x + ENEMY_WIDTH/2, new_y + ENEMY_HEIGHT/2
+                    e_center_x, e_center_y = new_x + TILE_SIZE/2, new_y + TILE_SIZE/2
                     dist_to_reaper = math.sqrt((e_center_x - r_center_x)**2 + (e_center_y - r_center_y)**2)
                     
                     if dist_to_reaper < self.safe_zone_radius:
@@ -196,26 +200,36 @@ class Enemy:
                 self.start_move(move_x, move_y)
 
     def start_move(self, dx, dy):
-        """Sets the target position and begins movement."""
-        self.target_pos = [self.x + dx, self.y + dy]
+        """Sets the target position and begins movement (เหมือน player)."""
+        self.target_pos = [self.logic_pos[0] + dx, self.logic_pos[1] + dy]
         self.is_moving = True
 
     def continue_move(self):
-        """Smoothly interpolates movement towards the target grid position."""
-        tx, ty = self.target_pos
+        """Smoothly interpolates movement towards the target grid position (เหมือน player)."""
+        cur_x, cur_y = self.logic_pos
+        tar_x, tar_y = self.target_pos
+
+        if cur_x < tar_x: cur_x = min(cur_x + self.speed, tar_x)
+        elif cur_x > tar_x: cur_x = max(cur_x - self.speed, tar_x)
+        if cur_y < tar_y: cur_y = min(cur_y + self.speed, tar_y)
+        elif cur_y > tar_y: cur_y = max(cur_y - self.speed, tar_y)
+
+        self.logic_pos = [cur_x, cur_y]
         
-        if self.x < tx: self.x = min(self.x + self.speed, tx)
-        elif self.x > tx: self.x = max(self.x - self.speed, tx)
+        # อัปเดตกราฟิกสี่เหลี่ยมตามพิกัด x, y (เหมือน player)
+        offset_x = (TILE_SIZE - ENEMY_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
         
-        if self.y < ty: self.y = min(self.y + self.speed, ty)
-        elif self.y > ty: self.y = max(self.y - self.speed, ty)
+        # อัปเดตกรอบเช็คการชน (Hitbox) สีเหลืองตามการเดินให้เห็นชัดๆ ว่าแค่ 1 ช่อง
+        self.debug_rect.pos = self.logic_pos
         
-        if self.x == tx and self.y == ty:
+        if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False
             
     def check_player_collision_logic(self, player_pos, tile_size):
-        """Check for collision with player using logic coordinates."""
-        return (self.x < player_pos[0] + tile_size and
-                self.x + ENEMY_WIDTH > player_pos[0] and
-                self.y < player_pos[1] + tile_size and
-                self.y + ENEMY_HEIGHT > player_pos[1])
+        """Check for collision with player using logic coordinates (เหมือน player)."""
+        return (self.logic_pos[0] < player_pos[0] + tile_size and
+                self.logic_pos[0] + TILE_SIZE > player_pos[0] and
+                self.logic_pos[1] < player_pos[1] + tile_size and
+                self.logic_pos[1] + TILE_SIZE > player_pos[1])
