@@ -9,11 +9,9 @@ Config.set('graphics', 'multisampling', '2')
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 
 from kivy.graphics import Color, Rectangle, Ellipse
-from camera import Camera
 from kivy.uix.label import Label
 from kivy.uix.widget import Widget as KivyWidget
 from kivy.uix.floatlayout import FloatLayout
-from screen import SplashScreen
 from kivy.app import App 
 from kivy.uix.widget import Widget 
 from kivy.core.window import Window 
@@ -25,9 +23,12 @@ from characters.npc import NPC
 from characters.reaper import Reaper
 from characters.enemy import Enemy, ENEMY_START_POSITIONS
 
-from heart import HeartUI
-from map_loader import KivyTiledMap
-from load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
+from assets.Heart.heart import HeartUI
+from assets.Tiles.map_loader import KivyTiledMap
+
+from menu.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
+from menu.screen import SplashScreen
+from menu.camera import Camera
 
 class GameWidget(Widget): 
     def __init__(self, initial_data=None, **kwargs): 
