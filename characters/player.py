@@ -7,7 +7,7 @@ class Player:
     def __init__(self, canvas):
         self.canvas = canvas
         self.is_moving = False
-        start_x = (848 // TILE_SIZE) * TILE_SIZE
+        start_x = (1152 // TILE_SIZE) * TILE_SIZE
         start_y = (80 // TILE_SIZE) * TILE_SIZE
         self.target_pos = [start_x, start_y]
         self.logic_pos = [start_x, start_y]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid

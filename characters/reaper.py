@@ -5,7 +5,7 @@ from settings import *
 import math
 import random
 
-REAPER_START_POS = (864, 80)
+REAPER_START_POS = (1168, 80)
 
 class Reaper:
     """
