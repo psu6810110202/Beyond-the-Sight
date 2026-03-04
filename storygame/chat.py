@@ -56,7 +56,7 @@ INTRO_DIALOGUE = [
 # --- UI Settings สำหรับกล่องข้อความ ---
 DIALOGUE_CONFIG = {
     "box_height": 180,
-    "box_y": 20,
+    "box_y": 0,
     "top_padding": 35,       # ระยะห่างจากขอบบนสุดของแถบดำถึงชื่อ
     "name_height": 45,
     "msg_margin_top": 20,    # ระยะห่างระหว่างชื่อและข้อความคุย

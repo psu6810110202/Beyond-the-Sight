@@ -1,4 +1,4 @@
-from kivy.graphics import Rectangle, Color
+from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from settings import *
@@ -50,16 +50,22 @@ class Player:
         self.max_stamina = MAX_STAMINA
         self.exhausted = False
 
-        with canvas:
-            # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 16x16 ไม่เกิน 1 ช่อง
-            Color(1, 1, 0, 0.3)
-            self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
+        # สร้าง InstructionGroup เพื่อจัดการการวาดแบบแยกส่วน (สำหรับ Y-sorting)
+        self.group = InstructionGroup()
+        
+        # DEBUG: Hitbox
+        self.group.add(Color(1, 1, 0, 0.3))
+        self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
+        self.group.add(self.debug_rect)
+        
+        self.group.add(Color(1, 1, 1, 1))
+        # จุดเกิดตอนแรก
+        offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(PLAYER_WIDTH, PLAYER_HEIGHT))
+        self.group.add(self.rect)
             
-            Color(1, 1, 1, 1)
-            # จุดเกิดตอนแรก จัดแกน X ให้ตัวละครกึ่งกลางบล็อก และดันแกน Y ขึ้นเล็กน้อยเพื่อให้เท้าแตะกลางแผ่น
-            offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
-            offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
-            self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(PLAYER_WIDTH, PLAYER_HEIGHT))
+        self.canvas.add(self.group)
             
         self.update_frame()
         self.current_fps = 8
@@ -277,3 +283,42 @@ class Player:
         
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False
+
+    def interact(self, npcs, reaper):
+        """
+        Check for interaction with NPCs or Reaper.
+        Returns (target_object, target_type, npc_index, dist_x, dist_y) if found, else (None, None, None, 0, 0).
+        """
+        player_pos = self.logic_pos
+        
+        # 1. Check Reaper
+        # ใช้ TILE_SIZE แทน WIDTH/HEIGHT ของ Hitbox เพื่อให้จุดศูนย์กลางอยู่กลางบล็อกจริงๆ
+        reaper_center_x = reaper.x + TILE_SIZE / 2
+        reaper_center_y = reaper.y + TILE_SIZE / 2
+        player_center_x = player_pos[0] + TILE_SIZE / 2
+        player_center_y = player_pos[1] + TILE_SIZE / 2
+        
+        reaper_distance_x = abs(player_center_x - reaper_center_x)
+        reaper_distance_y = abs(player_center_y - reaper_center_y)
+        
+        # เงื่อนไข Cardinal Only: ต้องมีด้านหนึ่งที่แทบจะตรงกัน (<= 4px) 
+        # และอีกด้านหนึ่งต้องอยู่ในระยะ 1 ช่อง (<= TILE_SIZE + 2)
+        is_reaper_near = (reaper_distance_x <= 4 and reaper_distance_y <= TILE_SIZE + 2) or (reaper_distance_y <= 4 and reaper_distance_x <= TILE_SIZE + 2)
+        
+        if is_reaper_near:
+            return reaper, "reaper", None, reaper_distance_x, reaper_distance_y
+            
+        # 2. Check NPCs
+        for i, npc in enumerate(npcs):
+            npc_center_x = npc.x + TILE_SIZE / 2
+            npc_center_y = npc.y + TILE_SIZE / 2
+            distance_x = abs(player_center_x - npc_center_x)
+            distance_y = abs(player_center_y - npc_center_y)
+            
+            is_npc_near = (distance_x <= 4 and distance_y <= TILE_SIZE + 2) or \
+                          (distance_y <= 4 and distance_x <= TILE_SIZE + 2)
+            
+            if is_npc_near:
+                return npc, "npc", i, distance_x, distance_y
+                
+        return None, None, None, 0, 0

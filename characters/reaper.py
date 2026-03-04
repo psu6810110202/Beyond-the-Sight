@@ -1,4 +1,4 @@
-from kivy.graphics import Rectangle, Color, Ellipse
+from kivy.graphics import Rectangle, Color, Ellipse, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from settings import *
@@ -44,7 +44,7 @@ class Reaper:
             'idle': {'tex': self.idle_texture, 'cols': self.cols, 'rows': self.rows}
         }
         self.state = 'idle'
-        self.direction = 'down'
+        self.direction = 'left'
         self.frame_index = 0
         self.animation_fps = 1
         
@@ -63,32 +63,36 @@ class Reaper:
     
     def _init_graphics(self):
         """Create the Kivy canvas instructions for the Reaper."""
-        with self.canvas:
-            # DEBUG: Hitbox visualization (can be hidden or toggled as needed)
-            Color(1, 1, 0, 0.2)
-            self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
-            
-            # Main sprite color instruction
-            if self.idle_texture:
-                Color(1, 1, 1, 1)
-            else:
-                Color(1, 0, 0, 1) # Fallback to red box if no texture
-            
-            # Position offsets to center the visual sprite over the logical tile
-            offset_x = (TILE_SIZE - REAPER_VISUAL_WIDTH) / 2
-            offset_y = TILE_SIZE / 2
-            self.rect = Rectangle(
-                pos=(self.x + offset_x, self.y + offset_y), 
-                size=(REAPER_VISUAL_WIDTH, REAPER_VISUAL_HEIGHT)
-            )
-            
-            # Protection aura (gentle blue glow)
-            Color(0.3, 0.7, 1.0, 0.1)
-            self.protection_circle = Ellipse(
-                pos=(self.x - self.safe_zone_radius + TILE_SIZE // 2, 
-                     self.y - self.safe_zone_radius + TILE_SIZE // 2),
-                size=(self.safe_zone_radius * 2, self.safe_zone_radius * 2)
-            )
+        self.group = InstructionGroup()
+        
+        # Protection aura (gentle blue glow) - Draw FIRST
+        self.group.add(Color(0.3, 0.7, 1.0, 0.1))
+        self.protection_circle = Ellipse(
+            pos=(self.x - self.safe_zone_radius + TILE_SIZE // 2, 
+                    self.y - self.safe_zone_radius + TILE_SIZE // 2),
+            size=(self.safe_zone_radius * 2, self.safe_zone_radius * 2)
+        )
+        self.group.add(self.protection_circle)
+
+        # DEBUG: Hitbox visualization
+        self.group.add(Color(1, 1, 0, 0.2))
+        self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
+        self.group.add(self.debug_rect)
+        
+        # Main sprite
+        if self.idle_texture:
+            self.group.add(Color(1, 1, 1, 1))
+        else:
+            self.group.add(Color(1, 0, 0, 1)) 
+        
+        offset_x = (TILE_SIZE - REAPER_VISUAL_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect = Rectangle(
+            pos=(self.x + offset_x, self.y + offset_y), 
+            size=(REAPER_VISUAL_WIDTH, REAPER_VISUAL_HEIGHT)
+        )
+        self.group.add(self.rect)
+        self.canvas.add(self.group)
 
     def update_frame(self):
         """Maps the current state and direction to the texture region (tex_coords)."""

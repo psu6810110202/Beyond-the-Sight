@@ -1,4 +1,4 @@
-from kivy.graphics import Rectangle, Color
+from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from settings import *
@@ -111,22 +111,26 @@ class NPC:
         self.direction_change_interval = 3.0  # เปลี่ยนทิศทางทุก 3 วินาที (ช้าขึ้น)
         self.directions = ['down', 'left', 'right', 'up']
         
-        # Create visual elements
-        with canvas:
-            # DEBUG: Hitbox ของ NPC เหมือนกับที่ Player มองเห็น (1 ช่อง TILE_SIZE)
-            Color(1, 1, 0, 0.3)
-            self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
+        # Create visual elements in an InstructionGroup for sorting
+        self.group = InstructionGroup()
+        
+        # DEBUG: Hitbox
+        self.group.add(Color(1, 1, 0, 0.3))
+        self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
+        self.group.add(self.debug_rect)
+        
+        if self.idle_texture:
+            self.group.add(Color(1, 1, 1, 1))
+        else:
+            self.group.add(Color(1, 0, 0, 1))
             
-            if self.idle_texture:
-                # ใช้สีขาวปกติเพื่อให้เห็นภาพชัด
-                Color(1, 1, 1, 1)
-            else:
-                # ใช้สีแดงถ้าโหลดรูปไม่ได้
-                Color(1, 0, 0, 1)
-            # ใช้ขนาดภาพตาม VISUAL_WIDTH/HEIGHT แต่ชดเชยตำแหน่งให้มาอยู่ตรงกลางช่องเหนือพื้นขึ้นไป
-            offset_x = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
-            offset_y = TILE_SIZE / 2
-            self.rect = Rectangle(pos=(self.x + offset_x, self.y + offset_y), size=(NPC_VISUAL_WIDTH, NPC_VISUAL_HEIGHT))
+        # Offset position to center visual sprite
+        offset_x = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect = Rectangle(pos=(self.x + offset_x, self.y + offset_y), size=(NPC_VISUAL_WIDTH, NPC_VISUAL_HEIGHT))
+        self.group.add(self.rect)
+            
+        self.canvas.add(self.group)
         
         self.update_frame()
         self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)

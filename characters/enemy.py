@@ -1,4 +1,4 @@
-from kivy.graphics import Rectangle, Color
+from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
 from settings import *
@@ -72,27 +72,29 @@ class Enemy:
         self.anim_row_map = {'idle': idle_rows, 'walk': walk_rows}
 
     def _init_graphics(self):
-        """Create the Kivy canvas instructions for the enemy (เหมือน player)."""
-        with self.canvas:
-            # DEBUG: แถบสีเหลืองจำลองแสดงว่า Hitbox (จุดปะทะจริง) มีขนาดแค่ 16x16 ไม่เกิน 1 ช่อง
-            Color(1, 1, 0, 0.3)
-            self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
-            
-            # Sprite appearance
-            if self.idle_texture:
-                Color(1, 1, 1, 1)
-            else:
-                Color(1, 0, 0, 1) # Fallback to red
-            
-            # จุดเกิดตอนแรก จัดแกน X ให้ตัวละครกึ่งกลางบล็อก และดันแกน Y ขึ้นเล็กน้อยเพื่อให้เท้าแตะกลางแผ่น
-            offset_x = (TILE_SIZE - ENEMY_WIDTH) / 2
-            offset_y = TILE_SIZE / 2  # เผื่อพื้นที่ว่างด้านล่างของรูป เพื่อดันให้ตัวละครขึ้นมายืนตรงกลางช่องพอดี
-            self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(ENEMY_WIDTH, ENEMY_HEIGHT))
+        """Create the Kivy canvas instructions for the enemy."""
+        self.group = InstructionGroup()
+        
+        # DEBUG: Hitbox
+        self.group.add(Color(1, 1, 0, 0.3))
+        self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
+        self.group.add(self.debug_rect)
+        
+        # Sprite appearance
+        if self.idle_texture:
+            self.group.add(Color(1, 1, 1, 1))
+        else:
+            self.group.add(Color(1, 0, 0, 1)) 
+        
+        offset_x = (TILE_SIZE - ENEMY_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect = Rectangle(pos=(self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y), size=(ENEMY_WIDTH, ENEMY_HEIGHT))
+        self.group.add(self.rect)
+        self.canvas.add(self.group)
 
     def destroy(self):
         """Cleans up canvas instructions and events when the enemy is removed."""
-        self.canvas.remove(self.debug_rect)
-        self.canvas.remove(self.rect)
+        self.canvas.remove(self.group)
         self.anim_event.cancel()
             
     def update_frame(self):

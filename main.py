@@ -9,14 +9,14 @@ Config.set('graphics', 'multisampling', '2')
 Config.set('kivy', 'exit_on_escape', '0')
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 
-from kivy.graphics import Color, Rectangle, Ellipse
+from kivy.graphics import Color, Rectangle, Ellipse, RoundedRectangle, InstructionGroup
 from kivy.uix.label import Label
-from kivy.uix.widget import Widget as KivyWidget
+from kivy.uix.widget import Widget 
 from kivy.uix.floatlayout import FloatLayout
 from kivy.app import App 
-from kivy.uix.widget import Widget 
 from kivy.core.window import Window 
 from kivy.clock import Clock 
+from kivy.core.image import Image as CoreImage
 import os # นำเข้า os สำหรับจัดการโฟลเดอร์เซฟ
 
 from characters.player import Player
@@ -73,10 +73,14 @@ class GameWidget(Widget):
         # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
         self.dialogue_root = None
 
-        # Draw Map Background (Floor, Walls, etc) - in the background layer
+        # Draw Map Background
         with self.canvas.before:
             self.game_map = KivyTiledMap(MAP_FILE)
             self.game_map.draw_background(self.canvas.before)
+
+        # 1. สร้าง Sorting Layer สำหรับตัวละคร (เพื่อให้วาดทับกันตามค่า Y)
+        self.sorting_layer = InstructionGroup()
+        self.canvas.add(self.sorting_layer)
 
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
         self._keyboard.bind(on_key_down=self._on_key_down) 
@@ -88,14 +92,14 @@ class GameWidget(Widget):
         self.npcs = []
         self.create_npcs()
         
-        # 3. สร้าง Reaper (ตำแหน่งเริ่มต้นจัดการใน reaper.py)
-        self.reaper = Reaper(self.canvas)
+        # 3. สร้าง Reaper
+        self.reaper = Reaper(self.sorting_layer)
         
         # 4. สร้าง Enemies
         self.enemies = []
         self.create_enemies()
 
-        self.player = Player(self.canvas)
+        self.player = Player(self.sorting_layer)
         
         # Draw Map Foreground (Roofs, hanging objects, etc) - in the foreground layer
         with self.canvas.after:
@@ -130,6 +134,12 @@ class GameWidget(Widget):
 
     def _start_intro_dialogue(self, dt):
         """เริ่มบทสนทนาแรกของเกมกับ Reaper โดยดึงข้อความจาก chat.py"""
+        # ตั้งทิศทางให้หันหน้าเข้าหากันตอนเริ่มเกม (Reaper อยู่ขวา Player อยู่ซ้าย)
+        self.reaper.direction = 'left'
+        self.reaper.update_frame()
+        self.player.direction = 'right'
+        self.player.update_frame()
+        
         self.show_dialogue_above_reaper(INTRO_DIALOGUE)
 
     def request_keyboard_back(self):
@@ -244,7 +254,6 @@ class GameWidget(Widget):
         player_pos = self.player.logic_pos
         
         # Update Enemies
-        # ใช้ [:] เพื่อคัดลอกลิสต์ ป้องกันการ error ขณะลบไอเทมในลูป
         for enemy in self.enemies[:]:
             reaper_pos = (self.reaper.x, self.reaper.y)
             enemy.update(dt, player_pos, reaper_pos)
@@ -256,6 +265,24 @@ class GameWidget(Widget):
                 self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ
                 self.heart_ui.take_damage() # ลดเลือดผู้เล่น
                 print(f"Enemy {enemy.id} attacked player and was removed!")
+
+        # 5. ทำ Y-Sorting เพื่อให้ตัวละครที่อยู่ "ล่าง" ทับตัวละครที่อยู่ "บน"
+        self.y_sorting()
+
+    def y_sorting(self):
+        """จัดลำดับการวาดตัวละครตามค่า Y (Y-Sorting)"""
+        # รวบรวมตัวละครทั้งหมดที่มีชีวิตอยู่
+        sortable_chars = [self.player, self.reaper] + self.npcs + self.enemies
+        
+        # เรียงลำดับจาก Y มากไปน้อย (Kivy Y เริ่มจากล่างขึ้นบน ดังนั้น Y มากคืออยู่หลัง)
+        # เราใช้จุดเท้า (logic_pos[1]) ในการตัดสิน
+        sortable_chars.sort(key=lambda char: char.y if hasattr(char, 'y') else char.logic_pos[1], reverse=True)
+        
+        # ล้าง Layer แล้วใส่กลับเข้าไปใหม่ตามลำดับที่เรียงแล้ว
+        self.sorting_layer.clear()
+        for char in sortable_chars:
+            if hasattr(char, 'group'):
+                self.sorting_layer.add(char.group)
 
     def toggle_pause(self):
         """Toggle pause state and show/hide pause menu."""
@@ -338,88 +365,69 @@ class GameWidget(Widget):
         Window.close()
                     
     def update_interaction_hints(self):
-        """อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้"""
+        """อัปเดตปุ่ม E สำหรับ NPC และ Reaper ที่อยู่ใกล้"""
         # ลบปุ่ม E เก่าทั้งหมด
         for hint in self.interaction_hints:
-            if hasattr(hint, 'remove_widget'):
-                self.remove_widget(hint)
+            if hasattr(hint, 'parent') and hint.parent:
+                hint.parent.remove_widget(hint)
             else:
-                self.canvas.remove(hint)
+                try: self.canvas.remove(hint)
+                except: pass
         self.interaction_hints.clear()
         
         player_pos = self.player.logic_pos
-        
-        # ตรวจสอบ NPC ที่อยู่ใกล้
+        player_cx, player_cy = player_pos[0] + TILE_SIZE/2, player_pos[1] + TILE_SIZE/2
+
+        # 1. ตรวจสอบ NPC
         for i, npc in enumerate(self.npcs):
-            # คำนวณระยะห่างระหว่าง Player และ NPC
-            npc_center_x = npc.x + (NPC_WIDTH - TILE_SIZE) / 2
-            npc_center_y = npc.y + (NPC_HEIGHT - TILE_SIZE) / 2
+            npc_cx, npc_cy = npc.x + TILE_SIZE/2, npc.y + TILE_SIZE/2
+            dist_x, dist_y = abs(player_cx - npc_cx), abs(player_cy - npc_cy)
             
-            distance_x = abs(player_pos[0] - npc_center_x)
-            distance_y = abs(player_pos[1] - npc_center_y)
+            if (dist_x <= 4 and dist_y <= TILE_SIZE + 2) or (dist_y <= 4 and dist_x <= TILE_SIZE + 2):
+                self._add_interaction_hint(npc.x + NPC_WIDTH/2, npc.y + NPC_HEIGHT + 40)
+        
+        # 2. ตรวจสอบ Reaper
+        reaper_cx, reaper_cy = self.reaper.x + TILE_SIZE/2, self.reaper.y + TILE_SIZE/2
+        rdist_x, rdist_y = abs(player_cx - reaper_cx), abs(player_cy - reaper_cy)
+        
+        if (rdist_x <= 4 and rdist_y <= TILE_SIZE + 2) or (rdist_y <= 4 and rdist_x <= TILE_SIZE + 2):
+            self._add_interaction_hint(self.reaper.x + REAPER_WIDTH/2, self.reaper.y + REAPER_HEIGHT + 40)
+
+    def _add_interaction_hint(self, x, y):
+        """สร้างกราฟิกปุ่ม E เหนือตัวละคร"""
+        size = (10, 10)
+        off_x, off_y = int(x - size[0]/2), int(y)
+        
+        with self.canvas:
+            # 1. วาดพื้นหลังปุ่ม (สีดำ Opacity 50% และมุมมน)
+            Color(0, 0, 0, 0.5)
+            # radius=[2] หมายถึงความมนของมุม 2 พิกเซล
+            hint_bg = RoundedRectangle(pos=(off_x, off_y), size=size, radius=[2])
+            self.interaction_hints.append(hint_bg)
             
-            # ถ้าอยู่ใกล้ NPC (ระยะ 2 ช่อง)
-            if distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
-                # สร้างปุ่ม E เหนือหัว NPC
-                with self.canvas:
-                    Color(1, 1, 0, 0.8)  # สีเหลือง
-                    hint = Rectangle(
-                        size=(20, 20),
-                        pos=(npc.x + NPC_WIDTH/2 - 10, npc.y + NPC_HEIGHT + 35)
-                    )
-                    self.interaction_hints.append(hint)
-                
-                # สร้างข้อความ E แยกต่างหาก
-                hint_text = Label(
-                    text="E",
-                    size_hint=(None, None),
-                    size=(20, 20),
-                    pos=(npc.x + NPC_WIDTH/2 - 10, npc.y + NPC_HEIGHT + 35),
-                    color=(0, 0, 0, 1),  # สีดำ
-                    font_size=14,
-                    halign='center',
-                    valign='middle'
-                )
-                self.add_widget(hint_text)
-                self.interaction_hints.append(hint_text)
-        
-        # ตรวจสอบ Reaper ที่อยู่ใกล้
-        reaper_center_x = self.reaper.x + (REAPER_WIDTH - TILE_SIZE) / 2
-        reaper_center_y = self.reaper.y + (REAPER_HEIGHT - TILE_SIZE) / 2
-        
-        reaper_distance_x = abs(player_pos[0] - reaper_center_x)
-        reaper_distance_y = abs(player_pos[1] - reaper_center_y)
-        
-        # ถ้าอยู่ใกล้ Reaper (ระยะ 2 ช่อง)
-        if reaper_distance_x <= TILE_SIZE * 2 and reaper_distance_y <= TILE_SIZE * 2:
-            # สร้างปุ่ม E เหนือหัว Reaper
-            with self.canvas:
-                Color(1, 1, 0, 0.8)  # สีเหลือง
-                hint = Rectangle(
-                    size=(20, 20),
-                    pos=(self.reaper.x + REAPER_WIDTH/2 - 10, self.reaper.y + REAPER_HEIGHT + 35)
-                )
-                self.interaction_hints.append(hint)
+            # 2. วาดตัวอักษร E (สีขาว คมชัดพรีเมียม)
+            # สร้าง Label ชั่วคราวขนาดใหญ่เพื่อให้ได้ Font ที่สวยงาม
+            temp_label = Label(text="E", font_name=GAME_FONT, font_size=40, color=(1, 1, 1, 1))
+            temp_label.texture_update()
+            text_tex = temp_label.texture
             
-            # สร้างข้อความ E แยกต่างหาก
-            hint_text = Label(
-                text="E",
-                size_hint=(None, None),
-                size=(20, 20),
-                pos=(self.reaper.x + REAPER_WIDTH/2 - 10, self.reaper.y + REAPER_HEIGHT + 35),
-                color=(0, 0, 0, 1),  # สีดำ
-                font_size=14,
-                halign='center',
-                valign='middle'
-            )
-            self.add_widget(hint_text)
-            self.interaction_hints.append(hint_text)
+            # คำนวณขนาดโดยรักษา Aspect Ratio
+            tw, th = text_tex.size
+            max_inner = 7.0
+            scale = min(max_inner / tw, max_inner / th)
+            draw_w, draw_h = tw * scale, th * scale
+            
+            # จัดตำแหน่งกึ่งกลางในปุ่ม
+            text_pos = (off_x + (size[0] - draw_w)/2, off_y + (size[1] - draw_h)/2)
+            
+            hint_text_rect = Rectangle(texture=text_tex, size=(draw_w, draw_h), pos=text_pos)
+            self.interaction_hints.append(hint_text_rect)
                 
     def create_npcs(self):
         # สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน settings.py
         for i in range(min(NPC_COUNT, len(NPC_IMAGE_LIST))):
             img_path = NPC_IMAGE_LIST[i]
-            npc = NPC(self.canvas, image_path=img_path)
+            npc = NPC(self.sorting_layer, image_path=img_path)
             self.npcs.append(npc)
 
     def create_enemies(self):
@@ -432,84 +440,73 @@ class GameWidget(Widget):
             if i in self.destroyed_enemies:
                 continue
                 
-            enemy = Enemy(self.canvas, x, y, enemy_id=i, enemy_type=etype)
+            enemy = Enemy(self.sorting_layer, x, y, enemy_id=i, enemy_type=etype)
             self.enemies.append(enemy)
     
     def check_npc_interaction(self):
         """ตรวจสอบว่า Player อยู่ใกล้ NPC หรือ Reaper และแสดงข้อความคุย"""
+        target, target_type, npc_index, dist_x, dist_y = self.player.interact(self.npcs, self.reaper)
+        
+        if not target:
+            print("ไม่มี NPC หรือ Reaper อยู่ใกล้ๆ")
+            return
+
+        # คำนวณตำแหน่งกึ่งกลางเพื่อหันหน้า
         player_pos = self.player.logic_pos
-        print(f"Player position: {player_pos}")  # Debug: แสดงตำแหน่ง Player
+        player_center_x = player_pos[0] + TILE_SIZE / 2
+        player_center_y = player_pos[1] + TILE_SIZE / 2
         
-        # ตรวจสอบ Reaper ก่อน
-        reaper_center_x = self.reaper.x + (REAPER_WIDTH - TILE_SIZE) / 2
-        reaper_center_y = self.reaper.y + (REAPER_HEIGHT - TILE_SIZE) / 2
-        reaper_distance_x = abs(player_pos[0] - reaper_center_x)
-        reaper_distance_y = abs(player_pos[1] - reaper_center_y)
-        
-        if reaper_distance_x <= TILE_SIZE * 2 and reaper_distance_y <= TILE_SIZE * 2:
-            # ให้ Reaper หันหน้าไปหา Player
-            player_center_x = player_pos[0] + TILE_SIZE / 2
-            player_center_y = player_pos[1] + TILE_SIZE / 2
+        target_center_x = target.x + (getattr(target, 'width', TILE_SIZE) - TILE_SIZE) / 2
+        target_center_y = target.y + (getattr(target, 'height', TILE_SIZE) - TILE_SIZE) / 2
+
+        # 1. จัดการ Reaper
+        if target_type == "reaper":
+            self.reaper.direction = 'left' # หันซ้ายตลอดตามคำขอ
             
-            if reaper_distance_x > reaper_distance_y:
-                # Player อยู่ทางซ้ายหรือขวา
-                if player_center_x > reaper_center_x:
-                    self.reaper.direction = 'right'
+            if dist_x > dist_y:
+                if player_center_x > target_center_x:
+                    self.player.direction = 'left'
                 else:
-                    self.reaper.direction = 'left'
+                    self.player.direction = 'right'
             else:
-                # Player อยู่ทางบนหรือล่าง
-                if player_center_y > reaper_center_y:
-                    self.reaper.direction = 'up'
+                if player_center_y > target_center_y:
+                    self.player.direction = 'down'
                 else:
-                    self.reaper.direction = 'down'
-            self.reaper.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
+                    self.player.direction = 'up'
             
-            # แสดงข้อความคุยของ Reaper
-            dialogue = self.get_reaper_dialogue(reaper_distance_x, reaper_distance_y)
+            self.reaper.frame_index = 0
+            self.reaper.update_frame()
+            self.player.update_frame()
+            
+            dialogue = self.get_reaper_dialogue(dist_x, dist_y)
             if dialogue:
                 self.show_dialogue_above_reaper(dialogue)
-            return
-        
-        # ตรวจสอบ NPC ทั้งหมด
-        for i, npc in enumerate(self.npcs):
-            # คำนวณระยะห่างระหว่าง Player และ NPC
-            npc_center_x = npc.x + (NPC_WIDTH - TILE_SIZE) / 2
-            npc_center_y = npc.y + (NPC_HEIGHT - TILE_SIZE) / 2
-            
-            distance_x = abs(player_pos[0] - npc_center_x)
-            distance_y = abs(player_pos[1] - npc_center_y)
-            
-            print(f"NPC{i+1} center: ({npc_center_x}, {npc_center_y}), distance: ({distance_x}, {distance_y})")  # Debug
-            
-            # ถ้าอยู่ใกล้ NPC (ระยะ 2 ช่อง) เท่านั้น
-            if distance_x <= TILE_SIZE * 2 and distance_y <= TILE_SIZE * 2:
-                # ให้ NPC หันหน้าไปหา Player
-                player_center_x = player_pos[0] + TILE_SIZE / 2
-                player_center_y = player_pos[1] + TILE_SIZE / 2
-                
-                if distance_x > distance_y:
-                    # Player อยู่ทางซ้ายหรือขวา
-                    if player_center_x > npc_center_x:
-                        npc.direction = 'right'
-                    else:
-                        npc.direction = 'left'
+
+        # 2. จัดการ NPC
+        elif target_type == "npc":
+            if dist_x > dist_y:
+                if player_center_x > target_center_x:
+                    target.direction = 'right'
+                    self.player.direction = 'left'
                 else:
-                    # Player อยู่ทางบนหรือล่าง
-                    if player_center_y > npc_center_y:
-                        npc.direction = 'up'
-                    else:
-                        npc.direction = 'down'
-                npc.frame_index = 0  # รีเซ็ตเฟรมเมื่อเปลี่ยนทิศทาง
-                
-                npc_index = i
-                npc_name = "The Sad Soul" if npc_index == 0 else f"NPC{npc_index + 1}"
-                dialogue = self.get_proximity_dialogue(npc_name, distance_x, distance_y)
-                if dialogue:
-                    self.show_dialogue_above_npc(npc, dialogue)
-                return
-        
-        print("ไม่มี NPC หรือ Reaper อยู่ใกล้ๆ")
+                    target.direction = 'left'
+                    self.player.direction = 'right'
+            else:
+                if player_center_y > target_center_y:
+                    target.direction = 'up'
+                    self.player.direction = 'down'
+                else:
+                    target.direction = 'down'
+                    self.player.direction = 'up'
+            
+            target.frame_index = 0
+            target.update_frame()
+            self.player.update_frame()
+            
+            npc_name = "The Sad Soul" if npc_index == 0 else f"NPC{npc_index + 1}"
+            dialogue = self.get_proximity_dialogue(npc_name, dist_x, dist_y)
+            if dialogue:
+                self.show_dialogue_above_npc(target, dialogue)
     
     def show_dialogue_above_npc(self, npc, dialogue):
         """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
@@ -549,19 +546,15 @@ class GameWidget(Widget):
 
     def close_dialogue(self):
         """ปิดกล่องข้อความคุยและคืนสถานะเกม"""
-        # ลบ widget ข้อความและพื้นหลัง
-        if self.dialogue_text:
-            if self.dialogue_text.parent:
-                self.dialogue_text.parent.remove_widget(self.dialogue_text)
-            self.dialogue_text = None
-        if self.name_label:
-            if self.name_label.parent:
-                self.name_label.parent.remove_widget(self.name_label)
-            self.name_label = None
+        # ลบ widget พื้นหลัง (โดยลูกๆ จะถูกลบตามไปด้วย)
         if self.dialogue_bg:
             if self.dialogue_bg.parent:
                 self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
+            
+        # เคลียร์ reference อื่นๆ
+        self.dialogue_text = None
+        self.name_label = None
 
         # จำชื่อตัวละครไว้ก่อนรีเซ็ต
         last_character = self.current_character_name
@@ -644,60 +637,62 @@ class GameWidget(Widget):
         root = self.dialogue_root if self.dialogue_root else self
         cfg = DIALOGUE_CONFIG
 
-        # 1. ลบ widget เก่าทิ้ง
-        if self.dialogue_text:
-            if self.dialogue_text.parent: self.dialogue_text.parent.remove_widget(self.dialogue_text)
-            self.dialogue_text = None
-        if self.name_label:
-            if self.name_label.parent: self.name_label.parent.remove_widget(self.name_label)
-            self.name_label = None
+        # 1. ลบทิ้งหากมีของเดิมอยู่
         if self.dialogue_bg:
             if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
 
-        # 2. พื้นหลัง
-        bg_widget = KivyWidget(size_hint=(None, None), size=(root.width, cfg["box_height"]), pos=(0, cfg["box_y"]))
-        with bg_widget.canvas:
+        # 2. พื้นหลัง - ใช้ FloatLayout และ pos_hint เพื่อให้ชิดขอบล่างเสมอ
+        bg_widget = FloatLayout(size_hint=(1, None), height=cfg["box_height"], pos_hint={'x': 0, 'y': 0})
+        with bg_widget.canvas.before:
             Color(0, 0, 0, cfg["bg_opacity"])
-            Rectangle(size=(root.width, cfg["box_height"]), pos=(0, 0))
+            self.dialogue_bg_rect = Rectangle(size=bg_widget.size, pos=bg_widget.pos)
+            
+        def update_bg_rect(instance, value):
+            if hasattr(self, 'dialogue_bg_rect'):
+                self.dialogue_bg_rect.pos = instance.pos
+                self.dialogue_bg_rect.size = instance.size
+        bg_widget.bind(size=update_bg_rect, pos=update_bg_rect)
+        
         root.add_widget(bg_widget)
         self.dialogue_bg = bg_widget
 
-        # 3. ชื่อตัวละคร (กลางแถว)
-        box_top = cfg["box_y"] + cfg["box_height"]
+        # 3. ชื่อตัวละคร (ใส่ลงใน bg_widget เพื่อให้เคลื่อนที่ไปด้วยกัน)
         if name:
             self.name_label = Label(
                 text=name,
                 font_name=GAME_FONT,
                 font_size=cfg["name_font_size"],
                 color=cfg["name_color"],
-                size_hint=(None, None),
-                size=(root.width, cfg["name_height"]),
-                pos=(0, box_top - cfg["top_padding"] - cfg["name_height"]),
+                size_hint=(1, None),
+                height=cfg["name_height"],
+                pos_hint={'center_x': 0.5, 'top': 1 - (cfg["top_padding"] / cfg["box_height"])},
                 halign='center',
                 valign='middle'
             )
             self.name_label.bind(size=self.name_label.setter('text_size'))
-            root.add_widget(self.name_label)
+            bg_widget.add_widget(self.name_label)
 
-        # 4. ข้อความคุย (กลางแถว อยู่ใต้ชื่อ)
-        text_y_limit = box_top - cfg["top_padding"] - cfg["name_height"] - cfg["msg_margin_top"]
-        available_height = text_y_limit - cfg["box_y"] - 10
-
+        # 4. ข้อความคุย (ใส่ลงใน bg_widget)
+        text_top_ratio = (cfg["top_padding"] + cfg["name_height"] + cfg["msg_margin_top"]) / cfg["box_height"]
+        
         self.dialogue_text = Label(
             text=dialogue,
             font_name=GAME_FONT,
             font_size=cfg["msg_font_size"],
             color=cfg["msg_color"],
-            size_hint=(None, None),
-            size=(root.width - (cfg["side_padding"] * 2), available_height),
-            text_size=(root.width - (cfg["side_padding"] * 2), available_height),
-            pos=(cfg["side_padding"], cfg["box_y"] + 5),
-            halign='center',  # เปลี่ยนเป็นตรงกลางตามขอ
+            size_hint=(1, None),
+            height=cfg["box_height"] * (1 - text_top_ratio) - 10,
+            pos_hint={'center_x': 0.5, 'top': 1 - text_top_ratio},
+            halign='center',
             valign='top'
         )
-        root.add_widget(self.dialogue_text)
         
+        def update_msg_text_size(instance, value):
+            instance.text_size = (instance.width - (cfg["side_padding"] * 2), instance.height)
+        self.dialogue_text.bind(size=update_msg_text_size)
+        
+        bg_widget.add_widget(self.dialogue_text)
         self.is_dialogue_active = True
 
     def check_npc_wall_collision(self, rect, wall_obj):
