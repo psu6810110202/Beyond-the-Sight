@@ -6,6 +6,7 @@ Config.set('graphics', 'height', str(WINDOW_HEIGHT))
 Config.set('graphics', 'resizable', '1')
 Config.set('graphics', 'position', 'auto')
 Config.set('graphics', 'multisampling', '2')
+Config.set('kivy', 'exit_on_escape', '0')
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 
 from kivy.graphics import Color, Rectangle, Ellipse
@@ -29,6 +30,7 @@ from assets.Tiles.map_loader import KivyTiledMap
 from menu.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
 from menu.screen import SplashScreen
 from menu.camera import Camera
+from menu.pause import PauseMenu
 
 class GameWidget(Widget): 
     def __init__(self, initial_data=None, **kwargs): 
@@ -61,6 +63,8 @@ class GameWidget(Widget):
         self.current_dialogue_index = 0  # ดัชนีข้อความปัจจุบัน
         self.current_character_name = ""  # ชื่อตัวละครที่กำลังคุย
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
+        self.is_paused = False
+        self.pause_menu = None
         
         # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
         self.dialogue_root = None
@@ -141,9 +145,10 @@ class GameWidget(Widget):
             self.heart_ui.update_position(self.width, self.height)
 
     def _on_keyboard_closed(self): 
-        self._keyboard.unbind(on_key_down=self._on_key_down)  
-        self._keyboard.unbind(on_key_up=self._on_key_up) 
-        self._keyboard = None 
+        if self._keyboard:
+            self._keyboard.unbind(on_key_down=self._on_key_down)  
+            self._keyboard.unbind(on_key_up=self._on_key_up) 
+            self._keyboard = None 
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         key_name = keycode[1]
@@ -159,8 +164,12 @@ class GameWidget(Widget):
             # ถ้ากำลังคุยอยู่ ให้ไปข้อความถัดไป
             if self.is_dialogue_active:
                 self.next_dialogue()
+        elif key_name == 'escape':
+            self.toggle_pause()
+            return True
 
         self.pressed_keys.add(key_name)
+        return True
         
     def _on_key_up(self, keyboard, keycode): 
         key_name = keycode[1] 
@@ -170,9 +179,8 @@ class GameWidget(Widget):
     def move_step(self, dt):
         self.update_camera()
         
-        # ถ้ากำลังคุยอยู่ ให้หยุดการอัปเดตเกม
-        if self.is_dialogue_active:
-            # ไม่มี timer แล้ว ต้องกด Enter เพื่อไปข้อต่อไป
+        # ถ้ากำลังคุยหรือพักเกมอยู่ ให้หยุดการอัปเดตเกม
+        if self.is_dialogue_active or self.is_paused:
             return
         
         # อัปเดต Debug Label แสดงข้อมูลโดยรวมแบบบรรทัดเดียวแต่จัดให้เป็นระเบียบ
@@ -236,6 +244,86 @@ class GameWidget(Widget):
                 self.enemies.remove(enemy) # ลบตรรกะศัตรูออกจากระบบ
                 self.heart_ui.take_damage() # ลดเลือดผู้เล่น
                 print(f"Enemy {enemy.id} attacked player and was removed!")
+
+    def toggle_pause(self):
+        """Toggle pause state and show/hide pause menu."""
+        if self.is_paused:
+            self.resume_game()
+        else:
+            self.pause_game()
+
+    def pause_game(self):
+        """หยุดเกมและแสดงเมนู"""
+        if self.is_paused: return
+        self.is_paused = True
+        
+        # เคลียร์ปุ่มที่ค้างอยู่ป้องกันตัวละครเดินค้างเมื่อพักเกม
+        self.pressed_keys.clear()
+        
+        # สร้างเมนู Pause
+        self.pause_menu = PauseMenu(
+            resume_cb=self.resume_game,
+            load_cb=self.load_game_from_pause,
+            menu_cb=self.return_to_main_menu,
+            exit_cb=self.exit_game
+        )
+        # นำไปแปะที่ป้ายบนสุด (dialogue_root คือ FloatLayout ของ App)
+        if self.dialogue_root:
+            self.dialogue_root.add_widget(self.pause_menu)
+
+    def resume_game(self):
+        """กลับเข้าสู่เกม"""
+        if not self.is_paused: return
+        self.is_paused = False
+        
+        if self.pause_menu:
+            self.pause_menu.close()
+            self.pause_menu = None
+            
+        # ขอคีย์บอร์ดกลับมาให้ GameWidget (ฟังก์ชันนี้มีการเคลียร์ปุ่มค้างให้แล้ว)
+        self.request_keyboard_back()
+
+    def load_game_from_pause(self):
+        """เปิดหน้าจอโหลดเซฟจากเมนู Pause"""
+        load_screen = SaveLoadScreen(
+            mode="LOAD", 
+            callback=self._on_pause_load_selected
+        )
+        if self.dialogue_root:
+            self.dialogue_root.add_widget(load_screen)
+
+    def _on_pause_load_selected(self, slot_id, load_screen=None):
+        import json
+        save_path = f'saves/slot_{slot_id}.json'
+        if os.path.exists(save_path):
+            with open(save_path, 'r') as f:
+                data = json.load(f)
+            
+            # ปิดเมนูและหน้าจอโหลด
+            if load_screen: load_screen.close()
+            self.resume_game()
+            
+            # รีเซ็ตเกมด้วยข้อมูลใหม่ (เรียก show_game ของ App)
+            app = App.get_running_app()
+            app.show_game(initial_data=data)
+
+    def return_to_main_menu(self):
+        """กลับไปหน้าจอหลัก (Title Screen)"""
+        self.resume_game()
+        app = App.get_running_app()
+        app.root.clear_widgets()
+        
+        # สร้าง SplashScreen ใหม่
+        from menu.screen import SplashScreen
+        splash = SplashScreen(
+            SPLASH_COVER_IMG,
+            app.show_game
+        )
+        app.root.add_widget(splash)
+
+    def exit_game(self):
+        """ออกจากเกม"""
+        Window.close()
                     
     def update_interaction_hints(self):
         """อัปเดตปุ่ม E สำหรับ NPC ที่อยู่ใกล้"""
@@ -683,7 +771,17 @@ class MyApp(App):
         Window.bind(on_key_down=self._on_window_key_down)
 
     def _on_window_key_down(self, window, key, scancode, codepoint, modifiers):
-        # 292 คือ keycode ของ F11
+        # 292 คือ keycode ของ F11, 27 คือ keycode ของ Escape
+        if key == 27:
+            # ตรวจสอบว่ามี GameWidget อยู่ใน root หรือไม่
+            has_game = any(isinstance(c, GameWidget) for c in self.root.children)
+            if not has_game:
+                # ถ้าอยู่หน้า SplashScreen (หน้าแรก) ให้ปิดโปรแกรมทันที
+                Window.close()
+                return True
+            # ถ้าอยู่ในเกม ให้ส่งต่อ (Return False) เพื่อให้ GameWidget หรือหน้าจออื่นจัดการเปิด Pause Menu
+            return False
+        
         if key == 292:
             print("F11 detected (Global) - toggling fullscreen")
             if Window.fullscreen:
