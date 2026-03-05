@@ -75,10 +75,6 @@ class Enemy:
         """Create the Kivy canvas instructions for the enemy."""
         self.group = InstructionGroup()
         
-        # DEBUG: Hitbox
-        self.group.add(Color(1, 1, 0, 0.3))
-        self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
-        self.group.add(self.debug_rect)
         
         # Sprite appearance
         if self.idle_texture:
@@ -212,8 +208,7 @@ class Enemy:
         offset_y = TILE_SIZE / 2
         self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
         
-        # อัปเดตกรอบเช็คการชน (Hitbox) สีเหลืองตามการเดินให้เห็นชัดๆ ว่าแค่ 1 ช่อง
-        self.debug_rect.pos = self.logic_pos
+        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
         
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False

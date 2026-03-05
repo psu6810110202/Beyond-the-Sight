@@ -49,6 +49,14 @@ def handle_choice_selection(game, choice):
             game.current_star_target.destroy()
             
             # อัปเดตเควส
+            if hasattr(game, 'current_star_target') and hasattr(game.current_star_target, 'is_true'):
+                if game.current_star_target.is_true:
+                    game.quest_success_count += 1
+                else:
+                    # ถ้าเก็บของปลอม (False) ให้ถือว่าเควสไม่สมบูรณ์ 100% 
+                    # ลดแต้มความสำเร็จลงเพื่อให้รวมแล้วไม่ถึง target_count (3)
+                    game.quest_success_count -= 100 # ส่งผลลบมหาศาลเพื่อให้ไม่ผ่าน
+            
             game.quest_manager.update_quest_progress("doll_parts", 1)
             
             # เช็คว่าครบหรือยัง

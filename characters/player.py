@@ -7,8 +7,8 @@ class Player:
     def __init__(self, canvas):
         self.canvas = canvas
         self.is_moving = False
-        start_x = (1152 // TILE_SIZE) * TILE_SIZE
-        start_y = (80 // TILE_SIZE) * TILE_SIZE
+        start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
+        start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
         self.target_pos = [start_x, start_y]
         self.logic_pos = [start_x, start_y]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
         self.current_speed = WALK_SPEED
@@ -53,10 +53,6 @@ class Player:
         # สร้าง InstructionGroup เพื่อจัดการการวาดแบบแยกส่วน (สำหรับ Y-sorting)
         self.group = InstructionGroup()
         
-        # DEBUG: Hitbox
-        self.group.add(Color(1, 1, 0, 0.3))
-        self.debug_rect = Rectangle(pos=self.logic_pos, size=(TILE_SIZE, TILE_SIZE))
-        self.group.add(self.debug_rect)
         
         self.group.add(Color(1, 1, 1, 1))
         # จุดเกิดตอนแรก
@@ -283,7 +279,6 @@ class Player:
         offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
         offset_y = TILE_SIZE / 2
         self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
-        self.debug_rect.pos = self.logic_pos
 
     def interact(self, npcs, reaper):
         """

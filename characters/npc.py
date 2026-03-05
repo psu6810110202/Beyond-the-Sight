@@ -33,6 +33,7 @@ class NPC:
         else:
             self.x = x
             self.y = y
+        self.logic_pos = [self.x, self.y]
         
         # กำหนด spritesheet สำหรับแต่ละ NPC
         if 'NPC1' in self.image_path:
@@ -114,10 +115,6 @@ class NPC:
         # Create visual elements in an InstructionGroup for sorting
         self.group = InstructionGroup()
         
-        # DEBUG: Hitbox
-        self.group.add(Color(1, 1, 0, 0.3))
-        self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
-        self.group.add(self.debug_rect)
         
         if self.idle_texture:
             self.group.add(Color(1, 1, 1, 1))

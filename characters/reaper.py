@@ -16,6 +16,7 @@ class Reaper:
         self.canvas = canvas
         self.x = x if x is not None else REAPER_START_POS[0]
         self.y = y if y is not None else REAPER_START_POS[1]
+        self.logic_pos = [self.x, self.y]
         
         # Appearance configuration
         self.image_path = REAPER_IMG
@@ -74,10 +75,6 @@ class Reaper:
         )
         self.group.add(self.protection_circle)
 
-        # DEBUG: Hitbox visualization
-        self.group.add(Color(1, 1, 0, 0.2))
-        self.debug_rect = Rectangle(pos=(self.x, self.y), size=(TILE_SIZE, TILE_SIZE))
-        self.group.add(self.debug_rect)
         
         # Main sprite
         if self.idle_texture:
@@ -148,6 +145,7 @@ class Reaper:
         else:
             self.x += (dx / dist) * self.speed
             self.y += (dy / dist) * self.speed
+        self.logic_pos = [self.x, self.y]
     
     def update_visual_positions(self):
         """Syncs the Kivy graphics positions with logic coordinates."""
@@ -155,9 +153,6 @@ class Reaper:
         offset_y = TILE_SIZE / 2
         
         self.rect.pos = (self.x + offset_x, self.y + offset_y)
-        
-        # อัปเดต Debug Hitbox สีเหลือง
-        self.debug_rect.pos = (self.x, self.y)
         
         # Center protection circle on the reaper's logic position
         self.protection_circle.pos = (

@@ -25,7 +25,26 @@ STORY_CONFIG = {
             }
         ]
     },
-    # สามารถเพิ่ม Day 2, Day 3 ต่อได้ที่นี่
+    2: {
+        "name": "Day 2",
+        "visible_npcs": [1], # แสดง NPC2 (Index 1) แทน NPC1
+        "warning_triggers": []
+    },
+    3: {
+        "name": "Day 3",
+        "visible_npcs": [2],
+        "warning_triggers": []
+    },
+    4: {
+        "name": "Day 4",
+        "visible_npcs": [3],
+        "warning_triggers": []
+    },
+    5: {
+        "name": "Day 5",
+        "visible_npcs": [4],
+        "warning_triggers": []
+    }
 }
 
 def get_day_config(day):

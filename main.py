@@ -37,6 +37,7 @@ from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, INTRO_DIALOGUE, WARN
 from storygame.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
 from storygame.story import is_npc_visible, check_story_triggers # นำเข้าตรรกะเนื้อเรื่อง
 from storygame.quest import QuestManager # นำเข้าหน้าจอกองเควส
+from storygame.dialogue_manager import DialogueManager # นำเข้า Dialogue Manager มารวมศูนย์ UI
 from items.star import Star # นำเข้า Star
 
 class GameWidget(Widget): 
@@ -55,6 +56,9 @@ class GameWidget(Widget):
         
         # ระบบเวลาเล่น (Play Time)
         self.play_time = initial_data.get('play_time', 0) if initial_data else 0
+        
+        # เก็บค่าความสำเร็จของเควส (มีผลต่อฉากจบ)
+        self.quest_success_count = initial_data.get('quest_success_count', 0) if initial_data else 0
 
         # Setup Camera
         self.camera = Camera(self.canvas.before)
@@ -70,24 +74,29 @@ class GameWidget(Widget):
         )
         self.debug_label.bind(size=self.debug_label.setter('text_size'))
 
-        # สร้าง UI สำหรับแสดงข้อความคุย
-        self.dialogue_text = None
-        self.dialogue_bg = None
+        # ระบบจัดการ UI บทสนทนา
+        self.dialogue_manager = DialogueManager(self)
         self.dialogue_timer = 0
-        self.is_dialogue_active = False  # เพิ่มสถานะการคุย
-        self.current_dialogue_queue = []  # คิวข้อความสำหรับการคุยแบบหลายบรรทัด
-        self.current_dialogue_index = 0  # ดัชนีข้อความปัจจุบัน
-        self.current_character_name = ""  # ชื่อตัวละครที่กำลังคุย
-        self.current_choices = []        # เก็บรายการ Choice ปัจจุบัน
-        self.name_label = None           # Label สำหรับแสดงชื่อโดยเฉพาะ
-        self.choice_layout = None        # Widget ที่เก็บปุ่มทางเลือก
-        self.choice_buttons = []         # ลิสต์เก็บปุ่มทางเลือก
-        self.choice_index = 0            # ดัชนีตัวเลือกที่ถูกเลือกอยู่
+        self.is_dialogue_active = False
+        self.current_dialogue_queue = []
+        self.current_dialogue_index = 0
+        self.current_character_name = ""
+        self.current_choices = []
+        self.choice_layout = None
+        self.choice_buttons = []
+        self.choice_index = 0
+        
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
         self.stars = []             # เก็บวัตถุดาว (Day 1)
         self.current_star_target = None # เก็บดาวที่กำลังสำรวจ
         self.is_paused = False
         self.pause_menu = None
+        
+        # Cutscene states
+        self.is_cutscene_active = False
+        self.cutscene_timer = 0
+        self.cutscene_step = 0
+        self.black_overlay = None
         
         # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
         self.dialogue_root = None
@@ -215,9 +224,7 @@ class GameWidget(Widget):
         
         if key_name == 'e':
             print("E key detected - checking interaction")
-            # ตรวจสอบว่า Player อยู่ใกล้ NPC หรือ Star หรือไม่
-            if not self.check_star_interaction():
-                self.check_npc_interaction()
+            self.interact()
         elif key_name == 'enter':
             print("Enter key detected - next dialogue")
             # ถ้ากำลังคุยอยู่
@@ -258,7 +265,9 @@ class GameWidget(Widget):
 
     def move_step(self, dt):
         # 1. จัดการตรรกะเกม (Logic) - ทำงานเฉพาะเมื่อไม่ได้คุยหรือหยุดเกม
-        if not (self.is_dialogue_active or self.is_paused):
+        if self.is_cutscene_active:
+            self.update_cutscene(dt)
+        elif not (self.is_dialogue_active or self.is_paused):
             self.play_time += dt
             
             # การเคลื่อนที่ของตัวละคร
@@ -284,22 +293,34 @@ class GameWidget(Widget):
 
             if not hasattr(self, 'reaper_collision_cooldown'):
                 self.reaper_collision_cooldown = 0
-            if self.reaper_collision_cooldown > 0:
-                self.reaper_collision_cooldown -= dt
             
-            # อัปเดตปุ่ม E
+            # อัปเดต NPC
+            for npc in self.npcs:
+                npc.update(dt)
+                
+            # เช็คการโต้ตอบ (Interactive Hints)
             self.update_interaction_hints()
+            
+            # เช็คพื้นที่อันตราย (Story Triggers)
+            check_story_triggers(self)
         else:
             # ถ้าอยู่ในโหมดคุย/หยุดเกม ให้ตรวจสอบเพื่อล้าง Hint ที่อาจค้างอยู่
             if self.interaction_hints:
                 self.update_interaction_hints()
 
-        # 2. กราฟิกที่ต้องอัปเดตเสมอทุกลูกเฟรมเพื่อให้ภาพลื่นไหลและ Sync กับตำแหน่งล่าสุด
+        # 2. กราฟิกที่ต้องอัปเดตเสมอทุกลูกเฟรม
         px, py = self.player.logic_pos
         self.update_camera()
         self.game_map.update_chunks(px, py)
         
         # อัปเดต Debug Label
+        self._update_debug_text(px, py)
+        
+        # จัดเลเยอร์การวาดตัวละคร (Y-Sorting)
+        self.y_sorting()
+
+    def _update_debug_text(self, px, py):
+        """อัปเดตข้อมูล Debug ที่มุมจอ"""
         grid_x, grid_y = px // TILE_SIZE, py // TILE_SIZE
         chunk_x, chunk_y = grid_x // 16, grid_y // 16
         self.debug_label.text = (
@@ -308,81 +329,316 @@ class GameWidget(Widget):
             f"Grid: ({grid_x}, {grid_y})\n"
             f"Chunk: ({chunk_x}, {chunk_y})"
         )
-        
-        # จัดเลเยอร์การวาดตัวละคร (Y-Sorting) เสมอ
-        self.y_sorting()
 
     def y_sorting(self):
         """จัดลำดับการวาดตัวละครตามค่า Y (Y-Sorting)"""
-        # หากกำลังคุยอยู่ และตัวละครไม่ขยับ (is_moving = False)
-        # เราไม่จำเป็นต้องลำดับใหม่ทุกลูกเฟรมเพื่อลดการกระพริบ (Blinking)
         if self.is_dialogue_active and not self.player.is_moving:
             return
 
-        # รวบรวมตัวละครและวัตถุทั้งหมดที่มีชีวิตอยู่
         sortable_chars = [self.player, self.reaper] + self.npcs + self.enemies + self.stars
-
-        # เรียงลำดับจาก Y มากไปน้อย (Kivy Y เริ่มจากล่างขึ้นบน ดังนั้น Y มากคืออยู่หลัง)
-        # เราใช้จุดเท้าในการตัดสิน และให้ Player มีลำดับความสำคัญสูงกว่าเล็กน้อยเมื่อยืนระนาบเดียวกัน (X-axis)
+        
         def get_sort_y(char):
             base_y = char.y if hasattr(char, 'y') else char.logic_pos[1]
-            # ถ้าเป็น Player ให้ลบนิดหน่อยเพื่อให้ถูกจัดไว้ทีหลัง (บนสุด) เมื่อ Y เท่ากัน
             if char == self.player:
                 return base_y - 0.1
             return base_y
 
         sortable_chars.sort(key=get_sort_y, reverse=True)
-        
-        # ล้าง Layer แล้วใส่กลับเข้าไปใหม่ตามลำดับที่เรียงแล้ว
         self.sorting_layer.clear()
         for char in sortable_chars:
             if hasattr(char, 'group'):
                 self.sorting_layer.add(char.group)
 
-    def refresh_darkness(self):
-        """วาดหรือล้างหมอกสีดำปิดโซนอันตรายแบบไล่สี"""
-        if not hasattr(self, 'darkness_group') or self.darkness_group is None:
+    def update_camera(self):
+        """อัปเดตตำแหน่งกล้องตามผู้เล่น"""
+        self.camera.update(
+            self.width, self.height,
+            self.player.logic_pos,
+            self.game_map.width,
+            self.game_map.height
+        )
+
+    # ---------------------------------------------------------
+    # Interaction & Triggers
+    # ---------------------------------------------------------
+    def update_interaction_hints(self):
+        """จัดการแสดงผลปุ่ม [E] ขึ้นเหนือหัว NPC หรือไอเทม เมื่อเดินไปใกล้"""
+        # 1. ลบ Hint เก่าออกก่อนเสมอ (รวมถึงตอนกำลังคุยด้วยเพื่อไม่ให้ปุ่มค้าง)
+        for hint in self.interaction_hints:
+            if hint.parent:
+                hint.parent.remove_widget(hint)
+        self.interaction_hints = []
+        
+        # 2. ถ้ากำลังคุย, หยุดเกม หรืออยู่ใน Cutscene ไม่ต้องสร้าง Hint ใหม่
+        if self.is_dialogue_active or self.is_paused or self.is_cutscene_active:
             return
             
-        self.darkness_group.clear()
+        # 3. ค้นหาเป้าหมายที่อยู่ใกล้
+        targets = self.npcs + [self.reaper] + self.stars
+        self.current_star_target = None 
         
-        # แสดงโซนดำเฉพาะเมื่อยังไม่กด "I'll go"
-        if not self.warning_dismissed:
-            # 1. ตั้งค่าความเข้มหลัก
-            base_alpha = 0.4
-            fade_range = 160 # ระยะการไล่สี
+        # ระยะที่เริ่มเห็นปุ่ม (32 พิกเซล = 2 Tiles)
+        interaction_dist = 32 
+        
+        for tar in targets:
+            tx, ty = tar.logic_pos
+            px, py = self.player.logic_pos
+            dx, dy = tx - px, ty - py
+            dist = (dx**2 + dy**2)**0.5
             
-            # โซนอันตรายตามเนื้อเรื่อง Day 1 (อิง x=656 และ y=464)
-            if self.current_day == 1:
-                # จุดเริ่มความมืดที่แท้จริง (ถอยเข้าไปในโซนอันตรายเพื่อให้พื้นที่เดินได้สว่างไสว)
-                dark_x_start = 656 - fade_range
-                dark_y_start = 464 + fade_range
-                
-                # --- ส่วนที่ 1: พื้นที่มืด (Solid Blocks) - ถอยลึกเข้าไปข้างใน ---
-                self.darkness_group.add(Color(0, 0, 0, base_alpha))
-                # ปิดแมพทางด้านซ้ายสุด (ก่อนถึงจุดไล่สี)
-                self.darkness_group.add(Rectangle(pos=(0, 0), size=(dark_x_start, MAP_HEIGHT)))
-                # ปิดแมพทางด้านบนสุด (ก่อนถึงจุดไล่สี)
-                self.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start), size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)))
-                
-                # --- ส่วนที่ 2: การไล่สี (Gradient) - ไล่ให้จางหายสนิทที่จุด Trigger ---
-                fade_steps = 10
-                step_size = fade_range / fade_steps
-                
-                for i in range(fade_steps):
-                    # จะค่อยๆ จางลงเรื่อยๆ จนเป็น 0 (ใสสนิท) เมื่อถึงค่า 656 หรือ 464
-                    alpha = base_alpha * (1 - (i / fade_steps))
-                    self.darkness_group.add(Color(0, 0, 0, alpha))
-                    
-                    # ไล่สีจากซ้ายมาขวา (จะจางหายสนิทที่ x=656 พอดี)
-                    self.darkness_group.add(Rectangle(pos=(dark_x_start + (i * step_size), 0), size=(step_size, dark_y_start)))
-                    
-                    # ไล่สีจากบนลงล่าง (จะจางหายสนิทที่ y=464 พอดี)
-                    self.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), size=(MAP_WIDTH - dark_x_start, step_size)))
+            # ตรรกะการหันหน้าเข้าหาเป้าหมาย
+            facing = False
+            p_dir = self.player.direction
+            # ตรวจสอบว่าทิศทางที่ผู้เล่นหันไปสัมพันธ์กับตำแหน่งเป้าหมายหรือไม่
+            if p_dir == 'up' and dy > 0 and abs(dy) >= abs(dx): facing = True
+            elif p_dir == 'down' and dy < 0 and abs(dy) >= abs(dx): facing = True
+            elif p_dir == 'left' and dx < 0 and abs(dx) >= abs(dy): facing = True
+            elif p_dir == 'right' and dx > 0 and abs(dx) >= abs(dy): facing = True
 
-            # รีเซ็ตสีกลับเป็นปกติ
-            self.darkness_group.add(Color(1, 1, 1, 1))
+            # ปรับระยะการตรวจสอบให้ต่างกัน: ของต้องอยู่ชิดกว่า (20px) ตัวละคร (32px)
+            is_star = isinstance(tar, Star)
+            limit = 20 if is_star else 32
+            
+            if dist < limit and facing:
+                if is_star:
+                    self.current_star_target = tar
+                    continue # ไม่ต้องวาดปุ่ม E สำหรับดวงดาวตามคำสั่งก่อนหน้า
+                
+                hint_text = "E"
+                box_width = 25
+                    
+                hint = Label(
+                    text=hint_text,
+                    font_name=GAME_FONT,
+                    font_size='12sp',
+                    color=(1, 1, 1, 1),
+                    size_hint=(None, None),
+                    size=(box_width, 25),
+                    halign='center',
+                    valign='middle',
+                    bold=True
+                )
+                
+                # ฟิกค่าให้ Label จัดข้อความตรงกลางจริงๆ 
+                # (Kivy ต้องการการผูก text_size กับ size เพื่อให้ halign/valign ทำงาน)
+                hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
+                
+                # พื้นหลังสีดำแบบปุ่มกด
+                with hint.canvas.before:
+                    Color(0, 0, 0, 0.8)
+                    hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
+                
+                def update_hint_bg(instance, value):
+                    instance.bg_rect.pos = instance.pos
+                    instance.bg_rect.size = instance.size
+                hint.bind(pos=update_hint_bg)
+                
+                # คำนวณตำแหน่งกึ่งกลางของเป้าหมายจริง (World Space)
+                target_center_x = tx + (TILE_SIZE / 2)
+                target_top_y = ty + 45
+                
+                # แปลงเป็นพิกัดหน้าจอ
+                spos = self.camera.world_to_screen(target_center_x, target_top_y)
+                
+                # วาง Hint โดยให้จุดกลางของ Hint (box_width/2) ตรงกับ spos[0]
+                hint.pos = (spos[0] - (box_width / 2), spos[1])
+                
+                if self.dialogue_root:
+                    self.dialogue_root.add_widget(hint)
+                self.interaction_hints.append(hint)
 
+    def interact(self):
+        """จัดการการกดปุ่ม [E] เพื่อคุยหรือสำรวจ"""
+        px, py = self.player.logic_pos
+        
+        # 1. เช็คเป้าหมายไอเทม (Stars)
+        # current_star_target จะถูกเซ็ตใน update_interaction_hints เฉพาะเมื่ออยู่ใกล้และหันหน้าเข้าหา
+        if self.current_star_target:
+            self.dialogue_manager.show_vn_dialogue("Curiosity", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"])
+            return
+
+        # 2. เช็คเป้าหมาย NPC / Reaper
+        targets = self.npcs + [self.reaper]
+        for npc_index, target in enumerate(targets):
+            tx, ty = target.logic_pos
+            dx, dy = tx - px, ty - py
+            dist = (dx**2 + dy**2)**0.5
+            
+            # ตรวจสอบว่าผู้เล่นหันหน้าเข้าหาเป้าหมายหรือไม่
+            facing = False
+            p_dir = self.player.direction
+            if p_dir == 'up' and dy > 0 and abs(dy) >= abs(dx): facing = True
+            elif p_dir == 'down' and dy < 0 and abs(dy) >= abs(dx): facing = True
+            elif p_dir == 'left' and dx < 0 and abs(dx) >= abs(dy): facing = True
+            elif p_dir == 'right' and dx > 0 and abs(dx) >= abs(dy): facing = True
+            
+            # ต้องอยู่ห่างไม่เกิน 32 พิกเซล และหันหน้าเข้าหา
+            if dist < 32 and facing:
+                self.process_interaction(target, npc_index, dx, dy)
+                return
+
+    def process_interaction(self, target, index, dx, dy):
+        """ประมวลผลการคุยกับ NPC หรือ Reaper"""
+        # หันหน้าเข้าหากัน
+        if abs(dx) > abs(dy):
+            if dx > 0:
+                target.direction = 'left'
+                self.player.direction = 'right'
+            else:
+                target.direction = 'right'
+                self.player.direction = 'left'
+        else:
+            if dy > 0:
+                target.direction = 'down'
+                self.player.direction = 'up'
+            else:
+                target.direction = 'up'
+                self.player.direction = 'down'
+        
+        target.update_frame()
+        self.player.update_frame()
+        
+        if isinstance(target, Reaper):
+            dialogue = self.get_reaper_dialogue(dx, dy)
+            self.show_dialogue_above_reaper(dialogue)
+        else:
+            # NPC
+            npc_name = "The Sad Soul" if index == 0 else f"NPC{index + 1}"
+            dialogue = self.get_proximity_dialogue(npc_name, dx, dy)
+            if dialogue:
+                self.show_dialogue_above_npc(target, dialogue)
+
+    # ---------------------------------------------------------
+    # Dialogue & Quest Logic
+    # ---------------------------------------------------------
+    def show_dialogue_above_npc(self, npc, dialogue):
+        """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        # คำนวณชื่อ NPC - ถ้าเป็นตัวแรก (index 0) ให้ชื่อ "The Sad Soul"
+        npc_name = "The Sad Soul" if self.npcs.index(npc) == 0 else f"NPC{self.npcs.index(npc) + 1}"
+        
+        # ตั้งค่าคิวข้อความ
+        self.current_dialogue_queue = dialogue
+        self.current_dialogue_index = 0
+        self.current_character_name = npc_name
+        
+        # แสดงข้อความแรก
+        if self.current_dialogue_queue:
+            first_text = self.current_dialogue_queue[0]
+            self.dialogue_manager.show_vn_dialogue(npc_name, first_text)
+            
+    def show_dialogue_above_reaper(self, dialogue, choices=None):
+        """แสดงข้อความคุยของ Reaper สไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        # ตั้งค่าคิวข้อความ
+        self.current_dialogue_queue = dialogue
+        self.current_dialogue_index = 0
+        self.current_character_name = "Reaper"
+        self.current_choices = choices if choices else []
+        
+        # แสดงข้อความแรก
+        if self.current_dialogue_queue:
+            first_text = self.current_dialogue_queue[0]
+            # แสดง Choice เฉพาะเมื่ออยู่หน้าสุดท้าย
+            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
+            self.dialogue_manager.show_vn_dialogue("Reaper", first_text, choices=(self.current_choices if is_last else None))
+
+    def show_vn_dialogue(self, character_name, dialogue):
+        """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        self.dialogue_manager.show_vn_dialogue(character_name, dialogue)
+
+    def show_item_discovery(self, text, image_path=None):
+        """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ (Delegated)"""
+        self.dialogue_manager.show_item_discovery(text, image_path)
+        root = self.dialogue_root if self.dialogue_root else self
+        
+    def close_dialogue(self):
+        """ปิดกล่องข้อความคุยและคืนสถานะเกม"""
+        self.dialogue_manager.close_dialogue()
+
+        # จำสถานะ Choice ไว้ก่อนรีเซ็ต
+        last_character = self.current_character_name
+        has_choices = len(self.current_choices) > 0
+        
+        # คืนสถานะการคุย
+        self.is_dialogue_active = False
+        self.dialogue_timer = 0
+        self.current_dialogue_queue = []
+        self.current_dialogue_index = 0
+        self.current_character_name = ""
+        self.current_choices = []
+        
+        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ (ยกเว้นตอนที่เป็นการเตือนแบบมี Choice)
+        if last_character == "Reaper" and not has_choices:
+            self.show_save_screen()
+            
+        # ถ้าคุยกับ Angel จบ ให้ปิด Cutscene
+        if last_character == "Angel":
+            self.end_cutscene()
+            
+        # ถ้าคุยกับ NPC "The Sad Soul" จบ ให้เริ่มเควสและสร้างดาว
+        if last_character == "The Sad Soul":
+            quest = self.quest_manager.active_quests.get("doll_parts")
+            if not quest:
+                # เริ่มเควสครั้งแรก
+                self.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
+                self.create_stars() # ดาวจะโผล่มาหลังคุยจบ
+            elif quest.is_active and quest.current_count >= quest.target_count:
+                # ถ้าคุยจบหลังจากเก็บครบแล้ว ให้จบเควสจริงๆ
+                quest.is_active = False
+                self.quest_manager.show_quest_notification("COMPLETED: FIND DOLL PARTS")
+                self.quest_manager.update_quest_list_ui()
+                
+                # ลบ NPC1 (The Sad Soul) ออกจากฉากทันที
+                for npc in self.npcs[:]:
+                    if "NPC1" in npc.image_path:
+                        if hasattr(npc, 'group') and npc.group in self.sorting_layer.children:
+                            self.sorting_layer.remove(npc.group)
+                        self.npcs.remove(npc)
+                        break
+                
+                # เริ่ม Cutscene หลังจากจบเควส 2 วินาที
+                Clock.schedule_once(self.start_quest_complete_cutscene, 2.0)
+
+    def next_dialogue(self):
+        """ไปยังข้อความถัดไปในคิว"""
+        if self.current_choices and self.current_dialogue_index == len(self.current_dialogue_queue) - 1:
+            return
+
+        self.current_dialogue_index += 1
+        
+        if self.current_dialogue_index < len(self.current_dialogue_queue):
+            next_text = self.current_dialogue_queue[self.current_dialogue_index]
+            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
+            self.dialogue_manager.show_vn_dialogue(self.current_character_name, next_text, choices=(self.current_choices if is_last else None))
+        else:
+            self.close_dialogue()
+
+    def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
+        """คืนค่าลิสต์ข้อความคุยตามระยะห่างของ NPC"""
+        if npc_name == "The Sad Soul":
+            quest = self.quest_manager.active_quests.get("doll_parts")
+            if quest:
+                if quest.current_count >= quest.target_count:
+                    return ["Oh! You found them!", "My doll... it's whole again. Thank you so much!", "You really are a kind one."]
+                elif quest.is_active:
+                    return ["Were you able to find the pieces? It's still so dark..."]
+
+        if npc_name in NPC_DIALOGUES:
+            return NPC_DIALOGUES[npc_name]
+        return ["..."]
+
+    def get_reaper_dialogue(self, distance_x, distance_y):
+        """คืนค่าลิสต์ข้อความคุยของ Reaper"""
+        import random
+        selected_dialogues = random.sample(REAPER_DIALOGUES, min(3, len(REAPER_DIALOGUES)))
+        return selected_dialogues
+
+    def on_choice_selected(self, choice):
+        """จัดการเมื่อผู้เล่นเลือก Choice (เรียกใช้ตรรกะจาก choice.py)"""
+        handle_choice_selection(self, choice)
+
+    # ---------------------------------------------------------
+    # Game State Management (Pause, Save/Load)
+    # ---------------------------------------------------------
     def toggle_pause(self):
         """Toggle pause state and show/hide pause menu."""
         if self.is_paused:
@@ -405,9 +661,9 @@ class GameWidget(Widget):
             menu_cb=self.return_to_main_menu,
             exit_cb=self.exit_game
         )
-        # นำไปแปะที่ป้ายบนสุด (dialogue_root คือ FloatLayout ของ App)
+        # นำไปแปะที่ป้ายบนสุด (index=0 เพื่อให้อยู่หน้าสุดของทุกอย่าง)
         if self.dialogue_root:
-            self.dialogue_root.add_widget(self.pause_menu)
+            self.dialogue_root.add_widget(self.pause_menu, index=0)
 
     def resume_game(self):
         """กลับเข้าสู่เกม"""
@@ -419,6 +675,41 @@ class GameWidget(Widget):
             self.pause_menu = None
             
         # ขอคีย์บอร์ดกลับมาให้ GameWidget (ฟังก์ชันนี้มีการเคลียร์ปุ่มค้างให้แล้ว)
+        self.request_keyboard_back()
+
+    def show_save_screen(self):
+        """เปิดหน้าจอเลือกสล็อตเพื่อเซฟเกม"""
+        save_screen = SaveLoadScreen(
+            mode="SAVE",
+            callback=self.on_save_confirmed
+        )
+        if self.dialogue_root:
+            self.dialogue_root.add_widget(save_screen)
+
+    def on_save_confirmed(self, slot_id, save_screen=None):
+        if not os.path.exists('saves'):
+            os.makedirs('saves')
+            
+        import json
+        save_data = {
+            "day": self.current_day, 
+            "heart": self.heart_ui.current_health,
+            "destroyed_enemies": self.destroyed_enemies,
+            "collected_stars": self.collected_stars,
+            "quests": self.quest_manager.to_dict(),
+            "play_time": self.play_time,
+            "quest_success_count": self.quest_success_count,
+            "warning_dismissed": self.warning_dismissed
+        }
+        
+        file_path = f'saves/slot_{slot_id}.json'
+        with open(file_path, 'w') as f:
+            json.dump(save_data, f)
+            
+        if save_screen:
+            save_screen.close()
+        
+        self.is_dialogue_active = False
         self.request_keyboard_back()
 
     def load_game_from_pause(self):
@@ -463,69 +754,9 @@ class GameWidget(Widget):
         """ออกจากเกม"""
         Window.close()
                     
-    def update_interaction_hints(self):
-        """อัปเดตปุ่ม E สำหรับ NPC และ Reaper ที่อยู่ใกล้"""
-        # ลบปุ่ม E เก่าทั้งหมด
-        for hint in self.interaction_hints:
-            if hasattr(hint, 'parent') and hint.parent:
-                hint.parent.remove_widget(hint)
-            else:
-                try: self.canvas.remove(hint)
-                except: pass
-        self.interaction_hints.clear()
-        
-        # หากกำลังคุยอยู่ ไม่ต้องแสดงปุ่ม Hint
-        if self.is_dialogue_active:
-            return
-
-        player_pos = self.player.logic_pos
-        player_cx, player_cy = player_pos[0] + TILE_SIZE/2, player_pos[1] + TILE_SIZE/2
-
-        # 1. ตรวจสอบ NPC
-        for i, npc in enumerate(self.npcs):
-            npc_cx, npc_cy = npc.x + TILE_SIZE/2, npc.y + TILE_SIZE/2
-            dist_x, dist_y = abs(player_cx - npc_cx), abs(player_cy - npc_cy)
-            
-            if (dist_x <= 4 and dist_y <= TILE_SIZE + 2) or (dist_y <= 4 and dist_x <= TILE_SIZE + 2):
-                self._add_interaction_hint(npc.x + NPC_WIDTH/2, npc.y + NPC_HEIGHT + 40)
-        
-        # 2. ตรวจสอบ Reaper
-        reaper_cx, reaper_cy = self.reaper.x + TILE_SIZE/2, self.reaper.y + TILE_SIZE/2
-        rdist_x, rdist_y = abs(player_cx - reaper_cx), abs(player_cy - reaper_cy)
-        
-        if (rdist_x <= 4 and rdist_y <= TILE_SIZE + 2) or (rdist_y <= 4 and rdist_x <= TILE_SIZE + 2):
-            self._add_interaction_hint(self.reaper.x + REAPER_WIDTH/2, self.reaper.y + REAPER_HEIGHT + 40)
-
-    def _add_interaction_hint(self, x, y):
-        """สร้างกราฟิกปุ่ม E เหนือตัวละคร"""
-        size = (10, 10)
-        off_x, off_y = int(x - size[0]/2), int(y)
-        
-        with self.canvas:
-            # 1. วาดพื้นหลังปุ่ม (สีดำ Opacity 50% และมุมมน)
-            Color(0, 0, 0, 0.5)
-            # radius=[2] หมายถึงความมนของมุม 2 พิกเซล
-            hint_bg = RoundedRectangle(pos=(off_x, off_y), size=size, radius=[2])
-            self.interaction_hints.append(hint_bg)
-            
-            # 2. วาดตัวอักษร E (สีขาว คมชัดพรีเมียม)
-            # สร้าง Label ชั่วคราวขนาดใหญ่เพื่อให้ได้ Font ที่สวยงาม
-            temp_label = Label(text="E", font_name=GAME_FONT, font_size=40, color=(1, 1, 1, 1))
-            temp_label.texture_update()
-            text_tex = temp_label.texture
-            
-            # คำนวณขนาดโดยรักษา Aspect Ratio
-            tw, th = text_tex.size
-            max_inner = 7.0
-            scale = min(max_inner / tw, max_inner / th)
-            draw_w, draw_h = tw * scale, th * scale
-            
-            # จัดตำแหน่งกึ่งกลางในปุ่ม
-            text_pos = (off_x + (size[0] - draw_w)/2, off_y + (size[1] - draw_h)/2)
-            
-            hint_text_rect = Rectangle(texture=text_tex, size=(draw_w, draw_h), pos=text_pos)
-            self.interaction_hints.append(hint_text_rect)
-                
+    # ---------------------------------------------------------
+    # Entity Creation & Management
+    # ---------------------------------------------------------
     def create_npcs(self):
         # สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน settings.py
         for i in range(min(NPC_COUNT, len(NPC_IMAGE_LIST))):
@@ -555,408 +786,192 @@ class GameWidget(Widget):
         if self.current_day != 1:
             return
             
-        for x, y in STAR_SPAWN_LOCATIONS:
+        for i, (x, y) in enumerate(STAR_SPAWN_LOCATIONS):
             # ตรวจสอบว่าดาวจุดนี้ถูกเก็บไปแล้วหรือยัง (ทั้งแบบ list และ tuple)
             if [x, y] in self.collected_stars or (x, y) in self.collected_stars:
                 continue
-            star = Star(self.sorting_layer, x, y)
+            
+            # กำหนดว่าดวงไหนเป็นของที่ใช่ (True) หรือของหลอก (False)
+            # ตัวอย่าง: 3 ดวงแรกเป็นของจริง ดวงที่เหลือเป็นของหลอก
+            is_true = (i < 3)
+            
+            star = Star(self.sorting_layer, x, y, is_true=is_true)
             self.stars.append(star)
 
-    def check_star_interaction(self):
-        """ตรวจสอบการ Interact กับดาว"""
-        px, py = self.player.logic_pos
-        for star in self.stars:
-            dist_x = abs(px - star.x)
-            dist_y = abs(py - star.y)
-            if dist_x <= TILE_SIZE and dist_y <= TILE_SIZE:
-                # ตั้งเป้าหมายเป็นดาวดวงนี้
-                self.current_star_target = star
-                # แสดง Choice พร้อมชื่อ Little girl
-                self._draw_vn_dialogue_box("Little girl", "Found a part of the doll. Pick it up?", choices=["PICK UP", "LEAVE IT"])
-                return True
-        return False
-    
-    def check_npc_interaction(self):
-        """ตรวจสอบว่า Player อยู่ใกล้ NPC หรือ Reaper และแสดงข้อความคุย"""
-        target, target_type, npc_index, dist_x, dist_y = self.player.interact(self.npcs, self.reaper)
-        
-        if not target:
-            print("ไม่มี NPC หรือ Reaper อยู่ใกล้ๆ")
+    # ---------------------------------------------------------
+    # Visual Effects
+    # ---------------------------------------------------------
+    def refresh_darkness(self):
+        """วาดหรือล้างหมอกสีดำปิดโซนอันตรายแบบไล่สี"""
+        if not hasattr(self, 'darkness_group') or self.darkness_group is None:
             return
-
-        # คำนวณตำแหน่งกึ่งกลางเพื่อหันหน้า
-        player_pos = self.player.logic_pos
-        player_center_x = player_pos[0] + TILE_SIZE / 2
-        player_center_y = player_pos[1] + TILE_SIZE / 2
+            
+        self.darkness_group.clear()
         
-        target_center_x = target.x + (getattr(target, 'width', TILE_SIZE) - TILE_SIZE) / 2
-        target_center_y = target.y + (getattr(target, 'height', TILE_SIZE) - TILE_SIZE) / 2
+        # แสดงโซนดำเฉพาะเมื่อยังไม่กด "I'll go"
+        if not self.warning_dismissed:
+            # 1. ตั้งค่าความเข้มหลัก
+            base_alpha = 0.4
+            fade_range = 160 # ระยะการไล่สี
+            
+            # โซนอันตรายตามเนื้อเรื่อง Day 1 (อิง x=656 และ y=464)
+            if self.current_day == 1:
+                # จุดเริ่มความมืดที่แท้จริง (ถอยเข้าไปในโซนอันตรายเพื่อให้พื้นที่เดินได้สว่างไสว)
+                dark_x_start = 656 - fade_range
+                dark_y_start = 464 + fade_range
+                
+                # --- ส่วนที่ 1: พื้นที่มืด (Solid Blocks) - ถอยลึกเข้าไปข้างใน ---
+                self.darkness_group.add(Color(0, 0, 0, base_alpha))
+                # ปิดแมพทางด้านซ้ายสุด (ก่อนถึงจุดไล่สี)
+                self.darkness_group.add(Rectangle(pos=(0, 0), size=(dark_x_start, MAP_HEIGHT)))
+                # ปิดแมพทางด้านบนสุด (ก่อนถึงจุดไล่สี)
+                self.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start), size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)))
+                
+                # --- ส่วนที่ 2: การไล่สี (Gradient) - ไล่ให้จางหายสนิทที่จุด Trigger ---
+                fade_steps = 10
+                step_size = fade_range / fade_steps
+                
+                for i in range(fade_steps):
+                    # จะค่อยๆ จางลงเรื่อยๆ จนเป็น 0 (ใสสนิท) เมื่อถึงค่า 656 หรือ 464
+                    alpha = base_alpha * (1 - (i / fade_steps))
+                    self.darkness_group.add(Color(0, 0, 0, alpha))
+                    
+                    # ไล่สีจากซ้ายมาขวา (จะจางหายสนิทที่ x=656 พอดี)
+                    self.darkness_group.add(Rectangle(pos=(dark_x_start + (i * step_size), 0), size=(step_size, dark_y_start)))
+                    
+                    # ไล่สีจากบนลงล่าง (จะจางหายสนิทที่ y=464 พอดี)
+                    self.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), size=(MAP_WIDTH - dark_x_start, step_size)))
 
-        # 1. จัดการ Reaper
-        if target_type == "reaper":
-            if dist_x > dist_y:
-                if player_center_x > target_center_x:
-                    self.reaper.direction = 'right'
-                    self.player.direction = 'left'
-                else:
-                    self.reaper.direction = 'left'
-                    self.player.direction = 'right'
-            else:
-                if player_center_y > target_center_y:
-                    self.reaper.direction = 'up'
-                    self.player.direction = 'down'
-                else:
-                    self.reaper.direction = 'down'
-                    self.player.direction = 'up'
-            
-            self.reaper.frame_index = 0
-            self.reaper.update_frame()
-            self.player.update_frame()
-            
-            dialogue = self.get_reaper_dialogue(dist_x, dist_y)
-            if dialogue:
-                self.show_dialogue_above_reaper(dialogue)
+            # รีเซ็ตสีกลับเป็นปกติ
+            self.darkness_group.add(Color(1, 1, 1, 1))
 
-        # 2. จัดการ NPC
-        elif target_type == "npc":
-            if dist_x > dist_y:
-                if player_center_x > target_center_x:
-                    target.direction = 'right'
-                    self.player.direction = 'left'
-                else:
-                    target.direction = 'left'
-                    self.player.direction = 'right'
-            else:
-                if player_center_y > target_center_y:
-                    target.direction = 'up'
-                    self.player.direction = 'down'
-                else:
-                    target.direction = 'down'
-                    self.player.direction = 'up'
-            
-            target.frame_index = 0
-            target.update_frame()
-            self.player.update_frame()
-            
-            npc_name = "The Sad Soul" if npc_index == 0 else f"NPC{npc_index + 1}"
-            dialogue = self.get_proximity_dialogue(npc_name, dist_x, dist_y)
-            if dialogue:
-                self.show_dialogue_above_npc(target, dialogue)
-    
-    def show_dialogue_above_npc(self, npc, dialogue):
-        """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        # คำนวณชื่อ NPC - ถ้าเป็นตัวแรก (index 0) ให้ชื่อ "The Sad Soul"
-        npc_name = "The Sad Soul" if self.npcs.index(npc) == 0 else f"NPC{self.npcs.index(npc) + 1}"
+    # ---------------------------------------------------------
+    # Cutscenes Logic
+    # ---------------------------------------------------------
+    def start_quest_complete_cutscene(self, dt):
+        """เริ่มลำดับ Cutscene เมื่อจบเควส"""
+        self.is_cutscene_active = True
+        self.cutscene_step = 1 # ขั้นตอนเดินออกจากจอ
+        self.camera.locked = True # ล็อกกล้องให้อยู่กับที่
         
-        # ตั้งค่าคิวข้อความ
-        self.current_dialogue_queue = dialogue
-        self.current_dialogue_index = 0
-        self.current_character_name = npc_name
-        
-        # แสดงข้อความแรก
-        if self.current_dialogue_queue:
-            first_text = self.current_dialogue_queue[0]
-            self._draw_vn_dialogue_box(npc_name, first_text)
+    def update_cutscene(self, dt):
+        """จัดการลำดับของ Cutscene"""
+        if self.cutscene_step == 1:
+            # ตัวละครเดินไปทางขวาเอง
+            keys = {'right'}
+            self.player.current_speed = WALK_SPEED
+            # ไม่เช็คชนกับอะไรทั้งสิ้นเพื่อให้เดินออกจากจอได้แน่นอน
+            self.player.move(keys)
             
-    def show_dialogue_above_reaper(self, dialogue, choices=None):
-        """แสดงข้อความคุยของ Reaper สไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        # ตั้งค่าคิวข้อความ
-        self.current_dialogue_queue = dialogue
-        self.current_dialogue_index = 0
-        self.current_character_name = "Reaper"
-        self.current_choices = choices if choices else []
-        
-        # แสดงข้อความแรก
-        if self.current_dialogue_queue:
-            first_text = self.current_dialogue_queue[0]
-            # แสดง Choice เฉพาะเมื่ออยู่หน้าสุดท้าย
-            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
-            self._draw_vn_dialogue_box("Reaper", first_text, choices=(self.current_choices if is_last else None))
+            # ตรวจสอบว่าออกจากจองหรือยัง (คำนวณจากตำแหน่งกล้องที่ล็อกไว้)
+            # ดึงตำแหน่งกล้องจริงจาก Translate (ติดลบเพราะเป็นจุดศูนย์กลาง)
+            cam_x = -self.camera.trans_pos.x
+            viewport_w = CAMERA_WIDTH 
+            right_edge = cam_x + (viewport_w / 2)
+            
+            if self.player.logic_pos[0] > right_edge:
+                self.cutscene_step = 2
+                self.show_black_screen_transition()
 
-    def show_vn_dialogue(self, character_name, dialogue):
-        """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        self._draw_vn_dialogue_box(character_name, dialogue)
-
-    def show_item_discovery(self, text, image_path=None):
-        """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ"""
+    def show_black_screen_transition(self):
+        """แสดงฉากสีดำและบทสนทนาของ Angel"""
         root = self.dialogue_root if self.dialogue_root else self
         
-        # สร้าง Layout เป็นแถบยาว (Banner) กลางจอ
-        notif_banner = FloatLayout(size_hint=(1, 0.3), pos_hint={'center_x': 0.5, 'center_y': 0.55})
+        # 1. สร้างพื้นหลังสีดำทับทั้งจอ
+        from kivy.uix.widget import Widget
+        from kivy.graphics import Color, Rectangle
         
-        with notif_banner.canvas.before:
-            # พื้นหลังแถบดำจางๆ
-            Color(0, 0, 0, 0.75)
-            self.banner_rect = Rectangle(size=notif_banner.size, pos=notif_banner.pos)
-            # เส้นขอบบน/ล่างเพิ่มความพรีเมียม
-            Color(1, 1, 1, 0.1)
-            self.line_top = Line(points=[0, 0, 0, 0], width=1)
-            self.line_bottom = Line(points=[0, 0, 0, 0], width=1)
+        self.black_overlay = Widget(size_hint=(1, 1))
+        with self.black_overlay.canvas:
+            Color(0.12, 0.12, 0.12, 1) # สีเทาเข้ม (Dark Grey) แทนจอดำ
+            Rectangle(size=(2000, 2000), pos=(-500, -500)) # คลุมให้มิด
             
-        def update_banner(instance, value):
-            self.banner_rect.pos = instance.pos
-            self.banner_rect.size = instance.size
-            self.line_top.points = [instance.x, instance.top, instance.right, instance.top]
-            self.line_bottom.points = [instance.x, instance.y, instance.right, instance.y]
-        notif_banner.bind(size=update_banner, pos=update_banner)
+        root.add_widget(self.black_overlay)
         
-        # 1. ข้อความประกาศ (อยู่ด้านบนสุดของแถบ)
-        text_label = Label(
-            text="FIND",
-            font_name=GAME_FONT,
-            font_size=36,
-            color=(1, 1, 1, 1),
-            size_hint=(1, None),
-            height=40,
-            pos_hint={'center_x': 0.5, 'center_y': 0.78}, # ปรับระยะห่างระดับกลาง
-            bold=True
-        )
-
-        # 2. กล่องรูปไอเทม (อยู่ด้านล่างข้อความ)
-        item_size = 100
-        item_box = Widget(size_hint=(None, None), size=(item_size, item_size), 
-                         pos_hint={'center_x': 0.5, 'center_y': 0.33}) # ปรับระยะห่างระดับกลาง
-        
-        with item_box.canvas:
-            # ใช้แสงเรืองสีขาว (White Glow)
-            Color(1, 1, 1, 0.15)
-            self.glow_rect = Ellipse(size=(item_size*1.6, item_size*1.6))
-            # ตัวสี่เหลี่ยมไอเทม
-            Color(1, 1, 1, 1)
-            self.item_icon_rect = Rectangle(size=(item_size, item_size))
-            
-        def update_item_pos(instance, value):
-            self.glow_rect.pos = (instance.center_x - (item_size*0.8), instance.center_y - (item_size*0.8))
-            self.item_icon_rect.pos = instance.pos
-        item_box.bind(pos=update_item_pos, size=update_item_pos)
-        
-        notif_banner.add_widget(text_label)
-        notif_banner.add_widget(item_box)
-        root.add_widget(notif_banner)
-        
-        def remove_notif(dt):
-            if notif_banner.parent:
-                notif_banner.parent.remove_widget(notif_banner)
-        Clock.schedule_once(remove_notif, 2.0)
-
-    def show_text_box(self, text, duration=3.0):
-        """สร้างข้อความในกล่องข้อความ - ฟังก์ชันใหม่ที่ง่ายต่อการใช้งาน"""
-        self._draw_vn_dialogue_box("", text)
-        self.dialogue_timer = duration
-
-    def close_dialogue(self):
-        """ปิดกล่องข้อความคุยและคืนสถานะเกม"""
-        # ลบ widget พื้นหลัง (โดยลูกๆ จะถูกลบตามไปด้วย)
-        if self.dialogue_bg:
-            if self.dialogue_bg.parent:
-                self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
-            self.dialogue_bg = None
-            
-        # เคลียร์ reference อื่นๆ
-        self.dialogue_text = None
-        self.name_label = None
-
-        # ลบวิดเจ็ตทางเลือก (ถ้ามี) - เรียกใช้จาก choice.py
-        clear_choices(self)
-
-        # จำสถานะ Choice ไว้ก่อนรีเซ็ต
-        last_character = self.current_character_name
-        has_choices = len(self.current_choices) > 0
-        
-        # คืนสถานะการคุย
-        self.is_dialogue_active = False
-        self.dialogue_timer = 0
-        self.current_dialogue_queue = []
-        self.current_dialogue_index = 0
-        self.current_character_name = ""
-        self.current_choices = []
-        
-        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ (ยกเว้นตอนที่เป็นการเตือนแบบมี Choice)
-        if last_character == "Reaper" and not has_choices:
-            self.show_save_screen()
-            
-        # ถ้าคุยกับ NPC "The Sad Soul" จบ ให้เริ่มเควสและสร้างดาว
-        if last_character == "The Sad Soul":
-            quest = self.quest_manager.active_quests.get("doll_parts")
-            if not quest:
-                # เริ่มเควสครั้งแรก
-                self.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
-                self.create_stars() # ดาวจะโผล่มาหลังคุยจบ
-            elif quest.is_active and quest.current_count >= quest.target_count:
-                # ถ้าคุยจบหลังจากเก็บครบแล้ว ให้จบเควสจริงๆ
-                quest.is_active = False
-                self.quest_manager.show_quest_notification("COMPLETED: FIND DOLL PARTS")
-                self.quest_manager.update_quest_list_ui()
-
-    def show_save_screen(self):
-        """เปิดหน้าจอเลือกสล็อตเพื่อเซฟเกม"""
-        save_screen = SaveLoadScreen(
-            mode="SAVE",
-            callback=self.on_save_confirmed
-        )
-        # นำไปแปะไว้ใน dialogue_root (FloatLayout หลัก)
-        if self.dialogue_root:
-            self.dialogue_root.add_widget(save_screen)
-
-    def on_save_confirmed(self, slot_id, save_screen=None):
-        # สร้างโฟลเดอร์ saves ถ้ายังไม่มี
-        if not os.path.exists('saves'):
-            os.makedirs('saves')
-            
-        # เก็บข้อมูลจริงจากตัวเกม
-        import json
-        save_data = {
-            "day": self.current_day, 
-            "heart": self.heart_ui.current_health,
-            "destroyed_enemies": self.destroyed_enemies,
-            "collected_stars": self.collected_stars,
-            "quests": self.quest_manager.to_dict(),
-            "play_time": self.play_time,
-            "warning_dismissed": self.warning_dismissed  # เซฟข้ามวัน/โหลดใหม่ให้หมอกหายถาวร
-        }
-        
-        file_path = f'saves/slot_{slot_id}.json'
-        with open(file_path, 'w') as f:
-            json.dump(save_data, f)
-            
-        print(f"Game saved to Slot {slot_id}: {save_data}")
-        
-        # ปิดหน้าจอเซฟทันทีและกลับสู่เกม
-        if save_screen:
-            save_screen.close()
-        
-        # คืนค่าสถานะเพื่อให้ตัวละครเดินได้และรับคีย์บอร์ดได้อีกครั้ง
-        self.is_dialogue_active = False
-        self.request_keyboard_back()
-
-    def next_dialogue(self):
-        """ไปยังข้อความถัดไปในคิว"""
-        # ถ้ามี Choice และเป็นหน้าสุดท้าย ห้ามกดข้าม
-        if self.current_choices and self.current_dialogue_index == len(self.current_dialogue_queue) - 1:
-            return
-
-        self.current_dialogue_index += 1
-        
-        if self.current_dialogue_index < len(self.current_dialogue_queue):
-            # แสดงข้อความถัดไป
-            next_text = self.current_dialogue_queue[self.current_dialogue_index]
-            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
-            self._draw_vn_dialogue_box(self.current_character_name, next_text, choices=(self.current_choices if is_last else None))
+        # 2. ขึ้นบทสนทนาสไตล์ VN แต่พื้นหลังดำ
+        # ตรวจสอบความสำเร็จของเควสล่าสุด
+        # ใน Day 1 เควสที่ 1 (doll_parts) เป้าหมายคือ 3
+        # ถ้า quest_success_count >= 3 แสดงว่าเก็บของจริงครบ
+        if self.quest_success_count >= 3:
+            angel_text = [
+                "You still hold the light in your hands, little one...",
+                "Though this place is shrouded in darkness, your kindness has saved that soul.",
+                "Go and rest now. You will need your strength for tomorrow."
+            ]
         else:
-            # หมดข้อความแล้ว ปิดกล่องข้อความ
-            self.close_dialogue()
-
-    def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยตามระยะห่างของ NPC (ดึงจาก chat.py)"""
-        # ถ้าเป็น The Sad Soul ให้เช็คสถานะเควส
-        if npc_name == "The Sad Soul":
-            quest = self.quest_manager.active_quests.get("doll_parts")
-            if quest:
-                if quest.current_count >= quest.target_count:
-                    # ถ้าเก็บครบแล้วแต่ยังไม่ได้ส่ง
-                    return [
-                        "Oh! You found them!",
-                        "My doll... it's whole again. Thank you so much!",
-                        "You really are a kind one."
-                    ]
-                elif quest.is_active:
-                    # ถ้ายังเก็บไม่ครบ
-                    return ["Were you able to find the pieces? It's still so dark..."]
-
-        if npc_name in NPC_DIALOGUES:
-            return NPC_DIALOGUES[npc_name]
-        return ["..."]
-
-    def get_reaper_dialogue(self, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยของ Reaper (ดึงจาก chat.py)"""
-        import random
-        # สุ่มเลือกข้อความ 3 ข้อจากลิสต์ที่ดึงมาจาก chat.py
-        selected_dialogues = random.sample(REAPER_DIALOGUES, min(3, len(REAPER_DIALOGUES)))
-        return selected_dialogues
-
-    def _draw_vn_dialogue_box(self, name, dialogue, choices=None):
-        """วาดกล่องข้อความสไตล์ Visual Novel (ดึงค่าตั้งค่าจาก chat.py)"""
-        root = self.dialogue_root if self.dialogue_root else self
-        cfg = DIALOGUE_CONFIG
+            angel_text = [
+                "Your hands are trembling... It’s alright.",
+                "Sometimes, destiny is too heavy for a child to carry alone.",
+                "Let’s go home for now. We can always start again tomorrow."
+            ]
         
-        # อัปเดตรายการ Choice ปัจจุบันให้ GameWidget รู้ (ป้องกัน IndexError)
-        self.current_choices = choices if choices else []
-
-        # 1. ลบทิ้งหากมีของเดิมอยู่
-        if self.dialogue_bg:
-            if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
-            self.dialogue_bg = None
-
-        # 2. พื้นหลัง - ใช้ FloatLayout และ pos_hint เพื่อให้ชิดขอบล่างเสมอ
-        bg_widget = FloatLayout(size_hint=(1, None), height=cfg["box_height"], pos_hint={'x': 0, 'y': 0})
-        with bg_widget.canvas.before:
-            Color(0, 0, 0, cfg["bg_opacity"])
-            self.dialogue_bg_rect = Rectangle(size=bg_widget.size, pos=bg_widget.pos)
-            
-        def update_bg_rect(instance, value):
-            if hasattr(self, 'dialogue_bg_rect'):
-                self.dialogue_bg_rect.pos = instance.pos
-                self.dialogue_bg_rect.size = instance.size
-        bg_widget.bind(size=update_bg_rect, pos=update_bg_rect)
-        
-        root.add_widget(bg_widget)
-        self.dialogue_bg = bg_widget
-
-        # 3. ชื่อตัวละคร
-        if name:
-            self.name_label = Label(
-                text=name,
-                font_name=GAME_FONT,
-                font_size=cfg["name_font_size"],
-                color=cfg["name_color"],
-                size_hint=(1, None),
-                height=cfg["name_height"],
-                pos_hint={'center_x': 0.5, 'top': 1 - (cfg["top_padding"] / cfg["box_height"])},
-                halign='center',
-                valign='middle'
-            )
-            self.name_label.bind(size=self.name_label.setter('text_size'))
-            bg_widget.add_widget(self.name_label)
-
-        # 4. ข้อความคุย
-        text_top_ratio = (cfg["top_padding"] + cfg["name_height"] + cfg["msg_margin_top"]) / cfg["box_height"]
-        
-        self.dialogue_text = Label(
-            text=dialogue,
-            font_name=GAME_FONT,
-            font_size=cfg["msg_font_size"],
-            color=cfg["msg_color"],
-            size_hint=(1, None),
-            height=cfg["box_height"] * (1 - text_top_ratio) - 10,
-            pos_hint={'center_x': 0.5, 'top': 1 - text_top_ratio},
-            halign='center',
-            valign='top'
-        )
-        
-        def update_msg_text_size(instance, value):
-            instance.text_size = (instance.width - (cfg["side_padding"] * 2), instance.height)
-        self.dialogue_text.bind(size=update_msg_text_size)
-        bg_widget.add_widget(self.dialogue_text)
-
-        # 5. Choices (ปุ่มเลือก)
-        if choices:
-            draw_choice_buttons(self, choices)
-
+        # ตั้งค่าคิวข้อความสำหรับ Angel
+        self.current_dialogue_queue = angel_text
+        self.current_dialogue_index = 0
+        self.current_character_name = "Angel"
         self.is_dialogue_active = True
-
-    def on_choice_selected(self, choice):
-        """จัดการเมื่อผู้เล่นเลือก Choice (เรียกใช้ตรรกะจาก choice.py)"""
-        handle_choice_selection(self, choice)
-
-    def check_npc_wall_collision(self, rect, wall_obj):
-        # rect = [x, y, w, h]
-        # wall_obj.pos/size
-        r1x, r1y, r1w, r1h = rect
-        r2x, r2y = wall_obj.pos
-        r2w, r2h = wall_obj.size
         
-        return (r1x < r2x + r2w and r1x + r1w > r2x and
-                r1y < r2y + r2h and r1y + r1h > r2y)
+        # แสดงข้อความแรก
+        self._draw_vn_dialogue_box("Angel", angel_text[0])
+        
+        # เมื่อคุยจบ Angel จะต้องปิด Cutscene (ผ่าน close_dialogue ที่เช็คชื่อ Angel)
+        
+    # เราต้องแก้ close_dialogue เพิ่มเพื่อรองรับการปิดฉากของ Angel
+    
+    def end_cutscene(self):
+        """จบ Cutscene และเคลียร์ state"""
+        if self.black_overlay:
+            if self.black_overlay.parent:
+                self.black_overlay.parent.remove_widget(self.black_overlay)
+            self.black_overlay = None
+            
+        self.is_cutscene_active = False
+        self.cutscene_step = 0
+        self.camera.locked = False
+        
+        # ขึ้น Day 2 (หรือวันถัดไป)
+        self.current_day += 1
+        intro = IntroScreen(callback=self.recreate_world, day=self.current_day)
+        if self.dialogue_root:
+            self.dialogue_root.add_widget(intro)
+
+    def recreate_world(self):
+        """รีเฟรชโลกใหม่สำหรับวันถัดไป (NPCs, หมอก, ดาว)"""
+        # 1. ล้าง NPCs, Enemies, Stars เก่าออก
+        for npc in self.npcs:
+            if hasattr(npc, 'group') and npc.group in self.sorting_layer.children:
+                self.sorting_layer.remove(npc.group)
+        self.npcs = []
+        
+        for enemy in self.enemies:
+            if hasattr(enemy, 'group') and enemy.group in self.sorting_layer.children:
+                self.sorting_layer.remove(enemy.group)
+        self.enemies = []
+        
+        for star in self.stars:
+            if hasattr(star, 'group') and star.group in self.sorting_layer.children:
+                self.sorting_layer.remove(star.group)
+        self.stars = []
+        
+        # 1.5 รีเซ็ตพิกัดตัวละครมาที่จุดเริ่มต้นเหมือนวันแรก
+        start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
+        start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
+        self.player.logic_pos = [start_x, start_y]
+        self.player.target_pos = [start_x, start_y]
+        self.player.direction = 'up'
+        self.player.sync_graphics_pos()
+        self.player.update_frame()
+        
+        # 2. สร้างใหม่ตามวันปัจจุบัน
+        self.create_npcs()
+        self.create_enemies()
+        self.create_stars()
+        
+        # 3. อัปเดตหมอก (Darkness Overlay)
+        self.refresh_darkness()
+        
+        # 4. ขอคีย์บอร์ดคืน
+        self.request_keyboard_back()
 
 class MyApp(App): 
     def build(self): 

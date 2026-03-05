@@ -4,15 +4,19 @@ from kivy.clock import Clock
 from settings import TILE_SIZE, STAR_IMG
 
 class Star:
-    def __init__(self, canvas, x, y):
+    def __init__(self, canvas, x, y, is_true=True):
         self.canvas = canvas
         self.x = x
         self.y = y
         self.logic_pos = [x, y]
+        self.is_true = is_true # ของที่ใช่หรือเปล่า (มีผลต่อ Ending)
         
         self.image_path = STAR_IMG
         try:
             self.texture = CoreImage(self.image_path).texture
+            if self.texture:
+                self.texture.min_filter = 'nearest'
+                self.texture.mag_filter = 'nearest'
         except Exception as e:
             print(f"Error loading Star texture: {e}")
             self.texture = None

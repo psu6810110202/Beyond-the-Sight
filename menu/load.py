@@ -221,6 +221,12 @@ class SaveLoadScreen(FloatLayout):
             self.slots.append(slot)
 
         self.bind(size=self.on_size)
+        
+        # ค้นหา Slot ที่มีข้อมูลเป็นค่าเริ่มต้น (สำหรับโหมด LOAD)
+        valid_indices = [i for i, slot in enumerate(self.slots) if self.mode == "SAVE" or slot.data is not None]
+        if valid_indices:
+            self.index = valid_indices[0]
+            
         self.update_selection()
         
         # Keyboard handling
@@ -256,18 +262,42 @@ class SaveLoadScreen(FloatLayout):
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
         key = keycode[1]
+        
+        # ค้นหา Slot ที่มีข้อมูล (สำหรับโหมด LOAD)
+        valid_indices = [i for i, slot in enumerate(self.slots) if self.mode == "SAVE" or slot.data is not None]
+        
+        if not valid_indices:
+            if key == 'escape':
+                self.close()
+            return True
+
+        # ปรับ index ให้เป็นตัวที่ใช้ได้ถ้าปัจจุบันหลุดขอบ (เช่น ลบเซฟทิ้ง)
+        if self.index not in valid_indices:
+            self.index = valid_indices[0]
+
         if key == 'up':
-            self.index = (self.index - 1) % 5
+            # หาค่าที่น้อยกว่าปัจจุบันในลิสต์ valid
+            prev_indices = [i for i in valid_indices if i < self.index]
+            if prev_indices:
+                self.index = prev_indices[-1]
+            else:
+                self.index = valid_indices[-1] # วนไปท้ายสุด
             self.update_selection()
         elif key == 'down':
-            self.index = (self.index + 1) % 5
+            # หาค่าที่มากกว่าปัจจุบันในลิสต์ valid
+            next_indices = [i for i in valid_indices if i > self.index]
+            if next_indices:
+                self.index = next_indices[0]
+            else:
+                self.index = valid_indices[0] # วนไปเริ่มใหม่
             self.update_selection()
         elif key in ('enter', 'space'):
+            if self.mode == "LOAD" and self.slots[self.index].data is None:
+                return True # กดไม่ได้
             if self.callback:
                 self.callback(self.index + 1, self)
         elif key == 'escape':
-            if self.mode == "LOAD":
-                self.close()
+            self.close()
             return True
         return False
 
