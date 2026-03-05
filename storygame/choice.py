@@ -21,6 +21,7 @@ def handle_choice_selection(game, choice):
     elif choice == "I'll go":
         # ขยับไปข้างหน้า 1 บล็อค (TILE_SIZE)
         game.warning_dismissed = True # ปิดการแจ้งเตือนถาวรสำหรับครั้งนี้
+        game.refresh_darkness() # ล้างหมอกสีดำทิ้งทันที
         px, py = game.player.logic_pos
         if game.player.direction == 'up': py += TILE_SIZE
         elif game.player.direction == 'down': py -= TILE_SIZE
@@ -33,6 +34,39 @@ def handle_choice_selection(game, choice):
         game.player.sync_graphics_pos() # อัปเดตตำแหน่งภาพทันที
         game.player.update_frame()
 
+    elif choice == "PICK UP":
+        # ตรวจสอบว่ามีดาวที่กำลัง interact อยู่หรือไม่
+        if hasattr(game, 'current_star_target') and game.current_star_target:
+            # เก็บพิกัดดาวที่ถูกเก็บไปแล้ว
+            star_pos = (game.current_star_target.x, game.current_star_target.y)
+            if not hasattr(game, 'collected_stars'):
+                game.collected_stars = []
+            game.collected_stars.append(star_pos)
+            
+            # ลบดาวทิ้ง
+            if game.current_star_target in game.stars:
+                game.stars.remove(game.current_star_target)
+            game.current_star_target.destroy()
+            
+            # อัปเดตเควส
+            game.quest_manager.update_quest_progress("doll_parts", 1)
+            
+            # เช็คว่าครบหรือยัง
+            quest = game.quest_manager.active_quests.get("doll_parts")
+            if quest and quest.current_count >= quest.target_count:
+                game.show_vn_dialogue("Little girl", "I have enough parts now. I should return to The Sad Soul.")
+                # อัปเดตชื่อเควสให้รู้ว่าต้องกลับไปส่ง
+                quest.name = "Return to The Sad Soul"
+                game.quest_manager.update_quest_list_ui()
+            else:
+                # เปลี่ยนจาก VN Dialogue เป็นการประกาศกลางจอ
+                game.show_item_discovery("FOUND A PIECE OF THE DOLL")
+            
+            game.current_star_target = None
+
+    elif choice == "LEAVE IT":
+        game.current_star_target = None
+
 def draw_choice_buttons(game, choices):
     """วาดปุ่มทางเลือก (UI Logic)"""
     root = game.dialogue_root if game.dialogue_root else game
@@ -43,11 +77,10 @@ def draw_choice_buttons(game, choices):
     game.choice_index = 0
     game.choice_buttons = []
         
-    # ใช้ BoxLayout แนวตั้งเป๊ะๆ ตามตำแหน่งกรอบแดง
+    # ใช้ BoxLayout แนวตั้งที่ขนาดขยายตามหน้าจอ (Relative Scaling)
     game.choice_layout = BoxLayout(
         orientation='vertical',
-        size_hint=(None, None),
-        size=(500, 160),
+        size_hint=(0.5, 0.25), # กว้าง 50% สูง 25% ของหน้าจอ
         pos_hint={'center_x': 0.5, 'center_y': 0.6}, 
         spacing=15
     )
@@ -78,6 +111,8 @@ def draw_choice_buttons(game, choices):
             instance.bg_rect.pos = instance.pos
             instance.bg_rect.size = instance.size
             instance.line_obj.rounded_rectangle = (instance.x, instance.y, instance.width, instance.height, 5)
+            # ปรับขนาดตัวอักษรตามความสูงของปุ่ม (Responsive Font)
+            instance.font_size = instance.height * 0.35
         btn.bind(pos=update_btn_graphics, size=update_btn_graphics)
         
         btn.bind(on_release=lambda x, t=choice_text: game.on_choice_selected(t))
