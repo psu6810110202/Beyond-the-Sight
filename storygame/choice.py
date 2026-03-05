@@ -81,6 +81,14 @@ def handle_choice_selection(game, choice):
                 # อัปเดตชื่อเควสให้รู้ว่าต้องกลับไปส่ง
                 quest.name = "Return to The Sad Soul"
                 game.quest_manager.update_quest_list_ui()
+
+                # ลบดาวที่เหลือทั้งหมดออกจากแมพเพื่อกันสับสน
+                for remain_star in game.stars[:]:
+                    remain_pos = (remain_star.x, remain_star.y)
+                    if remain_pos not in game.collected_stars:
+                        game.collected_stars.append(remain_pos)
+                    remain_star.destroy()
+                game.stars.clear()
             
             game.current_star_target = None
 

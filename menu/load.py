@@ -116,8 +116,8 @@ class SaveSlot(FloatLayout):
         # หัวใจ
         for i, heart in enumerate(self.heart_icons):
             heart.size = (50 * scale, 50 * scale)
-            # แก้ไข: เอา * scale ออกเพื่อให้ระยะห่างคงที่เสมอ (ไม่ยืดตามจอ)
-            heart.pos_hint = {'x': 0.15 + (i * 0.055), 'center_y': 0.5}
+            # แก้ไข: ขยับแกน x ออกไปทางขวาให้ห่างจากคำว่า Day (เปลี่ยน base x จาก 0.15 เป็น 0.25)
+            heart.pos_hint = {'x': 0.2 + (i * 0.055), 'center_y': 0.5}
 
         # ตัวละคร (ปรับตำแหน่งให้โผล่พ้นขอบล่างขึ้นมา)
         if hasattr(self, 'player_img'):
@@ -292,16 +292,116 @@ class SaveLoadScreen(FloatLayout):
                 self.index = valid_indices[0] # วนไปเริ่มใหม่
             self.update_selection()
         elif key in ('enter', 'space'):
+            if hasattr(self, 'confirm_popup') and self.confirm_popup:
+                # ถ้ากำลังโชว์ popup อยู่
+                if self.confirm_index == 0: # YES
+                    self.close_popup()
+                    if self.callback:
+                        self.callback(self.index + 1, self)
+                else: # NO
+                    self.close_popup()
+                return True
+                
             if self.mode == "LOAD" and self.slots[self.index].data is None:
                 return True # กดไม่ได้
-            if self.callback:
-                self.callback(self.index + 1, self)
+            
+            # เช็คว่าเป็นการเซฟทับหรือไม่
+            if self.mode == "SAVE" and self.slots[self.index].data is not None:
+                self.show_overwrite_confirmation()
+            else:
+                if self.callback:
+                    self.callback(self.index + 1, self)
         elif key == 'escape':
-            self.close()
+            if hasattr(self, 'confirm_popup') and self.confirm_popup:
+                self.close_popup()
+                return True
+            if self.mode == "LOAD":
+                self.close()
             return True
+        elif key == 'left' or key == 'right':
+            if hasattr(self, 'confirm_popup') and self.confirm_popup:
+                # สลับ YES / NO
+                self.confirm_index = 1 - self.confirm_index
+                self.update_popup_selection()
+                return True
         return False
 
+    def show_overwrite_confirmation(self):
+        """แสดงป๊อปอัปยืนยันการเซฟทับกลางจอ"""
+        self.confirm_index = 1 # เริ่มที่ NO เผื่อกดพลาด
+        
+        self.confirm_popup = FloatLayout(size_hint=(1, 1))
+        
+        # พื้นหลังดำจางๆ
+        with self.confirm_popup.canvas.before:
+            Color(0, 0, 0, 0.85)
+            self.popup_bg = Rectangle(pos=self.pos, size=self.size)
+            
+            # กล่องป๊อปอัป
+            Color(0.15, 0.15, 0.15, 1)
+            self.popup_box = Rectangle()
+            Color(1, 1, 1, 1) # ขอบขาว
+            self.popup_line = Line(width=1.5)
+            
+        # สร้าง Widget ข้อความและปุ่มก่อน
+        self.lbl_title = Label(text="[color=ff3333]OVERWRITE[/color] EXISTING SAVE DATA?",
+            markup=True,
+            font_name='assets/Fonts/edit-undo.brk.ttf',
+            bold=True,
+            halign='center',
+            pos_hint={'center_x': 0.5, 'center_y': 0.55})
+        
+        self.lbl_yes = Label(text="YES", font_name='assets/Fonts/edit-undo.brk.ttf', 
+                             color=(0.5, 0.5, 0.5, 1), pos_hint={'center_x': 0.35, 'center_y': 0.43})
+        self.lbl_no = Label(text="NO", font_name='assets/Fonts/edit-undo.brk.ttf', 
+                            color=(1, 1, 1, 1), pos_hint={'center_x': 0.65, 'center_y': 0.43})
+
+        def update_popup_bg(instance, value):
+            self.popup_bg.pos = instance.pos
+            self.popup_bg.size = instance.size
+            
+            # คำนวณขนาดกล่องแบบ Responsive: กว้างยาวคลุมไปกับขนาดหลอด Save
+            scale = self.height / 540.0
+            box_w = min(800 * scale, self.width * 0.85)
+            box_h = 160 * scale
+            
+            bx = self.center_x - box_w/2
+            by = self.center_y - box_h/2
+            
+            self.popup_box.pos = (bx, by)
+            self.popup_box.size = (box_w, box_h)
+            self.popup_line.rectangle = (bx, by, box_w, box_h)
+            
+            # อัปเดตขนาดฟอนต์ให้ล้อตามกล่อง
+            self.lbl_title.font_size = f'{int(26 * scale)}sp'
+            self.lbl_yes.font_size = f'{int(22 * scale)}sp'
+            self.lbl_no.font_size = f'{int(22 * scale)}sp'
+                
+        self.confirm_popup.bind(pos=update_popup_bg, size=update_popup_bg)
+        update_popup_bg(self.confirm_popup, None)
+        
+        self.confirm_popup.add_widget(self.lbl_title)
+        self.confirm_popup.add_widget(self.lbl_yes)
+        self.confirm_popup.add_widget(self.lbl_no)
+        self.add_widget(self.confirm_popup)
+        self.update_popup_selection()
+        
+    def update_popup_selection(self):
+        if self.confirm_index == 0:
+            self.lbl_yes.color = (1, 1, 1, 1)
+            self.lbl_no.color = (0.5, 0.5, 0.5, 1)
+        else:
+            self.lbl_yes.color = (0.5, 0.5, 0.5, 1)
+            self.lbl_no.color = (1, 1, 1, 1)
+            
+    def close_popup(self):
+        if self.confirm_popup and self.confirm_popup.parent:
+            self.confirm_popup.parent.remove_widget(self.confirm_popup)
+        self.confirm_popup = None
+
     def close(self):
+        if hasattr(self, 'confirm_popup') and self.confirm_popup:
+            self.close_popup()
         if self._keyboard:
             self._keyboard.unbind(on_key_down=self._on_key_down)
             self._keyboard = None

@@ -424,16 +424,16 @@ class GameWidget(Widget):
         self.death_count += 1
         print(f"Player died. Total deaths: {self.death_count}")
         
-        # วาปผู้เล่นไปยังตำแหน่ง Reaper (หรือเยื้องออกมานิดหน่อยเผื่อไม่ให้ทับกัน)
-        rx, ry = self.reaper.logic_pos
-        
         # รีเซ็ตสถานะการเคลื่อนไหว
         self.pressed_keys.clear()
         self.player.is_moving = False
         self.player.state = 'idle'
         
-        self.player.logic_pos = [rx, ry - TILE_SIZE]
-        self.player.target_pos = [rx, ry - TILE_SIZE]
+        # วาร์ปผู้เล่นไปยังจุดเริ่มต้นแรกสุด
+        start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
+        start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
+        self.player.logic_pos = [start_x, start_y]
+        self.player.target_pos = [start_x, start_y]
         self.player.sync_graphics_pos()
         self.player.direction = 'up'
         self.player.update_animation_speed()
@@ -523,6 +523,12 @@ class GameWidget(Widget):
         
         # 2. ถ้ากำลังคุย, หยุดเกม หรืออยู่ใน Cutscene ไม่ต้องสร้าง Hint ใหม่
         if self.is_dialogue_active or self.is_paused or self.is_cutscene_active:
+            return
+            
+        # ตรวจสอบว่าเปิดหน้าจอเซฟค้างไว้หรือไม่
+        from menu.load import SaveLoadScreen
+        root_to_check = self.dialogue_root.children if self.dialogue_root else self.children
+        if any(isinstance(child, SaveLoadScreen) for child in root_to_check):
             return
             
         # 3. ค้นหาเป้าหมายที่อยู่ใกล้
@@ -758,6 +764,12 @@ class GameWidget(Widget):
 
     def show_item_discovery(self, text, image_path=None):
         """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ (Delegated)"""
+        self.is_dialogue_active = True
+        self.pressed_keys.clear()
+        self.player.is_moving = False
+        self.player.state = 'idle'
+        self.player.update_animation_speed()
+        self.player.update_frame()
         self.dialogue_manager.show_item_discovery(text, image_path)
         root = self.dialogue_root if self.dialogue_root else self
         
@@ -904,6 +916,13 @@ class GameWidget(Widget):
 
     def show_save_screen(self):
         """เปิดหน้าจอเลือกสล็อตเพื่อเซฟเกม"""
+        self.clear_interaction_hints()
+        self.pressed_keys.clear()
+        self.player.is_moving = False
+        self.player.state = 'idle'
+        self.player.update_animation_speed()
+        self.player.update_frame()
+        
         save_screen = SaveLoadScreen(
             mode="SAVE",
             callback=self.on_save_confirmed
@@ -1121,9 +1140,12 @@ class GameWidget(Widget):
             viewport_w = CAMERA_WIDTH 
             right_edge = cam_x + (viewport_w / 2) + 32  # ให้สุดจอจริงๆ
             
-            keys = {'right'}
-            self.player.current_speed = WALK_SPEED
-            self.player.move(keys)
+            # ต้องอัปเดตการเดินของผู้เล่นด้วย (เพราะลูปปกติโดนข้ามไปช่วงคัทซีน)
+            if self.player.is_moving:
+                self.player.continue_move()
+            else:
+                self.player.current_speed = WALK_SPEED
+                self.player.move({'right'})
             
             # ถ้า Player ออกจากจอแล้ว ให้เปลี่ยนไปคัทซีนถัดไป
             if self.player.logic_pos[0] > right_edge:
