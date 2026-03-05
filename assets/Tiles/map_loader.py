@@ -33,8 +33,10 @@ class KivyTiledMap:
         self.visible_chunks = set()
         self.chunk_groups_bg = {}
         self.chunk_groups_fg = {}
+        self.chunk_groups_ground = {} # ชั้นพื้นดิน (อยู่ล่างสุด)
         
         # Instruction groups for Kivy rendering
+        self.ground_group = InstructionGroup()
         self.bg_group = InstructionGroup()
         self.fg_group = InstructionGroup()
         
@@ -156,7 +158,7 @@ class KivyTiledMap:
                 if boxes: self.tile_hitboxes[gid] = boxes
 
     def _get_uv_padding(self, tex):
-        return 0.05 / tex.width, 0.05 / tex.height
+        return 0.1 / tex.width, 0.1 / tex.height
 
     def setup_well(self, tsx_name, firstgid, columns, tilecount):
         if "Well1" in tsx_name:
@@ -169,13 +171,14 @@ class KivyTiledMap:
         """Construct chunked meshes for the entire map."""
         self.bg_group.clear()
         self.fg_group.clear()
+        self.ground_group.clear()
         self.solid_rects = []
         
         chunk_size_pixels = TILE_SIZE * 16
         scale = TILE_SIZE / self.tile_w
         
         # Accumulators for all chunks
-        chunk_meshes_bg, chunk_meshes_fg = {}, {}
+        chunk_meshes_bg, chunk_meshes_fg, chunk_meshes_ground = {}, {}, {}
 
         for layer in self.map_data.get('layers', []):
             if not layer.get('visible', True): continue
@@ -184,13 +187,15 @@ class KivyTiledMap:
             name = layer.get('name', '').strip().lower()
             
             # Logic classifications
-            is_fg = any(kw in name for kw in ("หลังคา", "roof"))
+            # ใช้ (kw,) หรือ [kw] เพื่อป้องกันการไล่ตรวจทีละตัวอักษร
+            is_fg = any(kw in name for kw in ("หลังคา", "roof", "foreground", "fg"))
+            is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg
+            
             # Solid implies physical collision.
-            # ตรวจสอบเลเยอร์ที่เป็นของแข็ง (กำแพง, ผนัง, ขยะ, เฟอร์นิเจอร์)
-            # รองรับทั้งคำที่พิมพ์ผิดมาดั้งเดิม (funiture, resoures) และคำที่ถูก
-            is_solid = not is_fg and (
-                any(kw in name for kw in ("ผนังบ้าน", "กำแพง", "ขยะ", "wall")) or
-                name in ("funiture", "funiture2")
+            # เพิ่มคีย์เวิร์ด "ขยะ" และ "wall" กลับเข้าไปเผื่อบางจุดตั้งชื่อต่างกัน
+            is_solid = not is_fg and not is_ground and (
+                any(kw in name for kw in ("ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle")) or
+                name.lower() in ("funiture", "funiture2", "furniture", "props")
             ) and not any(kw in name for kw in ("resoures", "resources"))
             is_well = "well1" in name
             
@@ -201,20 +206,23 @@ class KivyTiledMap:
             if not instances: continue
 
             # 2. Process each tile instance
-            l_meshes_bg, l_meshes_fg = {}, {}
+            l_meshes_bg, l_meshes_fg, l_meshes_ground = {}, {}, {}
             for gid_full, x, y, cw, ch in instances:
+                # ส่ง l_meshes_ground ไปด้วย
                 self._process_tile(
                     gid_full, x, y, cw, ch, scale, chunk_size_pixels,
-                    is_solid, is_fg, is_well, name, l_meshes_bg, l_meshes_fg
+                    is_solid, is_fg, is_well, name, l_meshes_bg, l_meshes_fg, l_meshes_ground, is_ground
                 )
             
             # 3. Add layer meshes to global chunk data
             self._merge_layer_to_global(l_meshes_bg, chunk_meshes_bg, opacity)
             self._merge_layer_to_global(l_meshes_fg, chunk_meshes_fg, opacity)
+            self._merge_layer_to_global(l_meshes_ground, chunk_meshes_ground, opacity)
 
         # 4. Finalize Kivy groups
         self.chunk_groups_bg = self._create_mesh_groups(chunk_meshes_bg)
         self.chunk_groups_fg = self._create_mesh_groups(chunk_meshes_fg)
+        self.chunk_groups_ground = self._create_mesh_groups(chunk_meshes_ground)
 
     def _get_layer_instances(self, layer, scale):
         instances = []
@@ -266,7 +274,7 @@ class KivyTiledMap:
         w, h = layer.get('width', self.width), layer.get('height', self.height)
         return struct.unpack(f"<{w*h}I", decoded)
 
-    def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg):
+    def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg, l_ground, is_ground):
         gid = gid_full & ~ALL_FLAGS
         t_info = self.textures.get(gid)
         if not t_info: return
@@ -296,12 +304,15 @@ class KivyTiledMap:
         uvs = self._get_final_uvs(gid_full, t_info)
         verts = [x, y, uvs[0], uvs[1], x+w, y, uvs[2], uvs[3], x+w, y+h, uvs[4], uvs[5], x, y+h, uvs[6], uvs[7]]
         
-        # Decide Target Mesh (FG vs BG)
-        is_tile_fg = is_fg
-        if gid in self.well_fg_gids: is_tile_fg = True
-        elif gid in self.well_solid_gids: is_tile_fg = False
-        
-        self._add_to_mesh_data(l_fg if is_tile_fg else l_bg, cx, cy, tex, verts)
+        # Decide Target Mesh (FG vs BG vs Ground)
+        if is_fg or gid in self.well_fg_gids:
+            target_l = l_fg
+        elif is_ground:
+            target_l = l_ground
+        else:
+            target_l = l_bg
+            
+        self._add_to_mesh_data(target_l, cx, cy, tex, verts)
 
     def _handle_well_split(self, x, y, w, h, opw, oph, scale, tx, ty_i, tsw_h, t_info, cx, cy, l_bg, l_fg):
         tex = t_info[0]
@@ -392,6 +403,7 @@ class KivyTiledMap:
 
     def draw_background(self, canvas): canvas.add(self.bg_group)
     def draw_foreground(self, canvas): canvas.add(self.fg_group)
+    def draw_ground(self, canvas): canvas.add(self.ground_group)
 
     def update_chunks(self, cam_x, cam_y):
         ws = TILE_SIZE * 16
@@ -405,8 +417,10 @@ class KivyTiledMap:
         for c in self.visible_chunks - nx:
             if c in self.chunk_groups_bg: self.bg_group.remove(self.chunk_groups_bg[c])
             if c in self.chunk_groups_fg: self.fg_group.remove(self.chunk_groups_fg[c])
+            if c in self.chunk_groups_ground: self.ground_group.remove(self.chunk_groups_ground[c])
         # Attach
         for c in nx - self.visible_chunks:
             if c in self.chunk_groups_bg: self.bg_group.add(self.chunk_groups_bg[c])
             if c in self.chunk_groups_fg: self.fg_group.add(self.chunk_groups_fg[c])
+            if c in self.chunk_groups_ground: self.ground_group.add(self.chunk_groups_ground[c])
         self.visible_chunks = nx

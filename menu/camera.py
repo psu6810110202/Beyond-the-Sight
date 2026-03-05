@@ -8,12 +8,16 @@ class Camera:
             self.trans_center = Translate(WINDOW_WIDTH / 2, WINDOW_HEIGHT / 2)
             self.scale = Scale(1, 1, 1)
             self.trans_pos = Translate(0, 0)
+        self.locked = False
             
     def end_camera(self, canvas_after):
         with canvas_after:
             PopMatrix()
 
     def update(self, width, height, player_pos, map_width, map_height):
+        if self.locked:
+            return
+            
         # อัปเดตจุดศูนย์กลางกล้องให้เป็นกึ่งกลางของหน้าต่าง Application จริงๆ
         self.trans_center.xy = (width / 2, height / 2)
 
@@ -50,3 +54,19 @@ class Camera:
         
         # เลื่อนตำแหน่งตัวละครมาไว้ที่จุดศูนย์กลางของจอ
         self.trans_pos.xy = (-cam_x, -cam_y)
+
+    def world_to_screen(self, x, y):
+        """แปลงพิกัดโลก (World) ในเกมให้เป็นพิกัดหน้าจอ (Screen)"""
+        # 1. เลื่อนตามตำแหน่งกล้อง
+        cx = x + self.trans_pos.x
+        cy = y + self.trans_pos.y
+        
+        # 2. ปรับตามอัตราการซูม (Scale)
+        sx = cx * self.scale.x
+        sy = cy * self.scale.y
+        
+        # 3. เลื่อนเข้าหาจุดศูนย์กลางของหน้าต่าง
+        wx = sx + self.trans_center.x
+        wy = sy + self.trans_center.y
+        
+        return wx, wy
