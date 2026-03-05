@@ -64,7 +64,7 @@ class Player:
         self.canvas.add(self.group)
             
         self.update_frame()
-        self.current_fps = 8
+        self.current_fps = 2
         self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)
 
     def update_frame(self):
