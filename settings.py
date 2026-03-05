@@ -90,7 +90,7 @@ REAPER_IMG = 'characters/assets/Reaper/Reaper.png'
 ENEMY_WIDTH = 32
 ENEMY_HEIGHT = 32
 ENEMY_SPEED = WALK_SPEED + 1.5
-ENEMY_DETECTION_RADIUS = 150
+ENEMY_DETECTION_RADIUS = 200
 
 # ข้อมูลศัตรูแต่ละประเภท (ระบุภาพและขนาด spritesheet)
 ENEMY_TYPES = {

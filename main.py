@@ -426,10 +426,17 @@ class GameWidget(Widget):
         
         # วาปผู้เล่นไปยังตำแหน่ง Reaper (หรือเยื้องออกมานิดหน่อยเผื่อไม่ให้ทับกัน)
         rx, ry = self.reaper.logic_pos
+        
+        # รีเซ็ตสถานะการเคลื่อนไหว
+        self.pressed_keys.clear()
+        self.player.is_moving = False
+        self.player.state = 'idle'
+        
         self.player.logic_pos = [rx, ry - TILE_SIZE]
         self.player.target_pos = [rx, ry - TILE_SIZE]
         self.player.sync_graphics_pos()
         self.player.direction = 'up'
+        self.player.update_animation_speed()
         self.player.update_frame()
         
         # รีเซ็ตเลือด
@@ -661,6 +668,13 @@ class GameWidget(Widget):
         """ประมวลผลการคุยกับ NPC หรือ Reaper"""
         # ล้าง Hint ทันทีเมื่อเริ่มการโต้ตอบ
         self.clear_interaction_hints()
+        
+        # หยุดการเดินของ Player ทันที
+        self.pressed_keys.clear()
+        self.player.is_moving = False
+        self.player.state = 'idle'
+        self.player.update_animation_speed()
+        
         # หันหน้าเข้าหากัน
         if abs(dx) > abs(dy):
             if dx > 0:

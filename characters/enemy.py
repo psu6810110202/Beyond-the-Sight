@@ -243,15 +243,8 @@ class Enemy:
         if not (0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE):
             return False
             
-        # 2. เช็ค Safe Zone (Reaper)
-        if reaper_pos:
-            r_center_x, r_center_y = reaper_pos[0] + TILE_SIZE/2, reaper_pos[1] + TILE_SIZE/2
-            e_center_x, e_center_y = new_x + TILE_SIZE/2, new_y + TILE_SIZE/2
-            dist_to_reaper = math.sqrt((e_center_x - r_center_x)**2 + (e_center_y - r_center_y)**2)
-            if dist_to_reaper < self.safe_zone_radius:
-                # เราไม่เรียก start_fade ที่นี่ เพราะมันแค่การเช็ค "ความเป็นไปได้" ในการเดิน
-                # เดี๋ยว main loop จะเป็นคนจัดการจางถ้ามันเข้าใกล้จริง
-                return False
+        # 2. เช็ค Safe Zone (Reaper) - ลบออกเพื่อให้ศัตรูเดินเข้าไปชนวงและหายไปได้
+        # (เราปล่อยให้ main.py จัดการลบศัตรูเมื่อเข้าใกล้วงแทน)
                 
         # 3. เช็คกำแพง
         if map_rects and self.check_map_collision(new_x, new_y, map_rects):
