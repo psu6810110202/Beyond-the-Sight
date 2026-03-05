@@ -128,7 +128,7 @@ class Enemy:
         self.frame_index = (self.frame_index + 1) % max_frames
         self.update_frame()
             
-    def update(self, dt, player_pos, reaper_pos=None):
+    def update(self, dt, player_pos, reaper_pos=None, map_rects=None):
         """Main update loop called by the game logic."""
         if self.is_moving:
             self.continue_move()
@@ -147,13 +147,13 @@ class Enemy:
             # Decide whether to chase the player
             dist = self.calculate_distance(player_pos)
             if dist <= self.detection_radius:
-                self.chase_player_grid(player_pos, reaper_pos)
+                self.chase_player_grid(player_pos, reaper_pos, map_rects)
         
     def calculate_distance(self, target_pos):
         """Calculates distance between enemy and target (เหมือน player)."""
         return math.sqrt((target_pos[0] - self.logic_pos[0])**2 + (target_pos[1] - self.logic_pos[1])**2)
         
-    def chase_player_grid(self, player_pos, reaper_pos=None):
+    def chase_player_grid(self, player_pos, reaper_pos=None, map_rects=None):
         """Implements grid-based chasing logic with safe zone detection."""
         # เมื่อไล่ล่า เราจะยกเลิกการหน่วงเวลาเพื่อให้เข้าหาผู้เล่นได้ทันที
         self.turn_delay = 0
@@ -188,6 +188,12 @@ class Enemy:
                 if dist_to_reaper < self.safe_zone_radius:
                     return # Stop if too close to the Reaper
             
+            # ตรวจสอบขอบเขตกำแพงล่องหนของแผนที่ (1600x1600)
+            if 0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE:
+                # ตรวจสอบกำแพงจากแผนที่
+                if map_rects and self.check_map_collision(new_x, new_y, map_rects):
+                    return # Stop if wall blocking
+            
             self.start_move(move_x, move_y)
 
     def start_move(self, dx, dy):
@@ -218,6 +224,19 @@ class Enemy:
         if cur_x == tar_x and cur_y == tar_y:
             self.is_moving = False
             
+    def check_map_collision(self, new_x, new_y, map_rects):
+        """ตรวจสอบว่าตำแหน่งใหม่จะชนกับกำแพง (Map tiles) หรือไม่"""
+        enemy_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
+        
+        for r in map_rects:
+            # ใช้ Logic กล่องแบบห้ามซ้อนทับกันเต็มขนาด (ถ้ามากกว่าคือทับ)
+            if (enemy_rect[0] < r[0] + r[2] and
+                enemy_rect[0] + enemy_rect[2] > r[0] and
+                enemy_rect[1] < r[1] + r[3] and
+                enemy_rect[1] + enemy_rect[3] > r[1]):
+                return True
+        return False
+
     def check_player_collision_logic(self, player_pos, tile_size):
         """Check for collision with player using logic coordinates"""
         buffer = 4

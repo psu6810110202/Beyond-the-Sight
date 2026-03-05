@@ -295,7 +295,7 @@ class GameWidget(Widget):
         # Update Enemies
         for enemy in self.enemies[:]:
             reaper_pos = (self.reaper.x, self.reaper.y)
-            enemy.update(dt, player_pos, reaper_pos)
+            enemy.update(dt, player_pos, reaper_pos, self.game_map.solid_rects)
             if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
                 # บันทึก ID ศัตรูที่โดนทำลายลงในลิสต์ (เพื่อไม่ให้เกิดใหม่ตอนโหลดเซฟ)
                 self.destroyed_enemies.append(enemy.id)
