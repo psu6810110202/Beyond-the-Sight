@@ -32,7 +32,7 @@ class Enemy:
         # Animation properties
         self.state = 'idle'
         self.frame_index = 0
-        self.animation_fps = 8
+        self.current_fps = 8
         self.direction_change_timer = 0
         self.direction_change_interval = 3.0
         self.directions = ['down', 'left', 'right', 'up']
@@ -45,7 +45,7 @@ class Enemy:
         
         # Schedule updates
         self.update_frame()
-        self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.animation_fps)
+        self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)
             
     def _init_assets(self, enemy_type):
         """Loads textures and sets up animation configuration based on enemy types in settings.py."""
@@ -120,13 +120,31 @@ class Enemy:
     def animate(self, dt):
         """Handles state transitions and frame updates."""
         new_state = 'walk' if self.is_moving else 'idle'
+        
         if self.state != new_state:
             self.state = new_state
             self.frame_index = 0
-        
-        max_frames = self.anim_config[self.state]['cols']
-        self.frame_index = (self.frame_index + 1) % max_frames
+            if new_state == 'idle':
+                self.update_frame()
+                return
+        else:
+            max_frames = self.anim_config[self.state]['cols']
+            self.frame_index = (self.frame_index + 1) % max_frames
+            
         self.update_frame()
+        self.update_animation_speed()
+            
+    def update_animation_speed(self):
+        """Sets animation FPS based on movement state and fatigue like Player."""
+        if self.is_moving:
+            target_fps = 8  # Walking speed (same as Player)
+        else:
+            target_fps = 2  # Idle speed (same as Player)
+        
+        if self.current_fps != target_fps:
+            self.current_fps = target_fps
+            self.anim_event.cancel()
+            self.anim_event = Clock.schedule_interval(self.animate, 1.0 / target_fps)
             
     def update(self, dt, player_pos, reaper_pos=None, map_rects=None):
         """Main update loop called by the game logic."""

@@ -79,7 +79,7 @@ ENEMY_TYPES = {
     },
     2: {
         'idle': {'path': 'characters/assets/Enemy/Enemy2_idle.png', 'cols': 1, 'rows': 4},
-        'walk': {'path': 'characters/assets/Enemy/Enemy2_idle.png', 'cols': 1, 'rows': 4}
+        'walk': {'path': 'characters/assets/Enemy/Enemy2_walk.png', 'cols': 8, 'rows': 4}
     }
 }
 
