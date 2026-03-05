@@ -2,7 +2,7 @@
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, RoundedRectangle, Line
-from settings import TILE_SIZE, GAME_FONT
+from settings import GAME_FONT, TILE_SIZE, STAR_ITEM_MAPPING
 from storygame.chat import DIALOGUE_CONFIG
 
 def handle_choice_selection(game, choice):
@@ -48,27 +48,39 @@ def handle_choice_selection(game, choice):
                 game.stars.remove(game.current_star_target)
             game.current_star_target.destroy()
             
-            # อัปเดตเควส
-            if hasattr(game, 'current_star_target') and hasattr(game.current_star_target, 'is_true'):
-                if game.current_star_target.is_true:
+            # ตรวจสอบผลลัพธ์จากข้อมูลส่วนกลางใน settings.py
+            if star_pos in STAR_ITEM_MAPPING:
+                if not STAR_ITEM_MAPPING[star_pos].get("fail", False):
                     game.quest_success_count += 1
                 else:
-                    # ถ้าเก็บของปลอม (False) ให้ถือว่าเควสไม่สมบูรณ์ 100% 
-                    # ลดแต้มความสำเร็จลงเพื่อให้รวมแล้วไม่ถึง target_count (3)
-                    game.quest_success_count -= 100 # ส่งผลลบมหาศาลเพื่อให้ไม่ผ่าน
+                    game.quest_item_fail = True
             
             game.quest_manager.update_quest_progress("doll_parts", 1)
             
+            # ใช้ข้อมูลไอเทมและรูปหน้าตัวละครจาก settings.py เพื่อบอกว่าเป็นของจริงหรือปลอม
+            found_special = False
+            if star_pos in STAR_ITEM_MAPPING:
+                item_info = STAR_ITEM_MAPPING[star_pos]
+                found_special = True
+                
+                # เปลี่ยนมาโชว์แบบ Discovery แทน Chat ตามที่ USER ขอ
+                # ใช้ข้อความที่มีคำว่า FOUND ตามคำขอ แต่ไม่บอกชนิดไอเทม
+                game.show_item_discovery("FOUND A PIECE", item_info["img"])
+
+            else:
+                game.show_item_discovery("FOUND A PIECE OF THE DOLL")
+
             # เช็คว่าครบหรือยัง
             quest = game.quest_manager.active_quests.get("doll_parts")
             if quest and quest.current_count >= quest.target_count:
-                game.show_vn_dialogue("Little girl", "I have enough parts now. I should return to The Sad Soul.")
+                # ถ้าเก็บครบแล้ว ให้ขึ้นข้อความบอกว่าควรกลับไปส่ง (อันนี้ยังใช้ Chat เพื่อให้รู้ว่าเป็นคนพูด)
+                # แต่ถ้า USER อยากให้เป็น Discovery ทั้งหมด ก็สามารถเปลี่ยนได้
+                if not (star_pos in STAR_ITEM_MAPPING and STAR_ITEM_MAPPING[star_pos].get("fail")):
+                    game.show_vn_dialogue("Little girl", "I have enough parts now. I should return to The Sad Soul.")
+                
                 # อัปเดตชื่อเควสให้รู้ว่าต้องกลับไปส่ง
                 quest.name = "Return to The Sad Soul"
                 game.quest_manager.update_quest_list_ui()
-            else:
-                # เปลี่ยนจาก VN Dialogue เป็นการประกาศกลางจอ
-                game.show_item_discovery("FOUND A PIECE OF THE DOLL")
             
             game.current_star_target = None
 

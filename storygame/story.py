@@ -1,5 +1,6 @@
 # storygame/story.py
 from storygame.chat import WARNING_DIALOGUE, WARNING_CHOICES
+from settings import ENEMY_DETECTION_RADIUS
 
 # ข้อมูลการตั้งค่าของแต่ละวัน
 STORY_CONFIG = {
@@ -99,6 +100,30 @@ def check_story_triggers(game):
                         game.warning_triggered = True
                         return True
         
+        # 2. ตรวจสอบ Tutorial Triggers (สอนใช้ของเมื่อผีเข้าใกล้)
+        if not game.tutorial_triggered and game.has_received_blue_stone:
+            px, py = game.player.logic_pos
+            for enemy in game.enemies:
+                ex, ey = enemy.logic_pos
+                dist = ((px - ex)**2 + (py - ey)**2)**0.5
+                
+                # ถ้าผีตัวใดก็ตามเข้าใกล้จนเริ่มไล่กวด (ระยะ 150 พิกเซล ตาม ENEMY_DETECTION_RADIUS)
+                if dist < ENEMY_DETECTION_RADIUS:
+                    # หยุดเดินและให้ตัวละครหยุดที่กึ่งกลางช่อง (Snap to Grid)
+                    game.pressed_keys.clear()
+                    game.player.is_moving = False
+                    game.player.logic_pos = list(game.player.target_pos)
+                    game.player.sync_graphics_pos()
+                    
+                    # ตั้งค่าโหมดสอน (เพื่อไม่ให้ขึ้นหน้าเซฟ)
+                    game.tutorial_mode = True
+                    
+                    # แสดงบทสนทนาสอนใช้ของ
+                    from storygame.chat import TUTORIAL_DIALOGUE
+                    game.show_dialogue_above_reaper(TUTORIAL_DIALOGUE)
+                    game.tutorial_triggered = True
+                    return True
+
         # ถ้าไม่มี Trigger ไหนทำงานในเฟรมนี้ ให้รีเซ็ต warning_triggered
         # แต่ต้องระวังไม่ให้รีเซ็ตตอนที่กำลังคุยอยู่
         if not any_trigger_hit(game, triggers):

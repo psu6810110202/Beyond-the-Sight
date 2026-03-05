@@ -44,6 +44,18 @@ PLAYER_HEIGHT = 32
 
 PLAYER_IDLE_IMG = 'characters/assets/player/player_idle.png'
 PLAYER_WALK_IMG = 'characters/assets/player/player_walk.png'
+PLAYER_PORTRAIT_IMG = 'characters/assets/player/player_n.png'
+PLAYER_S_PORTRAIT_IMG = 'characters/assets/player/player_s.png'
+
+# แผนที่ไอเทมและรูปหน้าตัวละครตามพิกัดดาวใน Day 1
+STAR_ITEM_MAPPING = {
+    (960, 384):  {"img": "assets/items/doll/head.png",       "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
+    (1344, 80):  {"img": "assets/items/doll/body.png",       "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
+    (1216, 256): {"img": "assets/items/doll/armsnlegs.png",  "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
+    (1056, 112): {"img": "assets/Items/metal/metal1.png",    "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (928, 32):   {"img": "assets/Items/metal/metal2.png",    "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (1152, 416): {"img": "assets/Items/metal/metal3.png",    "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+}
 
 # NPC Settings
 NPC_WIDTH = 16  # Hitbox width
@@ -77,8 +89,8 @@ REAPER_IMG = 'characters/assets/Reaper/Reaper.png'
 # Enemy Settings
 ENEMY_WIDTH = 32
 ENEMY_HEIGHT = 32
-ENEMY_SPEED = RUN_SPEED - 0.5
-ENEMY_DETECTION_RADIUS = 200
+ENEMY_SPEED = WALK_SPEED + 1.5
+ENEMY_DETECTION_RADIUS = 150
 
 # ข้อมูลศัตรูแต่ละประเภท (ระบุภาพและขนาด spritesheet)
 ENEMY_TYPES = {
@@ -94,6 +106,8 @@ ENEMY_TYPES = {
 
 # ตำแหน่งเกิดและประเภทของศัตรู
 ENEMY_SPAWN_DATA = [
-    {'pos': (1280, 240), 'type': 1},
-    {'pos': (1584, 112), 'type': 2}
+    {'pos': (1168, 240), 'type': 1},
+    {'pos': (848, 400), 'type': 2},
+    {'pos': (768, 96), 'type': 2},
+    {'pos': (1536, 112), 'type': 1}
 ]

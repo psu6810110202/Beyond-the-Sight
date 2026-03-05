@@ -34,6 +34,11 @@ class NPC:
             self.x = x
             self.y = y
         self.logic_pos = [self.x, self.y]
+        self.target_pos = [self.x, self.y]
+        self.is_moving = False
+        self.is_fading = False
+        self.fading_done = False
+        self.speed = 1.0 # ความเร็วมาตรฐานของ NPC
         
         # กำหนด spritesheet สำหรับแต่ละ NPC
         if 'NPC1' in self.image_path:
@@ -114,12 +119,14 @@ class NPC:
         
         # Create visual elements in an InstructionGroup for sorting
         self.group = InstructionGroup()
-        
+        self.alpha = 1.0
         
         if self.idle_texture:
-            self.group.add(Color(1, 1, 1, 1))
+            self.color_instr = Color(1, 1, 1, self.alpha)
         else:
-            self.group.add(Color(1, 0, 0, 1))
+            self.color_instr = Color(1, 0, 0, self.alpha)
+            
+        self.group.add(self.color_instr)
             
         # Offset position to center visual sprite
         offset_x = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
@@ -174,7 +181,58 @@ class NPC:
                 self.frame_index = (self.frame_index + 1) % max_frames
             self.update_frame()
     
+    def sync_graphics_pos(self):
+        """อัปเดตตำแหน่งกราฟิกให้ตรงกับ Logic Pos"""
+        offset_x = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
+        offset_y = TILE_SIZE / 2
+        self.rect.pos = (self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y)
+
+    def start_move(self, dx, dy):
+        """กำหนดเป้าหมายการเดินให้ NPC (ทิศทาง Grid-based)"""
+        self.target_pos = [self.logic_pos[0] + dx, self.logic_pos[1] + dy]
+        self.is_moving = True
+        if dx > 0: self.direction = 'right'
+        elif dx < 0: self.direction = 'left'
+        elif dy > 0: self.direction = 'up'
+        elif dy < 0: self.direction = 'down'
+        self.state = 'walk' if hasattr(self, 'walk_texture') else 'idle'
+        self.update_frame()
+
+    def continue_move(self):
+        """เลื่อนตำแหน่ง NPC เข้าหาเป้าหมายอย่างต่อเนื่อง"""
+        cur_x, cur_y = self.logic_pos
+        tar_x, tar_y = self.target_pos
+
+        if cur_x < tar_x: cur_x = min(cur_x + self.speed, tar_x)
+        elif cur_x > tar_x: cur_x = max(cur_x - self.speed, tar_x)
+        if cur_y < tar_y: cur_y = min(cur_y + self.speed, tar_y)
+        elif cur_y > tar_y: cur_y = max(cur_y - self.speed, tar_y)
+
+        self.logic_pos = [cur_x, cur_y]
+        self.sync_graphics_pos()
+
+        if cur_x == tar_x and cur_y == tar_y:
+            self.is_moving = False
+            self.state = 'idle'
+            self.update_frame()
+
     def update(self, dt):
+        if self.is_fading:
+            self.alpha -= dt * 1.0 # ค่อยๆ จางลง
+            if self.alpha <= 0:
+                self.alpha = 0
+                self.fading_done = True
+            
+            # อัปเดต Alpha ในส่วนประกอบ rgba
+            if self.idle_texture:
+                self.color_instr.rgba = (1, 1, 1, self.alpha)
+            else:
+                self.color_instr.rgba = (1, 0, 0, self.alpha)
+            return
+
+        if self.is_moving:
+            self.continue_move()
+            
         if self.is_animated:
             # NPC5 เปลี่ยนทิศทางอัตโนมัติเพื่อความหลากหลายใน animation
             self.direction_change_timer += dt

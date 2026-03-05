@@ -22,6 +22,13 @@ class Enemy:
         self.detection_radius = ENEMY_DETECTION_RADIUS
         self.safe_zone_radius = SAFE_ZONE_RADIUS
         
+        # Fade & Stun system
+        self.is_stunned = False
+        self.stun_timer = 0
+        self.is_fading = False
+        self.fading_done = False
+        self.alpha = 1.0
+        
         # Position system (เหมือน player)
         self.logic_pos = [x, y]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
         self.is_moving = False
@@ -75,12 +82,11 @@ class Enemy:
         """Create the Kivy canvas instructions for the enemy."""
         self.group = InstructionGroup()
         
-        
         # Sprite appearance
-        if self.idle_texture:
-            self.group.add(Color(1, 1, 1, 1))
-        else:
-            self.group.add(Color(1, 0, 0, 1)) 
+        self.color_instr = Color(1, 1, 1, 1)
+        if not self.idle_texture:
+            self.color_instr.rgb = (1, 0, 0)
+        self.group.add(self.color_instr)
         
         offset_x = (TILE_SIZE - ENEMY_WIDTH) / 2
         offset_y = TILE_SIZE / 2
@@ -126,11 +132,17 @@ class Enemy:
             
     def update(self, dt, player_pos, reaper_pos=None):
         """Main update loop called by the game logic."""
+        if self.is_fading:
+            self.alpha -= dt * 1.5 # ปรับความเร็วในการจางหาย
+            if self.alpha <= 0:
+                self.alpha = 0
+                self.fading_done = True
+            self.color_instr.a = self.alpha
+            return
+
         if self.is_moving:
             self.continue_move()
             
-        # ตรวจสอบอีกครั้งในเฟรมเดียวกัน ถ้าเดินเสร็จแล้วให้เริ่มไล่ต่อทันที
-        # เพื่อไม่ให้ is_moving เป็น False ค้างไว้ 1 เฟรม ซึ่งจะทำให้ Animation กระพริบกลับไป Idle
         if not self.is_moving:
             # Randomly change direction while idle
             self.direction_change_timer += dt
@@ -139,6 +151,14 @@ class Enemy:
                 available_dirs = [d for d in self.directions if d != self.direction]
                 self.direction = random.choice(available_dirs)
                 self.frame_index = 0
+
+            # Stun check
+            if self.is_stunned:
+                self.stun_timer -= dt
+                if self.stun_timer <= 0:
+                    self.is_stunned = False
+                    self.color_instr.rgb = (1, 1, 1) # Reset color
+                return # Don't move or chase while stunned
 
             # Decide whether to chase the player
             dist = self.calculate_distance(player_pos)
@@ -182,7 +202,8 @@ class Enemy:
                 dist_to_reaper = math.sqrt((e_center_x - r_center_x)**2 + (e_center_y - r_center_y)**2)
                 
                 if dist_to_reaper < self.safe_zone_radius:
-                    return # Stop if too close to the Reaper
+                    self.start_fade()
+                    return # Stop and fade if too close to the Reaper
             
             self.start_move(move_x, move_y)
 
@@ -220,3 +241,18 @@ class Enemy:
                 self.logic_pos[0] + TILE_SIZE + buffer > player_pos[0] and
                 self.logic_pos[1] < player_pos[1] + tile_size + buffer and
                 self.logic_pos[1] + TILE_SIZE + buffer > player_pos[1])
+            
+    def stun(self, duration=3.0):
+        """Stuns the enemy for a specified duration."""
+        if self.is_fading: return
+        self.is_stunned = True
+        self.stun_timer = duration
+        self.is_moving = False
+        self.color_instr.rgb = (0.4, 0.4, 0.4) # Dark greyish tint for stun effect
+        self.update_frame()
+
+    def start_fade(self):
+        """เริ่มกระบวนการจางหาย"""
+        self.is_fading = True
+        self.is_moving = False
+        self.is_stunned = False # ยกเลิกสถานะอื่น

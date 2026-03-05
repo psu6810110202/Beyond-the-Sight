@@ -158,7 +158,7 @@ class KivyTiledMap:
                 if boxes: self.tile_hitboxes[gid] = boxes
 
     def _get_uv_padding(self, tex):
-        return 0.05 / tex.width, 0.05 / tex.height
+        return 0.1 / tex.width, 0.1 / tex.height
 
     def setup_well(self, tsx_name, firstgid, columns, tilecount):
         if "Well1" in tsx_name:

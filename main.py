@@ -5,9 +5,14 @@ Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
 Config.set('graphics', 'resizable', '1')
 Config.set('graphics', 'position', 'auto')
-Config.set('graphics', 'multisampling', '2')
+Config.set('graphics', 'multisampling', '0')
 Config.set('kivy', 'exit_on_escape', '0')
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
+Config.set('input', 'wm_pen', ' ')
+Config.set('input', 'wm_touch', ' ')
+# ซ่อนเมาส์เมื่ออยู่ในจอเกม
+from kivy.core.window import Window
+Window.show_cursor = False
 
 from kivy.graphics import Color, Rectangle, Ellipse, RoundedRectangle, InstructionGroup, Line
 from kivy.uix.label import Label
@@ -33,7 +38,7 @@ from menu.camera import Camera
 from menu.pause import PauseMenu
 
 from storygame.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
-from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, INTRO_DIALOGUE, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
+from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUE, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
 from storygame.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
 from storygame.story import is_npc_visible, check_story_triggers # นำเข้าตรรกะเนื้อเรื่อง
 from storygame.quest import QuestManager # นำเข้าหน้าจอกองเควส
@@ -48,17 +53,23 @@ class GameWidget(Widget):
         # จัดการข้อมูลศัตรูที่ถูกกำจัดไปแล้ว (ไม่เกิดใหม่)
         self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
         self.collected_stars = initial_data.get('collected_stars', []) if initial_data else []
+        self.has_received_blue_stone = initial_data.get('has_received_blue_stone', False) if initial_data else False
         
         # สถานะวันปัจจุบัน (ค่าเริ่มต้นคือ Day 1)
         self.current_day = initial_data.get('current_day', 1) if initial_data else 1
         self.warning_triggered = False # ป้องกันแจ้งเตือนรัว
         self.warning_dismissed = initial_data.get('warning_dismissed', False) if initial_data else False # โหลดสถานะการผ่านทางจากเซฟ
+        self.tutorial_triggered = initial_data.get('tutorial_triggered', False) if initial_data else False
+        self.tutorial_mode = False # สถานะชั่วคราวบอกว่ากำลังเล่นบทเรียนสอนใช้ของหรือไม่
         
         # ระบบเวลาเล่น (Play Time)
         self.play_time = initial_data.get('play_time', 0) if initial_data else 0
         
         # เก็บค่าความสำเร็จของเควส (มีผลต่อฉากจบ)
         self.quest_success_count = initial_data.get('quest_success_count', 0) if initial_data else 0
+        self.quest_item_fail = initial_data.get('quest_item_fail', False) if initial_data else False
+        self.death_count = initial_data.get('death_count', 0) if initial_data else 0
+        self.last_death_quote_index = -1
 
         # Setup Camera
         self.camera = Camera(self.canvas.before)
@@ -77,11 +88,12 @@ class GameWidget(Widget):
         # ระบบจัดการ UI บทสนทนา
         self.dialogue_manager = DialogueManager(self)
         self.dialogue_timer = 0
-        self.is_dialogue_active = False
+        self.is_dialogue_active = False # คืนสถานะการคุย
         self.current_dialogue_queue = []
         self.current_dialogue_index = 0
         self.current_character_name = ""
         self.current_choices = []
+        self.current_portrait = None
         self.choice_layout = None
         self.choice_buttons = []
         self.choice_index = 0
@@ -100,6 +112,19 @@ class GameWidget(Widget):
         
         # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
         self.dialogue_root = None
+        
+        # Stun Cooldown
+        self.stun_cooldown = 0
+        
+        # ป้องกันการเดินตอนเริ่มเกมที่ยังโหลดไม่เสร็จ (Stutter prevention เฉพาะเริ่มเกมใหม่)
+        if initial_data is None:
+            self.is_ready = False
+            Clock.schedule_once(self._set_game_ready, 0.5) # เริ่มเกมใหม่รอแป๊บนึง
+        else:
+            self.is_ready = True # โหลดเซฟให้เดินได้ทันที
+            
+        # เคลียร์ปุ่มค้างเสมอ
+        self.pressed_keys = set()
 
         # 1. สร้าง Sorting Layer สำหรับตัวละคร (เพื่อให้วาดทับกันตามค่า Y)
         # ต้องสร้างก่อน Quest/Stars เผื่อมีการโหลดเซฟแล้วเรียกใช้ทันที
@@ -173,9 +198,17 @@ class GameWidget(Widget):
 
         # ตรวจสอบว่าต้องขึ้นบทนำ (คุยกับ Reaper ทันที) หรือไม่
         if initial_data is None:
-            Clock.schedule_once(self._start_intro_dialogue, 1.0)
+            self.is_dialogue_active = True # ล็อกการขยับตั้งแต่วินาทีแรกของ New Game
+            Clock.schedule_once(self._start_intro_dialogue, 0.3)
             
-        Clock.schedule_interval(self.move_step, 1.0 / FPS)  
+        # เริ่มลูปเกม
+        self._main_loop_event = Clock.schedule_interval(self.move_step, 1.0 / FPS)  
+
+    def _set_game_ready(self, dt):
+        """ปลดล็อกให้ผู้เล่นเดินได้หลังจากเริ่มเกมไปแล้ว 1 วินาที"""
+        self.is_ready = True
+        self.pressed_keys.clear() # เคลียร์ปุ่มที่อาจกดค้างไว้ตอนโหลด
+        print("Game is now ready!")
 
     def _start_intro_dialogue(self, dt):
         """เริ่มบทสนทนาแรกของเกมกับ Reaper โดยดึงข้อความจาก chat.py"""
@@ -210,6 +243,10 @@ class GameWidget(Widget):
         # เรียกปรับตำแหน่งของหัวใจเมื่อหน้าจอมีการเปลี่ยนแปลงขนาด
         if getattr(self, 'heart_ui', None):
             self.heart_ui.update_position(self.width, self.height)
+        
+        # เรียกปรับสเกลของแชท/บทสนทนา
+        if getattr(self, 'dialogue_manager', None):
+            self.dialogue_manager.update_ui_scaling()
 
     def _on_keyboard_closed(self): 
         if self._keyboard:
@@ -222,12 +259,37 @@ class GameWidget(Widget):
         key_code = keycode[0]
         print(f"Key pressed: {key_name} (code: {key_code})")  # Debug: แสดงปุ่มที่กด
         
+        if key_name == 'e' or key_name == 'enter':
+            # 1. ถ้ามีแจ้งเตือนไอเทมอยู่ ให้ปิดแจ้งเตือนก่อน
+            if self.dialogue_manager.is_item_notif_active:
+                self.dialogue_manager.close_item_discovery()
+                # ถ้ากำลังคุยค้างอยู่ (กรณีได้รับไอเทมกลางบทสนทนา) ให้แสดงบทสนทนาต่อทันที
+                if self.is_dialogue_active:
+                    self.next_dialogue()
+                return True
+        
+        # คีย์ Q สำหรับกดใช้ไอเทม Blue Stone (แยกจากปุ่มคุยเพื่อไม่ให้สับสน)
+        if key_name == 'q':
+            if self.has_received_blue_stone:
+                if self.stun_cooldown <= 0:
+                    self.use_stun_item()
+                else:
+                    print(f"Stun on cooldown: {self.stun_cooldown:.1f}s")
+            return True
+
         if key_name == 'e':
+            # ถ้ากำลังคุยอยู่ ให้ปุ่ม E ทำหน้าที่เดียวกับ Enter คือไปประโยคถัดไป (ไม่ interact ซ้อน)
+            if self.is_dialogue_active:
+                if not self.choice_buttons: # ถ้าไม่มี choice ให้กด E ไปต่อได้
+                    self.next_dialogue()
+                return True
+                
             print("E key detected - checking interaction")
             self.interact()
         elif key_name == 'enter':
             print("Enter key detected - next dialogue")
-            # ถ้ากำลังคุยอยู่
+            
+            # 2. ถ้ากำลังคุยอยู่
             if self.is_dialogue_active:
                 # ถ้ามี Choice ให้เลือกตัวเลือกที่ไฮไลท์อยู่
                 if self.choice_buttons:
@@ -264,10 +326,19 @@ class GameWidget(Widget):
             self.pressed_keys.remove(key_name)
 
     def move_step(self, dt):
+        try:
+            self._move_step_logic(dt)
+        except Exception as e:
+            print(f"Runtime Error safely caught: {e}")
+
+    def _move_step_logic(self, dt):
+        # ป้องกันอาการ 'กระโดด' หลังจากการชะงักโหลด (Cap DT)
+        dt = min(dt, 0.05)
+        
         # 1. จัดการตรรกะเกม (Logic) - ทำงานเฉพาะเมื่อไม่ได้คุยหรือหยุดเกม
         if self.is_cutscene_active:
             self.update_cutscene(dt)
-        elif not (self.is_dialogue_active or self.is_paused):
+        elif not (self.is_dialogue_active or self.is_paused or not self.is_ready):
             self.play_time += dt
             
             # การเคลื่อนที่ของตัวละคร
@@ -285,29 +356,58 @@ class GameWidget(Widget):
             for enemy in self.enemies[:]:
                 reaper_pos = (self.reaper.x, self.reaper.y)
                 enemy.update(dt, self.player.logic_pos, reaper_pos)
-                if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
-                    self.destroyed_enemies.append(enemy.id)
-                    enemy.destroy()
-                    self.enemies.remove(enemy)
-                    self.heart_ui.take_damage()
 
-            if not hasattr(self, 'reaper_collision_cooldown'):
-                self.reaper_collision_cooldown = 0
-            
-            # อัปเดต NPC
-            for npc in self.npcs:
-                npc.update(dt)
+                # บันทึกสถานะศัตรูที่กำลังจางหาย (ไม่ว่าจะจากชนหรือวง Reaper) ให้จดจำในเซฟ
+                if enemy.is_fading:
+                    if enemy.id not in self.destroyed_enemies:
+                        self.destroyed_enemies.append(enemy.id)
                 
+                # ถ้าจางหายจนจบแล้ว ให้ลบจริงออกจากฉาก
+                if enemy.fading_done:
+                    enemy.destroy()
+                    if enemy in self.enemies:
+                        self.enemies.remove(enemy)
+                    continue
+
+                # ถ้ากำลังจางหาย ไม่ต้องตรวจจับการชนซ้ำ
+                if enemy.is_fading:
+                    continue
+
+                if enemy.check_player_collision_logic(self.player.logic_pos, TILE_SIZE):
+                    if enemy.id not in self.destroyed_enemies:
+                        self.destroyed_enemies.append(enemy.id)
+                    enemy.start_fade()
+                    self.heart_ui.take_damage()
+                    
+                    # ตรวจสอบว่าเลือดหมดหรือยัง
+                    if self.heart_ui.current_health <= 0:
+                        self.respawn_at_reaper()
+                
+                # ตรวจสอบว่าศัตรูเข้าใกล้ Reaper หรือยัง
+                reaper_center_x = self.reaper.x + TILE_SIZE / 2
+                reaper_center_y = self.reaper.y + TILE_SIZE / 2
+                enemy_center_x = enemy.logic_pos[0] + TILE_SIZE / 2
+                enemy_center_y = enemy.logic_pos[1] + TILE_SIZE / 2
+                dist_to_reaper = ((enemy_center_x - reaper_center_x)**2 + (enemy_center_y - reaper_center_y)**2)**0.5
+                
+                if dist_to_reaper < SAFE_ZONE_RADIUS:
+                    print(f"Enemy {enemy.id} entered safe zone and starting fade!")
+                    self.destroyed_enemies.append(enemy.id)
+                    enemy.start_fade()
+
+            if self.stun_cooldown > 0:
+                self.stun_cooldown -= dt
+
             # เช็คการโต้ตอบ (Interactive Hints)
             self.update_interaction_hints()
             
             # เช็คพื้นที่อันตราย (Story Triggers)
             check_story_triggers(self)
         else:
-            # ถ้าอยู่ในโหมดคุย/หยุดเกม ให้ตรวจสอบเพื่อล้าง Hint ที่อาจค้างอยู่
-            if self.interaction_hints:
-                self.update_interaction_hints()
+            # ถ้าอยู่ในโหมดคุย/หยุดเกม ให้บังคับล้าง Hint ที่อาจค้างอยู่ทันที
+            self.clear_interaction_hints()
 
+        # ---------------------------------------------------------
         # 2. กราฟิกที่ต้องอัปเดตเสมอทุกลูกเฟรม
         px, py = self.player.logic_pos
         self.update_camera()
@@ -318,6 +418,32 @@ class GameWidget(Widget):
         
         # จัดเลเยอร์การวาดตัวละคร (Y-Sorting)
         self.y_sorting()
+
+    def respawn_at_reaper(self):
+        """เมื่อหัวใจหมด วาปผู้เล่นกลับไปหา Reaper และรีเซ็ตหัวใจ"""
+        self.death_count += 1
+        print(f"Player died. Total deaths: {self.death_count}")
+        
+        # วาปผู้เล่นไปยังตำแหน่ง Reaper (หรือเยื้องออกมานิดหน่อยเผื่อไม่ให้ทับกัน)
+        rx, ry = self.reaper.logic_pos
+        self.player.logic_pos = [rx, ry - TILE_SIZE]
+        self.player.target_pos = [rx, ry - TILE_SIZE]
+        self.player.sync_graphics_pos()
+        self.player.direction = 'up'
+        self.player.update_frame()
+        
+        # รีเซ็ตเลือด
+        self.heart_ui.current_health = 3
+        for rect in self.heart_ui.hearts:
+            rect.texture = self.heart_ui.tex_heart_full
+            
+        # สุ่มคำพูดโดยไม่ให้ซ้ำกับรอบล่าสุด
+        import random
+        available_indices = [i for i in range(len(REAPER_DEATH_QUOTES)) if i != self.last_death_quote_index]
+        q_idx = random.choice(available_indices)
+        self.last_death_quote_index = q_idx
+        
+        self.dialogue_manager.show_vn_dialogue("Reaper", REAPER_DEATH_QUOTES[q_idx])
 
     def _update_debug_text(self, px, py):
         """อัปเดตข้อมูล Debug ที่มุมจอ"""
@@ -361,13 +487,32 @@ class GameWidget(Widget):
     # ---------------------------------------------------------
     # Interaction & Triggers
     # ---------------------------------------------------------
+    def clear_interaction_hints(self):
+        """ล้างปุ่มและ Hints การโต้ตอบทั้งหมดออกจากจอ"""
+        if hasattr(self, 'interaction_hints'):
+            for hint in self.interaction_hints:
+                if hint.parent:
+                    hint.parent.remove_widget(hint)
+            self.interaction_hints = []
+
+    def cleanup(self):
+        """ล้างทรัพยากรทั้งหมดก่อนทำลาย Widget เพื่อป้องกันลูปค้าง"""
+        if hasattr(self, '_main_loop_event'):
+            Clock.unschedule(self._main_loop_event)
+        
+        self.clear_interaction_hints()
+        
+        if hasattr(self, 'dialogue_manager'):
+            self.dialogue_manager.close_dialogue()
+            
+        # เคลียร์ลูปย่อยอื่นๆ ถ้ามี
+        Clock.unschedule(self._set_game_ready)
+        Clock.unschedule(self._start_intro_dialogue)
+
     def update_interaction_hints(self):
         """จัดการแสดงผลปุ่ม [E] ขึ้นเหนือหัว NPC หรือไอเทม เมื่อเดินไปใกล้"""
-        # 1. ลบ Hint เก่าออกก่อนเสมอ (รวมถึงตอนกำลังคุยด้วยเพื่อไม่ให้ปุ่มค้าง)
-        for hint in self.interaction_hints:
-            if hint.parent:
-                hint.parent.remove_widget(hint)
-        self.interaction_hints = []
+        # 1. ล้าง Hint เดิมก่อนเริ่มคำนวณใหม่
+        self.clear_interaction_hints()
         
         # 2. ถ้ากำลังคุย, หยุดเกม หรืออยู่ใน Cutscene ไม่ต้องสร้าง Hint ใหม่
         if self.is_dialogue_active or self.is_paused or self.is_cutscene_active:
@@ -449,12 +594,19 @@ class GameWidget(Widget):
 
     def interact(self):
         """จัดการการกดปุ่ม [E] เพื่อคุยหรือสำรวจ"""
+        self.clear_interaction_hints()
         px, py = self.player.logic_pos
         
         # 1. เช็คเป้าหมายไอเทม (Stars)
         # current_star_target จะถูกเซ็ตใน update_interaction_hints เฉพาะเมื่ออยู่ใกล้และหันหน้าเข้าหา
         if self.current_star_target:
-            self.dialogue_manager.show_vn_dialogue("Curiosity", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"])
+            star_pos = (self.current_star_target.x, self.current_star_target.y)
+            from settings import STAR_ITEM_MAPPING
+            portrait = None
+            if star_pos in STAR_ITEM_MAPPING:
+                portrait = STAR_ITEM_MAPPING[star_pos].get("portrait")
+            
+            self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
             return
 
         # 2. เช็คเป้าหมาย NPC / Reaper
@@ -477,8 +629,38 @@ class GameWidget(Widget):
                 self.process_interaction(target, npc_index, dx, dy)
                 return
 
+        pass # การกดใช้ไอเทมถูกย้ายไปที่ปุ่ม Q ใน _on_key_down แล้ว เพื่อประสิทธิภาพที่ดีขึ้น
+
+    def use_stun_item(self):
+        """ใช้ Blue Stone เพื่อสตันผีรอบๆ ตัว"""
+        # เอฟเฟกต์การส่องแสง Blue Stone
+        stun_range = 100 # ระยะสตัน
+        self.stun_cooldown = 15.0 # คูลดาวน์ 15 วินาที
+        
+        px, py = self.player.logic_pos
+        player_center_x = px + TILE_SIZE / 2
+        player_center_y = py + TILE_SIZE / 2
+        
+        stunned_any = False
+        for enemy in self.enemies:
+            ex, ey = enemy.logic_pos
+            enemy_center_x = ex + TILE_SIZE / 2
+            enemy_center_y = ey + TILE_SIZE / 2
+            
+            dist = ((player_center_x - enemy_center_x)**2 + (player_center_y - enemy_center_y)**2)**0.5
+            if dist <= stun_range:
+                enemy.stun(duration=3.0)
+                stunned_any = True
+        
+        # Visual Effect (กะพริบจอสีฟ้าอ่อนๆ แป๊บนึง)
+        if stunned_any:
+            print("Stun activated!")
+            # เพิ่มการสั่นหน้าจอหรือเอฟเฟกต์แสงในอนาคตที่นี่ได้
+        
     def process_interaction(self, target, index, dx, dy):
         """ประมวลผลการคุยกับ NPC หรือ Reaper"""
+        # ล้าง Hint ทันทีเมื่อเริ่มการโต้ตอบ
+        self.clear_interaction_hints()
         # หันหน้าเข้าหากัน
         if abs(dx) > abs(dy):
             if dx > 0:
@@ -520,30 +702,45 @@ class GameWidget(Widget):
         self.current_dialogue_queue = dialogue
         self.current_dialogue_index = 0
         self.current_character_name = npc_name
+        self.current_portrait = None # หรือระบุถ้ามีหน้าเฉพาะ
         
         # แสดงข้อความแรก
         if self.current_dialogue_queue:
             first_text = self.current_dialogue_queue[0]
             self.dialogue_manager.show_vn_dialogue(npc_name, first_text)
             
-    def show_dialogue_above_reaper(self, dialogue, choices=None):
+    def show_dialogue_above_reaper(self, dialogue, choices=None, portrait=None):
         """แสดงข้อความคุยของ Reaper สไตล์ Visual Novel ด้านล่างหน้าจอ"""
         # ตั้งค่าคิวข้อความ
         self.current_dialogue_queue = dialogue
         self.current_dialogue_index = 0
         self.current_character_name = "Reaper"
         self.current_choices = choices if choices else []
+        self.current_portrait = portrait
         
         # แสดงข้อความแรก
         if self.current_dialogue_queue:
             first_text = self.current_dialogue_queue[0]
             # แสดง Choice เฉพาะเมื่ออยู่หน้าสุดท้าย
             is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
-            self.dialogue_manager.show_vn_dialogue("Reaper", first_text, choices=(self.current_choices if is_last else None))
+            self.dialogue_manager.show_vn_dialogue(
+                "Reaper", first_text, 
+                choices=(self.current_choices if is_last else None),
+                portrait=self.current_portrait
+            )
 
-    def show_vn_dialogue(self, character_name, dialogue):
+    def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None):
         """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        self.dialogue_manager.show_vn_dialogue(character_name, dialogue)
+        if choices:
+            self.current_choices = choices
+        if portrait:
+            self.current_portrait = portrait
+            
+        self.dialogue_manager.show_vn_dialogue(
+            character_name, dialogue, 
+            choices=choices, 
+            portrait=self.current_portrait
+        )
 
     def show_item_discovery(self, text, image_path=None):
         """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ (Delegated)"""
@@ -566,9 +763,12 @@ class GameWidget(Widget):
         self.current_character_name = ""
         self.current_choices = []
         
-        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ (ยกเว้นตอนที่เป็นการเตือนแบบมี Choice)
-        if last_character == "Reaper" and not has_choices:
+        # ถ้าคุยกับ Reaper จบ ให้เปิดหน้าจอเซฟ (ยกเว้นตอนที่เป็นการเตือนแบบมี Choice หรือเป็น Tutorial)
+        if last_character == "Reaper" and not has_choices and not self.tutorial_mode:
             self.show_save_screen()
+        
+        # รีเซ็ตสถานะโหมดสอนเสมอเมื่อจบการคุย
+        self.tutorial_mode = False
             
         # ถ้าคุยกับ Angel จบ ให้ปิด Cutscene
         if last_character == "Angel":
@@ -587,28 +787,35 @@ class GameWidget(Widget):
                 self.quest_manager.show_quest_notification("COMPLETED: FIND DOLL PARTS")
                 self.quest_manager.update_quest_list_ui()
                 
-                # ลบ NPC1 (The Sad Soul) ออกจากฉากทันที
-                for npc in self.npcs[:]:
-                    if "NPC1" in npc.image_path:
-                        if hasattr(npc, 'group') and npc.group in self.sorting_layer.children:
-                            self.sorting_layer.remove(npc.group)
-                        self.npcs.remove(npc)
-                        break
-                
-                # เริ่ม Cutscene หลังจากจบเควส 2 วินาที
-                Clock.schedule_once(self.start_quest_complete_cutscene, 2.0)
+                # เริ่มลำดับการเดินออกจากฉากหลังจบเควส
+                Clock.schedule_once(self.start_quest_complete_cutscene, 1.5)
 
     def next_dialogue(self):
         """ไปยังข้อความถัดไปในคิว"""
         if self.current_choices and self.current_dialogue_index == len(self.current_dialogue_queue) - 1:
             return
 
+        # 1. เช็คก่อนว่าแชทปัจจุบันคือประโยคที่ต้องให้หินหรือไม่ (ถ้าใช่ ให้โชว์แจ้งเตือนไอเทมก่อนขยับไปประโยคถัดไป)
+        if self.current_dialogue_index < len(self.current_dialogue_queue):
+            current_text = self.current_dialogue_queue[self.current_dialogue_index]
+            if "Here, take this [Blue Stone] with you" in current_text and not self.has_received_blue_stone:
+                # ซ่อนแชทก่อนโชว์ไอเทมตามคำขอ
+                self.dialogue_manager.close_dialogue()
+                self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
+                self.has_received_blue_stone = True
+                return # กลับออกไปเพื่อให้ user กด Enter ปิดไอเทมก่อน
+
+        # 2. ขยับไปยังข้อความถัดไป
         self.current_dialogue_index += 1
         
         if self.current_dialogue_index < len(self.current_dialogue_queue):
             next_text = self.current_dialogue_queue[self.current_dialogue_index]
             is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
-            self.dialogue_manager.show_vn_dialogue(self.current_character_name, next_text, choices=(self.current_choices if is_last else None))
+            self.dialogue_manager.show_vn_dialogue(
+                self.current_character_name, next_text, 
+                choices=(self.current_choices if is_last else None),
+                portrait=self.current_portrait
+            )
         else:
             self.close_dialogue()
 
@@ -618,6 +825,8 @@ class GameWidget(Widget):
             quest = self.quest_manager.active_quests.get("doll_parts")
             if quest:
                 if quest.current_count >= quest.target_count:
+                    if self.quest_item_fail:
+                        return ["Oh! You found them!", "Wait... these parts... they're just old scrap metal...", "Why would you give me these? This isn't my doll..."]
                     return ["Oh! You found them!", "My doll... it's whole again. Thank you so much!", "You really are a kind one."]
                 elif quest.is_active:
                     return ["Were you able to find the pieces? It's still so dark..."]
@@ -627,10 +836,9 @@ class GameWidget(Widget):
         return ["..."]
 
     def get_reaper_dialogue(self, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยของ Reaper"""
+        """คืนค่าลิสต์ข้อความคุยของ Reaper ครั้งละ 1 ประโยคแบบสุ่ม"""
         import random
-        selected_dialogues = random.sample(REAPER_DIALOGUES, min(3, len(REAPER_DIALOGUES)))
-        return selected_dialogues
+        return [random.choice(REAPER_DIALOGUES)]
 
     def on_choice_selected(self, choice):
         """จัดการเมื่อผู้เล่นเลือก Choice (เรียกใช้ตรรกะจาก choice.py)"""
@@ -653,6 +861,9 @@ class GameWidget(Widget):
         
         # เคลียร์ปุ่มที่ค้างอยู่ป้องกันตัวละครเดินค้างเมื่อพักเกม
         self.pressed_keys.clear()
+        
+        # ปิด Interaction Hints ทันที
+        self.clear_interaction_hints()
         
         # สร้างเมนู Pause
         self.pause_menu = PauseMenu(
@@ -699,7 +910,11 @@ class GameWidget(Widget):
             "quests": self.quest_manager.to_dict(),
             "play_time": self.play_time,
             "quest_success_count": self.quest_success_count,
-            "warning_dismissed": self.warning_dismissed
+            "quest_item_fail": self.quest_item_fail,
+            "death_count": self.death_count,
+            "warning_dismissed": self.warning_dismissed,
+            "has_received_blue_stone": self.has_received_blue_stone,
+            "tutorial_triggered": self.tutorial_triggered
         }
         
         file_path = f'saves/slot_{slot_id}.json'
@@ -837,10 +1052,10 @@ class GameWidget(Widget):
                     self.darkness_group.add(Color(0, 0, 0, alpha))
                     
                     # ไล่สีจากซ้ายมาขวา (จะจางหายสนิทที่ x=656 พอดี)
-                    self.darkness_group.add(Rectangle(pos=(dark_x_start + (i * step_size), 0), size=(step_size, dark_y_start)))
+                    self.darkness_group.add(Rectangle(pos=(dark_x_start + (i * step_size), 0), size=(step_size + 1, dark_y_start + 1)))
                     
                     # ไล่สีจากบนลงล่าง (จะจางหายสนิทที่ y=464 พอดี)
-                    self.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), size=(MAP_WIDTH - dark_x_start, step_size)))
+                    self.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), size=(MAP_WIDTH - dark_x_start + 1, step_size + 1)))
 
             # รีเซ็ตสีกลับเป็นปกติ
             self.darkness_group.add(Color(1, 1, 1, 1))
@@ -850,25 +1065,53 @@ class GameWidget(Widget):
     # ---------------------------------------------------------
     def start_quest_complete_cutscene(self, dt):
         """เริ่มลำดับ Cutscene เมื่อจบเควส"""
+        self.clear_interaction_hints() # ล้างปุ่ม E ทันทีที่จบเควส
         self.is_cutscene_active = True
         self.cutscene_step = 1 # ขั้นตอนเดินออกจากจอ
         self.camera.locked = True # ล็อกกล้องให้อยู่กับที่
         
+        # ทำให้ NPC ทุกตัวจางหายไป (ตามคำขอ) และไม่เดิน
+        for npc in self.npcs:
+            npc.is_fading = True
+            npc.is_moving = False
+        
     def update_cutscene(self, dt):
-        """จัดการลำดับของ Cutscene"""
+        """จัดการลำดับของ Cutscene (NPC จางหายก่อน แล้ว Player ค่อยเริ่มเดินออก)"""
+        self.clear_interaction_hints() # มั่นใจว่าปุ่ม E จะไม่โผล่มาแทรก
         if self.cutscene_step == 1:
-            # ตัวละครเดินไปทางขวาเอง
-            keys = {'right'}
-            self.player.current_speed = WALK_SPEED
-            # ไม่เช็คชนกับอะไรทั้งสิ้นเพื่อให้เดินออกจากจอได้แน่นอน
-            self.player.move(keys)
+            # ต้องเรียก npc.update(dt) เพื่อให้ตรรกะการจาง (Alpha) ทำงาน
+            for npc in self.npcs:
+                npc.update(dt)
+
+            # 1. จัดการการจางหายของ NPC ทั้งหมด (เฟสที่ 1)
+            npcs_to_remove = []
+            for npc in self.npcs:
+                if npc.fading_done:
+                    npcs_to_remove.append(npc)
+                    if npc.group in self.sorting_layer.children:
+                        self.sorting_layer.remove(npc.group)
             
-            # ตรวจสอบว่าออกจากจองหรือยัง (คำนวณจากตำแหน่งกล้องที่ล็อกไว้)
-            # ดึงตำแหน่งกล้องจริงจาก Translate (ติดลบเพราะเป็นจุดศูนย์กลาง)
+            for npc in npcs_to_remove:
+                if npc in self.npcs:
+                    self.npcs.remove(npc)
+            
+            # เช็คว่า NPC จางหายหมดหรือยัง
+            all_npcs_gone = (len(self.npcs) == 0)
+            
+            # ถ้า NPC ยังจางไม่หมด ให้รออยู่ตรงนี้ก่อน ไม่ต้องเริ่มเดิน
+            if not all_npcs_gone:
+                return
+
+            # 2. เฟสที่ 2: เมื่อ NPC จางหายหมดแล้ว ตัวละครหลัก (Player) ค่อยเริ่มเดินออกทางขวา
             cam_x = -self.camera.trans_pos.x
             viewport_w = CAMERA_WIDTH 
-            right_edge = cam_x + (viewport_w / 2)
+            right_edge = cam_x + (viewport_w / 2) + 32  # ให้สุดจอจริงๆ
             
+            keys = {'right'}
+            self.player.current_speed = WALK_SPEED
+            self.player.move(keys)
+            
+            # ถ้า Player ออกจากจอแล้ว ให้เปลี่ยนไปคัทซีนถัดไป
             if self.player.logic_pos[0] > right_edge:
                 self.cutscene_step = 2
                 self.show_black_screen_transition()
@@ -881,11 +1124,22 @@ class GameWidget(Widget):
         from kivy.uix.widget import Widget
         from kivy.graphics import Color, Rectangle
         
+        # ใช้ Widget ที่ขนาดเต็มจอเสมอ
         self.black_overlay = Widget(size_hint=(1, 1))
         with self.black_overlay.canvas:
-            Color(0.12, 0.12, 0.12, 1) # สีเทาเข้ม (Dark Grey) แทนจอดำ
-            Rectangle(size=(2000, 2000), pos=(-500, -500)) # คลุมให้มิด
+            Color(0.12, 0.12, 0.12, 1) # สีเทาเข้ม
+            # สร้าง Rectangle ที่จะขยายตามขนาด Widget
+            self.black_rect = Rectangle(size=root.size, pos=(0, 0))
             
+        def update_overlay(instance, value):
+            # ขยายให้เกินจอนิดหน่อยกันขอบขาว
+            self.black_rect.size = (instance.width * 1.5, instance.height * 1.5)
+            self.black_rect.pos = (-instance.width * 0.25, -instance.height * 0.25)
+            
+        self.black_overlay.bind(size=update_overlay, pos=update_overlay)
+        # เรียกอัปเดตครั้งแรกทันที
+        update_overlay(self.black_overlay, None)
+        
         root.add_widget(self.black_overlay)
         
         # 2. ขึ้นบทสนทนาสไตล์ VN แต่พื้นหลังดำ
@@ -912,7 +1166,7 @@ class GameWidget(Widget):
         self.is_dialogue_active = True
         
         # แสดงข้อความแรก
-        self._draw_vn_dialogue_box("Angel", angel_text[0])
+        self.show_vn_dialogue("Angel", angel_text[0])
         
         # เมื่อคุยจบ Angel จะต้องปิด Cutscene (ผ่าน close_dialogue ที่เช็คชื่อ Angel)
         
@@ -991,7 +1245,11 @@ class MyApp(App):
     
     def show_game(self, initial_data=None):
         """แสดงเกมหลังจบหน้าปกเกม หรือหน้าโหลดเซฟ"""
-        # ลบ splash screen หรือ UI ก่อนหน้า
+        # ลบวิดเจ็ตเก่าและหยุดลูปเดิมก่อน
+        for child in self.root.children[:]:
+            if isinstance(child, GameWidget):
+                child.cleanup()
+        
         self.root.clear_widgets()
         
         # ถ้าไม่มีข้อมูลโหลด (คือเลือก New Game) ให้แสดงหน้าจอ Day 1 ก่อน

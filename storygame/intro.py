@@ -2,7 +2,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
-from settings import GAME_FONT
+from settings import GAME_FONT, WINDOW_HEIGHT
 
 class IntroScreen(FloatLayout):
     """
@@ -24,21 +24,29 @@ class IntroScreen(FloatLayout):
         self.label = Label(
             text=f"Day {self.day}",
             font_name=GAME_FONT,
-            font_size='70sp',
+            font_size=self._get_scaled_font_size(),
             color=(1, 1, 1, 1),
             size_hint=(None, None),
             pos_hint={'center_x': 0.5, 'center_y': 0.5}
         )
         self.add_widget(self.label)
         
-        self.bind(pos=self._update_bg, size=self._update_bg)
+        self.bind(pos=self._update_ui, size=self._update_ui)
         
         # ตั้งเวลาให้ข้ามหน้าจอนี้อัตโนมัติ
         Clock.schedule_once(self.finish, self.duration)
         
-    def _update_bg(self, *args):
+    def _get_scaled_font_size(self):
+        """คำนวณขนาดตัวอักษรตามความสูงของหน้าจอ (Base 70sp at 540h)"""
+        scale = self.height / WINDOW_HEIGHT if self.height > 0 else 1.0
+        return 70 * scale
+
+    def _update_ui(self, *args):
+        # อัปเดตพื้นหลัง
         self.bg_rect.pos = self.pos
         self.bg_rect.size = self.size
+        # อัปเดตขนาดตัวอักษรเมื่อจอขยาย
+        self.label.font_size = self._get_scaled_font_size()
         
     def finish(self, dt=None):
         if self.callback:

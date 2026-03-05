@@ -6,6 +6,7 @@ from kivy.clock import Clock
 from settings import GAME_FONT
 from storygame.chat import DIALOGUE_CONFIG
 from storygame.choice import draw_choice_buttons, clear_choices
+import math
 
 class DialogueManager:
     def __init__(self, game):
@@ -13,138 +14,215 @@ class DialogueManager:
         self.dialogue_bg = None
         self.dialogue_text = None
         self.name_label = None
+        self.portrait_widget = None
+        self.is_item_notif_active = False
+        self.item_notif_widget = None
+        self.last_notif_text = ""
+        self.last_notif_image = None
+        
+        self.chat_tri_event = None
+        self.item_tri_event = None
 
-    def show_vn_dialogue(self, character_name, dialogue, choices=None):
-        """วาดกล่องข้อความสไตล์ Visual Novel"""
+    def get_ui_scale(self):
+        from settings import WINDOW_HEIGHT
+        return self.game.height / WINDOW_HEIGHT
+
+    def create_pixel_triangle(self, scale, pos_y_ratio=0.1):
+        p_px = 5 * scale
+        tri_widget = Widget(size_hint=(None, None), size=(5 * p_px, 3 * p_px), 
+                           pos_hint={'center_x': 0.5, 'center_y': pos_y_ratio})
+        
+        with tri_widget.canvas:
+            tri_color = Color(1, 1, 1, 1)
+            tri_rect1 = Rectangle(size=(5 * p_px, p_px))
+            tri_rect2 = Rectangle(size=(3 * p_px, p_px))
+            tri_rect3 = Rectangle(size=(1 * p_px, p_px))
+            
+        def update_tri_pos(instance, value=None):
+            cx, cy = instance.center
+            y_off = getattr(instance, 'y_offset', 0)
+            tri_rect1.pos = (cx - 2.5 * p_px, cy + 0.5 * p_px + y_off)
+            tri_rect2.pos = (cx - 1.5 * p_px, cy - 0.5 * p_px + y_off)
+            tri_rect3.pos = (cx - 0.5 * p_px, cy - 1.5 * p_px + y_off)
+            
+        tri_widget.bind(pos=update_tri_pos, size=update_tri_pos)
+        tri_widget.update_now = update_tri_pos
+        tri_widget.y_offset = 0
+        tri_widget.tri_color = tri_color
+        return tri_widget
+
+    def animate_pixel_triangle(self, tri_widget):
+        def _animate(dt):
+            t = Clock.get_time()
+            tri_widget.y_offset = math.sin(t * 8) * 5
+            tri_widget.tri_color.a = 0.4 + abs(math.sin(t * 5)) * 0.6
+            if hasattr(tri_widget, 'update_now'):
+                tri_widget.update_now(tri_widget)
+        return Clock.schedule_interval(_animate, 0.03)
+
+    def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None):
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         cfg = DIALOGUE_CONFIG
-        
-        # อัปเดตรายการ Choice ปัจจุบันให้ GameWidget รู้
+        scale = self.get_ui_scale()
         self.game.current_choices = choices if choices else []
+        if hasattr(self.game, 'clear_interaction_hints'):
+            self.game.clear_interaction_hints()
 
-        # 1. ลบทิ้งหากมีของเดิมอยู่
+        # self.close_dialogue() # เอาออกชั่วคราวเพื่อให้ Widget เก่ายังอยู่ขณะอัปเดต
+        # เราจะจัดการเคลียร์เฉพาะส่วนที่จำเป็นแทน
         if self.dialogue_bg:
             if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
+        if self.chat_tri_event: Clock.unschedule(self.chat_tri_event); self.chat_tri_event = None
 
-        # 2. พื้นหลัง - ใช้ FloatLayout และ pos_hint เพื่อให้ชิดขอบล่างเสมอ
-        bg_widget = FloatLayout(size_hint=(1, None), height=cfg["box_height"], pos_hint={'x': 0, 'y': 0})
+        box_h = cfg["box_height"] * scale
+        bg_widget = FloatLayout(size_hint=(1, None), height=box_h, pos_hint={'x': 0, 'y': 0})
         with bg_widget.canvas.before:
-            Color(0, 0, 0, cfg["bg_opacity"])
-            self.dialogue_bg_rect = Rectangle(size=bg_widget.size, pos=bg_widget.pos)
-            
+            Color(0, 0, 0, 0.8)
+            self.bg_rect = Rectangle(size=bg_widget.size, pos=bg_widget.pos)
         def update_bg_rect(instance, value):
-            self.dialogue_bg_rect.pos = instance.pos
-            self.dialogue_bg_rect.size = instance.size
+            self.bg_rect.pos = instance.pos
+            self.bg_rect.size = instance.size
         bg_widget.bind(size=update_bg_rect, pos=update_bg_rect)
-        
         root.add_widget(bg_widget)
         self.dialogue_bg = bg_widget
 
-        # 3. ชื่อตัวละคร
         if character_name:
+            top_pad = cfg["top_padding"] * scale
+            name_h = cfg["name_height"] * scale
             self.name_label = Label(
-                text=character_name,
-                font_name=GAME_FONT,
-                font_size=cfg["name_font_size"],
-                color=cfg["name_color"],
-                size_hint=(1, None),
-                height=cfg["name_height"],
-                pos_hint={'center_x': 0.5, 'top': 1 - (cfg["top_padding"] / cfg["box_height"])},
-                halign='center',
-                valign='middle'
+                text=character_name, font_name=GAME_FONT,
+                font_size=cfg["name_font_size"] * scale, color=cfg["name_color"],
+                size_hint=(1, None), height=name_h,
+                pos_hint={'center_x': 0.5, 'top': 1 - (top_pad / box_h)},
+                halign='center', valign='middle'
             )
             self.name_label.bind(size=self.name_label.setter('text_size'))
             bg_widget.add_widget(self.name_label)
 
-        # 4. ข้อความคุย
-        text_top_ratio = (cfg["top_padding"] + cfg["name_height"] + cfg["msg_margin_top"]) / cfg["box_height"]
-        
+        msg_margin = cfg["msg_margin_top"] * scale
+        text_top_ratio = ( (cfg["top_padding"] * scale) + (cfg["name_height"] * scale) + msg_margin) / box_h
         self.dialogue_text = Label(
-            text=dialogue,
-            font_name=GAME_FONT,
-            font_size=cfg["msg_font_size"],
-            color=cfg["msg_color"],
-            size_hint=(1, None),
-            height=cfg["box_height"] * (1 - text_top_ratio) - 10,
+            text=dialogue, font_name=GAME_FONT,
+            font_size=cfg["msg_font_size"] * scale, color=cfg["msg_color"],
+            size_hint=(1, None), height=box_h * (1 - text_top_ratio) - (10 * scale),
             pos_hint={'center_x': 0.5, 'top': 1 - text_top_ratio},
-            halign='center',
-            valign='top'
+            halign='center', valign='top'
         )
-        
         def update_msg_text_size(instance, value):
-            instance.text_size = (instance.width - (cfg["side_padding"] * 2), instance.height)
+            instance.text_size = (instance.width - (cfg["side_padding"] * 2 * scale), instance.height)
         self.dialogue_text.bind(size=update_msg_text_size)
         bg_widget.add_widget(self.dialogue_text)
 
-        # 5. Choices (ปุ่มเลือก)
+        if not choices:
+            tri = self.create_pixel_triangle(scale, pos_y_ratio=0.1)
+            bg_widget.add_widget(tri)
+            self.chat_tri_event = self.animate_pixel_triangle(tri)
+
         if choices:
             draw_choice_buttons(self.game, choices)
 
+        if character_name == "Little girl":
+            from settings import PLAYER_PORTRAIT_IMG
+            p_source = portrait if portrait else PLAYER_PORTRAIT_IMG
+            p_size = 280 * scale 
+
+            if not self.portrait_widget:
+                self.portrait_widget = Widget(size_hint=(None, None), size=(p_size, p_size))
+                with self.portrait_widget.canvas:
+                    Color(1, 1, 1, 1)
+                    self.portrait_rect = Rectangle(source=p_source, size=self.portrait_widget.size,
+                                                pos=(self.game.width - p_size - (20 * scale), box_h))
+                root.add_widget(self.portrait_widget)
+                
+                if not hasattr(self, '_portrait_update_bound'):
+                    def _p_upd(instance, value):
+                        if self.portrait_widget and self.portrait_rect:
+                            sc = self.get_ui_scale()
+                            cur_box_h = DIALOGUE_CONFIG["box_height"] * sc
+                            new_p_size = 280 * sc
+                            self.portrait_widget.size = (new_p_size, new_p_size)
+                            self.portrait_rect.size = self.portrait_widget.size
+                            self.portrait_rect.pos = (self.game.width - self.portrait_widget.width - (20 * sc), cur_box_h)
+                    self.game.bind(size=_p_upd)
+                    self._portrait_update_bound = True
+            else:
+                # ถ้ามีลูปอยู่แล้ว แต่อยากเปลี่ยนรูปหน้า (เช่น สลับจาก n เป็น s)
+                if hasattr(self, 'portrait_rect'):
+                    self.portrait_rect.source = p_source
+                    print(f"DEBUG: Updated portrait source to {p_source}")
+        
         self.game.is_dialogue_active = True
 
+    def update_ui_scaling(self):
+        if self.game.is_dialogue_active and self.dialogue_bg:
+            char_name = getattr(self.name_label, 'text', "") if self.name_label else ""
+            msg_text = self.dialogue_text.text if self.dialogue_text else ""
+            self.show_vn_dialogue(char_name, msg_text, choices=self.game.current_choices)
+        
+        if self.is_item_notif_active and self.item_notif_widget:
+            text = self.last_notif_text
+            img = self.last_notif_image
+            self.close_item_discovery()
+            self.show_item_discovery(text, img)
+
     def close_dialogue(self):
-        """ปิดกล่องข้อความคุย"""
+        if self.chat_tri_event: Clock.unschedule(self.chat_tri_event); self.chat_tri_event = None
         if self.dialogue_bg:
-            if self.dialogue_bg.parent:
-                self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
+            if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
-            
+        if self.portrait_widget:
+            if self.portrait_widget.parent: self.portrait_widget.parent.remove_widget(self.portrait_widget)
+            self.portrait_widget = None
         self.dialogue_text = None
         self.name_label = None
         clear_choices(self.game)
 
     def show_item_discovery(self, text, image_path=None):
-        """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ"""
+        if self.item_notif_widget: # ไม่ใช้ is_item_notif_active เช็คเพื่อรองรับการ refresh
+             self.close_item_discovery()
+             
+        self.last_notif_text = text
+        self.last_notif_image = image_path
+        
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
-        
-        notif_banner = FloatLayout(size_hint=(1, 0.3), pos_hint={'center_x': 0.5, 'center_y': 0.55})
-        
-        with notif_banner.canvas.before:
+        scale = self.get_ui_scale()
+        self.item_notif_widget = FloatLayout(size_hint=(1, 0.3), pos_hint={'center_x': 0.5, 'center_y': 0.55})
+        with self.item_notif_widget.canvas.before:
             Color(0, 0, 0, 0.75)
-            banner_rect = Rectangle(size=notif_banner.size, pos=notif_banner.pos)
+            self.notif_banner_rect = Rectangle()
             Color(1, 1, 1, 0.1)
-            line_top = Line(points=[0, 0, 0, 0], width=1)
-            line_bottom = Line(points=[0, 0, 0, 0], width=1)
-            
-        def update_banner(instance, value):
-            banner_rect.pos = instance.pos
-            banner_rect.size = instance.size
-            line_top.points = [instance.x, instance.top, instance.right, instance.top]
-            line_bottom.points = [instance.x, instance.y, instance.right, instance.y]
-        notif_banner.bind(size=update_banner, pos=update_banner)
-        
-        text_label = Label(
-            text="FIND",
-            font_name=GAME_FONT,
-            font_size=36,
-            color=(1, 1, 1, 1),
-            size_hint=(1, None),
-            height=40,
-            pos_hint={'center_x': 0.5, 'center_y': 0.78},
-            bold=True
-        )
-
-        item_size = 100
-        item_box = Widget(size_hint=(None, None), size=(item_size, item_size), 
-                         pos_hint={'center_x': 0.5, 'center_y': 0.33})
-        
-        with item_box.canvas:
-            Color(1, 1, 1, 0.15)
-            glow_rect = Ellipse(size=(item_size*1.6, item_size*1.6))
+            self.notif_line_top = Line(width=1)
+            self.notif_line_bottom = Line(width=1)
+        def u_b(i, v):
+            self.notif_banner_rect.pos = i.pos; self.notif_banner_rect.size = i.size
+            self.notif_line_top.points = [i.x, i.top, i.right, i.top]
+            self.notif_line_bottom.points = [i.x, i.y, i.right, i.y]
+        self.item_notif_widget.bind(size=u_b, pos=u_b)
+        text_label = Label(text=text, font_name=GAME_FONT, font_size=36 * scale, color=(1, 1, 1, 1),
+                          size_hint=(1, None), height=40 * scale, pos_hint={'center_x': 0.5, 'center_y': 0.8}, bold=True)
+        i_sz = 90 * scale # ลดขนาดลงนิดนึงให้สมดุล
+        i_box = Widget(size_hint=(None, None), size=(i_sz, i_sz), pos_hint={'center_x': 0.5, 'center_y': 0.4})
+        with i_box.canvas:
             Color(1, 1, 1, 1)
-            item_icon_rect = Rectangle(size=(item_size, item_size))
-            
-        def update_item_pos(instance, value):
-            glow_rect.pos = (instance.center_x - (item_size*0.8), instance.center_y - (item_size*0.8))
-            item_icon_rect.pos = instance.pos
-        item_box.bind(pos=update_item_pos, size=update_item_pos)
-        
-        notif_banner.add_widget(text_label)
-        notif_banner.add_widget(item_box)
-        root.add_widget(notif_banner)
-        
-        def remove_notif(dt):
-            if notif_banner.parent:
-                notif_banner.parent.remove_widget(notif_banner)
-        Clock.schedule_once(remove_notif, 2.0)
+            # ลบ glow_rect (วงกลมสีขาว) ออกตามคำขอ
+            self.item_icon_rect = Rectangle(source=image_path, size=(i_sz, i_sz))
+        def u_i_p(i, v):
+            self.item_icon_rect.pos = i.pos
+        i_box.bind(pos=u_i_p, size=u_i_p)
+
+        # ปรับ pos_y_ratio ให้ต่ำลงเพื่อไม่ให้สามเหลี่ยมซ้อนภาพไอเทม
+        tri = self.create_pixel_triangle(scale, pos_y_ratio=0.08)
+        self.item_notif_widget.add_widget(text_label)
+        self.item_notif_widget.add_widget(i_box)
+        self.item_notif_widget.add_widget(tri)
+        root.add_widget(self.item_notif_widget)
+        self.item_tri_event = self.animate_pixel_triangle(tri)
+        self.is_item_notif_active = True
+
+    def close_item_discovery(self):
+        if self.item_tri_event: Clock.unschedule(self.item_tri_event); self.item_tri_event = None
+        if self.item_notif_widget and self.item_notif_widget.parent:
+            self.item_notif_widget.parent.remove_widget(self.item_notif_widget)
+        self.item_notif_widget = None
+        self.is_item_notif_active = False
