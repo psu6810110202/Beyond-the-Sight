@@ -35,6 +35,7 @@ class Enemy:
         self.target_pos = [x, y]
         self.turn_delay = 0
         self.direction = 'down'
+        self.is_chasing = False
         
         # Animation properties
         self.state = 'idle'
@@ -155,6 +156,7 @@ class Enemy:
     def update(self, dt, player_pos, reaper_pos=None, map_rects=None):
         """Main update loop called by the game logic."""
         if self.is_fading:
+            self.is_chasing = False
             self.alpha -= dt * 1.5 # ปรับความเร็วในการจางหาย
             if self.alpha <= 0:
                 self.alpha = 0
@@ -176,6 +178,7 @@ class Enemy:
 
             # Stun check
             if self.is_stunned:
+                self.is_chasing = False
                 self.stun_timer -= dt
                 if self.stun_timer <= 0:
                     self.is_stunned = False
@@ -184,10 +187,15 @@ class Enemy:
 
             # Decide whether to chase the player
             dist = self.calculate_distance(player_pos)
-            if dist <= self.detection_radius:
-                # ตรวจสอบการมองเห็น (Line of Sight) ไม่ให้มองทะลุกำแพง
-                if self.has_line_of_sight(player_pos, map_rects):
-                    self.chase_player_grid(player_pos, reaper_pos, map_rects)
+            if dist <= self.detection_radius and self.has_line_of_sight(player_pos, map_rects):
+                self.is_chasing = True
+                self.chase_player_grid(player_pos, reaper_pos, map_rects)
+            else:
+                self.is_chasing = False
+        else:
+            # ขณะเดินไปเป้าหมาย (is_moving) ถ้ายังอยู่ในรัศมีและมองเห็น ก็ถือว่ายังไล่อยู่
+            dist = self.calculate_distance(player_pos)
+            self.is_chasing = dist <= self.detection_radius and self.has_line_of_sight(player_pos, map_rects)
         
     def calculate_distance(self, target_pos):
         """Calculates distance between enemy and target (เหมือน player)."""
@@ -262,23 +270,18 @@ class Enemy:
         self.is_moving = True
 
     def continue_move(self):
-        """Smoothly interpolates movement towards the target grid position (เหมือน player)."""
-        cur_x, cur_y = self.logic_pos
-        tar_x, tar_y = self.target_pos
-
-        if cur_x < tar_x: cur_x = min(cur_x + self.speed, tar_x)
-        elif cur_x > tar_x: cur_x = max(cur_x - self.speed, tar_x)
-        if cur_y < tar_y: cur_y = min(cur_y + self.speed, tar_y)
-        elif cur_y > tar_y: cur_y = max(cur_y - self.speed, tar_y)
-
-        self.logic_pos = [cur_x, cur_y]
+        """เลื่อนตำแหน่งศัตรูเข้าหาเป้าหมายอย่างลื่นไหล"""
+        for i in range(2):
+            if self.logic_pos[i] < self.target_pos[i]:
+                self.logic_pos[i] = min(self.logic_pos[i] + self.speed, self.target_pos[i])
+            elif self.logic_pos[i] > self.target_pos[i]:
+                self.logic_pos[i] = max(self.logic_pos[i] - self.speed, self.target_pos[i])
         
-        # อัปเดตกราฟิกสี่เหลี่ยมตามพิกัด x, y (เหมือน player)
-        offset_x = (TILE_SIZE - ENEMY_WIDTH) / 2
-        offset_y = TILE_SIZE / 2
-        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
+        ox = (TILE_SIZE - ENEMY_WIDTH) / 2
+        oy = TILE_SIZE / 2
+        self.rect.pos = (self.logic_pos[0] + ox, self.logic_pos[1] + oy)
         
-        if cur_x == tar_x and cur_y == tar_y:
+        if self.logic_pos == self.target_pos:
             self.is_moving = False
             
     def check_map_collision(self, new_x, new_y, map_rects):

@@ -182,38 +182,29 @@ class NPC:
             self.update_frame()
     
     def sync_graphics_pos(self):
-        """อัปเดตตำแหน่งกราฟิกให้ตรงกับ Logic Pos"""
-        offset_x = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
-        offset_y = TILE_SIZE / 2
-        self.rect.pos = (self.logic_pos[0] + offset_x, self.logic_pos[1] + offset_y)
+        """อัปเดตตำแหน่งกราฟิก (World -> Canvas)"""
+        ox = (TILE_SIZE - NPC_VISUAL_WIDTH) / 2
+        oy = TILE_SIZE / 2
+        self.rect.pos = (self.logic_pos[0] + ox, self.logic_pos[1] + oy)
 
     def start_move(self, dx, dy):
-        """กำหนดเป้าหมายการเดินให้ NPC (ทิศทาง Grid-based)"""
+        """เริ่มเดิน (Grid-based)"""
         self.target_pos = [self.logic_pos[0] + dx, self.logic_pos[1] + dy]
         self.is_moving = True
-        if dx > 0: self.direction = 'right'
-        elif dx < 0: self.direction = 'left'
-        elif dy > 0: self.direction = 'up'
-        elif dy < 0: self.direction = 'down'
-        self.state = 'walk' if hasattr(self, 'walk_texture') else 'idle'
+        self.direction = ('right' if dx > 0 else 'left' if dx < 0 else 'up' if dy > 0 else 'down')
         self.update_frame()
 
     def continue_move(self):
-        """เลื่อนตำแหน่ง NPC เข้าหาเป้าหมายอย่างต่อเนื่อง"""
-        cur_x, cur_y = self.logic_pos
-        tar_x, tar_y = self.target_pos
+        """ตรรกะการเลื่อนตำแหน่งเข้าหาเป้าหมาย"""
+        for i in range(2): # x, y
+            if self.logic_pos[i] < self.target_pos[i]:
+                self.logic_pos[i] = min(self.logic_pos[i] + self.speed, self.target_pos[i])
+            elif self.logic_pos[i] > self.target_pos[i]:
+                self.logic_pos[i] = max(self.logic_pos[i] - self.speed, self.target_pos[i])
 
-        if cur_x < tar_x: cur_x = min(cur_x + self.speed, tar_x)
-        elif cur_x > tar_x: cur_x = max(cur_x - self.speed, tar_x)
-        if cur_y < tar_y: cur_y = min(cur_y + self.speed, tar_y)
-        elif cur_y > tar_y: cur_y = max(cur_y - self.speed, tar_y)
-
-        self.logic_pos = [cur_x, cur_y]
         self.sync_graphics_pos()
-
-        if cur_x == tar_x and cur_y == tar_y:
+        if self.logic_pos == self.target_pos:
             self.is_moving = False
-            self.state = 'idle'
             self.update_frame()
 
     def update(self, dt):

@@ -60,11 +60,22 @@ class HeartUI:
             # เปลี่ยนภาพหัวใจเป็นสีดำขั้นแรก (หัวใจแตก) ทันที
             self.hearts[heart_index].texture = self.tex_heart_break
             
-            # ตั้งเวลาเปลี่ยนเป็นหัวใจว่างเปล่า (หัวใจ-3.png) ในอีก 2 วินาที
+            # เก็บค่า health ปัจจุบันไว้ เพื่อเช็คใน callback ว่ามีการรีเซ็ตเลือด (เช่น ตายแล้วเกิดใหม่) หรือไม่
+            expected_health = self.current_health
+
+            # ตั้งเวลาเปลี่ยนเป็นหัวใจว่างเปล่า (หัวใจ-3.png) ในอีก 0.5 วินาที
             def change_to_empty(dt):
-                self.hearts[heart_index].texture = self.tex_heart_empty
+                # ถ้าเลือดมีการเปลี่ยนแปลงไปในทางเพิ่มขึ้น (เกิดใหม่) ไม่ต้องเปลี่ยนภาพเป็นหัวใจว่าง
+                if self.current_health <= expected_health:
+                    self.hearts[heart_index].texture = self.tex_heart_empty
                     
             Clock.schedule_once(change_to_empty, 0.5)
+
+    def reset_health(self):
+        """รีเซ็ตเลือดกลับมาเต็ม 3 ดวง และล้างสถานะกราฟิก"""
+        self.current_health = self.max_health
+        for rect in self.hearts:
+            rect.texture = self.tex_heart_full
 
     def update_position(self, width, height):
         # Calculate UI scale based on window height

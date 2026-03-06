@@ -37,9 +37,8 @@ class IntroScreen(FloatLayout):
         Clock.schedule_once(self.finish, self.duration)
         
     def _get_scaled_font_size(self):
-        """คำนวณขนาดตัวอักษรตามความสูงของหน้าจอ (Base 70sp at 540h)"""
-        scale = self.height / WINDOW_HEIGHT if self.height > 0 else 1.0
-        return 70 * scale
+        """Scale font size (Single point of control)"""
+        return 70 * (self.height / WINDOW_HEIGHT if self.height > 0 else 1.0)
 
     def _update_ui(self, *args):
         # อัปเดตพื้นหลัง

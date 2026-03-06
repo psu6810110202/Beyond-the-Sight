@@ -3,7 +3,7 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle, Line, Ellipse
 from kivy.clock import Clock
-from settings import GAME_FONT
+from settings import GAME_FONT, WINDOW_HEIGHT
 from storygame.chat import DIALOGUE_CONFIG
 from storygame.choice import draw_choice_buttons, clear_choices
 import math
@@ -23,8 +23,13 @@ class DialogueManager:
         self.chat_tri_event = None
         self.item_tri_event = None
 
+    def _get_scaled_font_size(self):
+        """Scale font size (Single point of control)"""
+        # Assuming self.game.height is the relevant height for scaling
+        return 70 * (self.game.height / WINDOW_HEIGHT if self.game.height > 0 else 1.0)
+
     def get_ui_scale(self):
-        from settings import WINDOW_HEIGHT
+        # WINDOW_HEIGHT is now imported at the top
         return self.game.height / WINDOW_HEIGHT
 
     def create_pixel_triangle(self, scale, pos_y_ratio=0.1):
@@ -122,17 +127,46 @@ class DialogueManager:
         if choices:
             draw_choice_buttons(self.game, choices)
 
-        if character_name == "Little girl":
-            from settings import PLAYER_PORTRAIT_IMG
-            p_source = portrait if portrait else PLAYER_PORTRAIT_IMG
-            p_size = 280 * scale 
+        # รายชื่อตัวละครที่มีรูป Portrait
+        portrait_characters = ["Little girl", "Angel", "Devil", "Father", "Mother"]
+        
+        if character_name in portrait_characters:
+            from settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG
+            
+            # เลือกรูปตามชื่อตัวละคร
+            # เลือกรูปตามชื่อตัวละคร (สั่งการทอดๆ จากชื่อ)
+            portrait_map = {
+                "Angel": ANGEL_PORTRAIT_IMG,
+                "Devil": DEVIL_PORTRAIT_IMG,
+                "Father": FATHER_PORTRAIT_IMG,
+                "Mother": MOTHER_PORTRAIT_IMG
+            }
+            default_portrait = portrait_map.get(character_name, PLAYER_PORTRAIT_IMG)
+            # กำหนดขนาดเฉพาะของตัวละคร (Angel ให้ใหญ่ขึ้น)
+            char_scale_mult = 1.3 if character_name == "Angel" else 1.0
+                
+            p_source = portrait if portrait else default_portrait
+            p_size = 280 * scale * char_scale_mult
+            
+            # ให้ขอบล่างของภาพ (Y) วางอยู่บนขอบบนของกล่องข้อความพอดี (box_h)
+            # ไม่ต้องมี y_offset ติดลบ เพื่อไม่ให้จมลงไปในกล่อง
+            y_base = box_h
+            # วางชิดขวาของจอ
+            x_pos = self.game.width - p_size - (20 * scale)
 
             if not self.portrait_widget:
                 self.portrait_widget = Widget(size_hint=(None, None), size=(p_size, p_size))
                 with self.portrait_widget.canvas:
                     Color(1, 1, 1, 1)
-                    self.portrait_rect = Rectangle(source=p_source, size=self.portrait_widget.size,
-                                                pos=(self.game.width - p_size - (20 * scale), box_h))
+                    try:
+                        tex = CoreImage(p_source).texture
+                        tex.mag_filter = 'nearest'
+                        tex.min_filter = 'nearest'
+                        self.portrait_rect = Rectangle(texture=tex, size=self.portrait_widget.size,
+                                                    pos=(x_pos, y_base))
+                    except Exception:
+                        self.portrait_rect = Rectangle(source=p_source, size=self.portrait_widget.size,
+                                                    pos=(x_pos, y_base))
                 root.add_widget(self.portrait_widget)
                 
                 if not hasattr(self, '_portrait_update_bound'):
@@ -140,17 +174,38 @@ class DialogueManager:
                         if self.portrait_widget and self.portrait_rect:
                             sc = self.get_ui_scale()
                             cur_box_h = DIALOGUE_CONFIG["box_height"] * sc
-                            new_p_size = 280 * sc
+                            
+                            # ดึงสเกลที่เก็บไว้ในตัวแปรคลาสถ้ามีการเก็บไว้
+                            mult = getattr(self.portrait_widget, 'char_scale_mult', 1.0)
+                            new_p_size = 280 * sc * mult
+                            new_x_pos = self.game.width - new_p_size - (20 * sc)
+                            new_y_base = cur_box_h
+                            
                             self.portrait_widget.size = (new_p_size, new_p_size)
                             self.portrait_rect.size = self.portrait_widget.size
-                            self.portrait_rect.pos = (self.game.width - self.portrait_widget.width - (20 * sc), cur_box_h)
+                            self.portrait_rect.pos = (new_x_pos, new_y_base)
                     self.game.bind(size=_p_upd)
                     self._portrait_update_bound = True
+                
+                # เก็บค่าสเกลไว้ใน widget เพื่อให้ update bound ใช้ได้
+                self.portrait_widget.char_scale_mult = char_scale_mult
             else:
-                # ถ้ามีลูปอยู่แล้ว แต่อยากเปลี่ยนรูปหน้า (เช่น สลับจาก n เป็น s)
+                # ถ้ามีลูปอยู่แล้ว แต่อยากเปลี่ยนรูปหน้า (เช่น สลับจาก n เป็น s หรือสลับตัวละครคุยกัน)
                 if hasattr(self, 'portrait_rect'):
-                    self.portrait_rect.source = p_source
-                    print(f"DEBUG: Updated portrait source to {p_source}")
+                    try:
+                        tex = CoreImage(p_source).texture
+                        tex.mag_filter = 'nearest'
+                        tex.min_filter = 'nearest'
+                        self.portrait_rect.texture = tex
+                    except Exception:
+                        self.portrait_rect.source = p_source
+                    self.portrait_widget.char_scale_mult = char_scale_mult
+                    
+                    # บังคับอัปเดตขนาดและตำแหน่งใหม่ทันทีที่มีการสลับตัวละคร
+                    self.portrait_widget.size = (p_size, p_size)
+                    self.portrait_rect.size = self.portrait_widget.size
+                    self.portrait_rect.pos = (x_pos, y_base)
+                    print(f"DEBUG: Updated portrait source to {p_source} with scale {char_scale_mult}")
         
         self.game.is_dialogue_active = True
 
@@ -205,8 +260,13 @@ class DialogueManager:
         i_box = Widget(size_hint=(None, None), size=(i_sz, i_sz), pos_hint={'center_x': 0.5, 'center_y': 0.4})
         with i_box.canvas:
             Color(1, 1, 1, 1)
-            # ลบ glow_rect (วงกลมสีขาว) ออกตามคำขอ
-            self.item_icon_rect = Rectangle(source=image_path, size=(i_sz, i_sz))
+            try:
+                tex = CoreImage(image_path).texture
+                tex.mag_filter = 'nearest'
+                tex.min_filter = 'nearest'
+                self.item_icon_rect = Rectangle(texture=tex, size=(i_sz, i_sz))
+            except Exception:
+                self.item_icon_rect = Rectangle(source=image_path, size=(i_sz, i_sz))
         def u_i_p(i, v):
             self.item_icon_rect.pos = i.pos
         i_box.bind(pos=u_i_p, size=u_i_p)

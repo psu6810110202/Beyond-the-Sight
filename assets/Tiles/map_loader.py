@@ -34,11 +34,13 @@ class KivyTiledMap:
         self.chunk_groups_bg = {}
         self.chunk_groups_fg = {}
         self.chunk_groups_ground = {} # ชั้นพื้นดิน (อยู่ล่างสุด)
+        self.chunk_groups_roof = {}   # ชั้นหลังคา (อยู่บนสุด)
         
         # Instruction groups for Kivy rendering
         self.ground_group = InstructionGroup()
         self.bg_group = InstructionGroup()
         self.fg_group = InstructionGroup()
+        self.roof_group = InstructionGroup()
         
         # 1. Load data
         if not self._load_map_file(filename):
@@ -178,7 +180,7 @@ class KivyTiledMap:
         scale = TILE_SIZE / self.tile_w
         
         # Accumulators for all chunks
-        chunk_meshes_bg, chunk_meshes_fg, chunk_meshes_ground = {}, {}, {}
+        chunk_meshes_bg, chunk_meshes_fg, chunk_meshes_ground, chunk_meshes_roof = {}, {}, {}, {}
 
         for layer in self.map_data.get('layers', []):
             if not layer.get('visible', True): continue
@@ -188,15 +190,32 @@ class KivyTiledMap:
             
             # Logic classifications
             # ใช้ (kw,) หรือ [kw] เพื่อป้องกันการไล่ตรวจทีละตัวอักษร
-            is_fg = any(kw in name for kw in ("หลังคา", "roof", "foreground", "fg"))
-            is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg
+            # ตรวจสอบว่าเป็นชั้นหลังคา (สูงที่สุด) หรือไม่
+            is_roof = any(kw in name for kw in ("หลังคา", "roof", "หลังคา2 ชั้น"))
+            
+            # กฎพิเศษสำหรับ home.tmj: ให้เลเยอร์ "เหนือ" อยู่ชั้นหน้าสุด (High Z)
+            map_basename = os.path.basename(self.filename).lower()
+            if map_basename == "home.tmj" and "เหนือ" in name:
+                is_roof = True
+            
+            # ตรวจสอบว่าเป็นชั้นหน้าสุด (Foreground) หรือไม่
+            is_fg = any(kw in name for kw in ("foreground", "fg")) and not is_roof
+            
+            # กฎพิเศษสำหรับ home.tmj: ให้ผนังบ้านอยู่ชั้นหน้าสุด (High Z) ตามคำขอ
+            if "home.tmj" in self.filename.lower() and "ผนังบ้านบัง" in name:
+                is_fg = True
+                
+            # กฎพิเศษสำหรับ beyond.tmj: ให้ขยะอยู่ชั้นหน้าสุด (High Z)
+            if "beyond.tmj" in self.filename.lower() and "ขยะ" in name:
+                is_fg = True
+                
+            is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg and not is_roof
             
             # Solid implies physical collision.
-            # เพิ่มคีย์เวิร์ด "ขยะ" และ "wall" กลับเข้าไปเผื่อบางจุดตั้งชื่อต่างกัน
-            is_solid = not is_fg and not is_ground and (
-                any(kw in name for kw in ("ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle")) or
+            is_solid = not is_ground and (
+                any(kw in name for kw in ("ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor")) or
                 name.lower() in ("funiture", "funiture2", "furniture", "props")
-            ) and not any(kw in name for kw in ("resoures", "resources"))
+            ) and not any(kw in name for kw in ("resources",))
             is_well = "well1" in name
             
             opacity = layer.get('opacity', 1.0)
@@ -206,23 +225,24 @@ class KivyTiledMap:
             if not instances: continue
 
             # 2. Process each tile instance
-            l_meshes_bg, l_meshes_fg, l_meshes_ground = {}, {}, {}
+            l_meshes_bg, l_meshes_fg, l_meshes_ground, l_meshes_roof = {}, {}, {}, {}
             for gid_full, x, y, cw, ch in instances:
-                # ส่ง l_meshes_ground ไปด้วย
                 self._process_tile(
                     gid_full, x, y, cw, ch, scale, chunk_size_pixels,
-                    is_solid, is_fg, is_well, name, l_meshes_bg, l_meshes_fg, l_meshes_ground, is_ground
+                    is_solid, is_fg, is_well, name, l_meshes_bg, l_meshes_fg, l_meshes_ground, is_ground, is_roof, l_meshes_roof
                 )
             
             # 3. Add layer meshes to global chunk data
             self._merge_layer_to_global(l_meshes_bg, chunk_meshes_bg, opacity)
             self._merge_layer_to_global(l_meshes_fg, chunk_meshes_fg, opacity)
             self._merge_layer_to_global(l_meshes_ground, chunk_meshes_ground, opacity)
+            self._merge_layer_to_global(l_meshes_roof, chunk_meshes_roof, opacity)
 
         # 4. Finalize Kivy groups
         self.chunk_groups_bg = self._create_mesh_groups(chunk_meshes_bg)
         self.chunk_groups_fg = self._create_mesh_groups(chunk_meshes_fg)
         self.chunk_groups_ground = self._create_mesh_groups(chunk_meshes_ground)
+        self.chunk_groups_roof = self._create_mesh_groups(chunk_meshes_roof)
 
     def _get_layer_instances(self, layer, scale):
         instances = []
@@ -243,7 +263,12 @@ class KivyTiledMap:
                 instances.append((gid, x, y, None, None))
                 
         elif l_type == 'objectgroup':
-            for obj in layer.get('objects', []):
+            objs = layer.get('objects', [])
+            # Tiled default draworder is "topdown" (sorted by Y)
+            if layer.get('draworder', 'topdown') == 'topdown':
+                objs = sorted(objs, key=lambda o: float(o.get('y', 0)))
+                
+            for obj in objs:
                 gid = obj.get('gid', 0)
                 px, py = float(obj.get('x', 0)), float(obj.get('y', 0))
                 pw, ph = float(obj.get('width', self.tile_w)), float(obj.get('height', self.tile_h))
@@ -274,7 +299,7 @@ class KivyTiledMap:
         w, h = layer.get('width', self.width), layer.get('height', self.height)
         return struct.unpack(f"<{w*h}I", decoded)
 
-    def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg, l_ground, is_ground):
+    def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg, l_ground, is_ground, is_roof, l_roof):
         gid = gid_full & ~ALL_FLAGS
         t_info = self.textures.get(gid)
         if not t_info: return
@@ -304,8 +329,10 @@ class KivyTiledMap:
         uvs = self._get_final_uvs(gid_full, t_info)
         verts = [x, y, uvs[0], uvs[1], x+w, y, uvs[2], uvs[3], x+w, y+h, uvs[4], uvs[5], x, y+h, uvs[6], uvs[7]]
         
-        # Decide Target Mesh (FG vs BG vs Ground)
-        if is_fg or gid in self.well_fg_gids:
+        # Decide Target Mesh (Roof vs FG vs BG vs Ground)
+        if is_roof:
+            target_l = l_roof
+        elif is_fg or gid in self.well_fg_gids:
             target_l = l_fg
         elif is_ground:
             target_l = l_ground
@@ -404,6 +431,7 @@ class KivyTiledMap:
     def draw_background(self, canvas): canvas.add(self.bg_group)
     def draw_foreground(self, canvas): canvas.add(self.fg_group)
     def draw_ground(self, canvas): canvas.add(self.ground_group)
+    def draw_roof(self, canvas): canvas.add(self.roof_group)
 
     def update_chunks(self, cam_x, cam_y):
         ws = TILE_SIZE * 16
@@ -418,9 +446,11 @@ class KivyTiledMap:
             if c in self.chunk_groups_bg: self.bg_group.remove(self.chunk_groups_bg[c])
             if c in self.chunk_groups_fg: self.fg_group.remove(self.chunk_groups_fg[c])
             if c in self.chunk_groups_ground: self.ground_group.remove(self.chunk_groups_ground[c])
+            if c in self.chunk_groups_roof: self.roof_group.remove(self.chunk_groups_roof[c])
         # Attach
         for c in nx - self.visible_chunks:
             if c in self.chunk_groups_bg: self.bg_group.add(self.chunk_groups_bg[c])
             if c in self.chunk_groups_fg: self.fg_group.add(self.chunk_groups_fg[c])
             if c in self.chunk_groups_ground: self.ground_group.add(self.chunk_groups_ground[c])
+            if c in self.chunk_groups_roof: self.roof_group.add(self.chunk_groups_roof[c])
         self.visible_chunks = nx

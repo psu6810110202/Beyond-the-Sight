@@ -46,6 +46,10 @@ PLAYER_IDLE_IMG = 'characters/assets/player/player_idle.png'
 PLAYER_WALK_IMG = 'characters/assets/player/player_walk.png'
 PLAYER_PORTRAIT_IMG = 'characters/assets/player/player_n.png'
 PLAYER_S_PORTRAIT_IMG = 'characters/assets/player/player_s.png'
+ANGEL_PORTRAIT_IMG = 'characters/assets/pic/Angle.png'
+DEVIL_PORTRAIT_IMG = 'characters/assets/pic/Devil.png'
+FATHER_PORTRAIT_IMG = 'characters/assets/pic/Father.png'
+MOTHER_PORTRAIT_IMG = 'characters/assets/pic/Mother.png'
 
 # แผนที่ไอเทมและรูปหน้าตัวละครตามพิกัดดาวใน Day 1
 STAR_ITEM_MAPPING = {
@@ -115,3 +119,11 @@ ENEMY_SPAWN_DATA = [
     {'pos': (768, 96), 'type': 2},
     {'pos': (1536, 112), 'type': 1}
 ]
+
+# ตำแหน่งจุดค้นหาในบ้าน (Home Map)
+SEARCHABLE_SPOTS_HOME = [
+    (16, 0), (80, 176), (96, 176), (112, 176), (160, 176), (176, 176), 
+    (256, 176), (272, 176), (288, 160), (304, 128)
+]
+EMPTY_SPOT_HOME = (240, 112)
+HOME_EAT_POS = (16, 176)

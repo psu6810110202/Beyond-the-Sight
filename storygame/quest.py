@@ -12,6 +12,7 @@ class QuestData:
         self.current_count = 0
         self.target_count = target_count
         self.is_active = False
+        self.completed_sidebar = False # สำหรับโชว์ว่าสำเร็จแล้วในแถบข้างชั่วคราว
 
 class QuestManager:
     def __init__(self, game):
@@ -45,17 +46,20 @@ class QuestManager:
         # อัปเดต UI หลังจากโหลดข้อมูลเสร็จ (ไม่ต้องให้เลื่อนอนิเมชั่น)
         self.update_quest_list_ui(animate=False)
 
-    def start_quest(self, quest_id, quest_name, target=3):
-        """เริ่มเควสใหม่: 1. แจ้งเตือน -> 2. เลือนรายการเควสออกมา"""
+    def start_quest(self, quest_id, quest_name, target=3, show_notif=True):
+        """เริ่มเควสใหม่"""
         if quest_id not in self.active_quests:
             self.active_quests[quest_id] = QuestData(quest_name, target)
             self.active_quests[quest_id].is_active = True
             
-            # 1. แสดงแจ้งเตือนบนหน้าจอก่อน
-            self.show_quest_notification(f"NEW QUEST: {quest_name}")
-            
-            # 2. ตั้งเวลาให้รายการเควสด้านข้าง "เลือนออกมา" หลังจากแจ้งเตือนหายไป (ประมาณ 3.5 วินาที)
-            Clock.schedule_once(lambda dt: self.update_quest_list_ui(animate=True), 3.5)
+            if show_notif:
+                # 1. แสดงแจ้งเตือนบนหน้าจอก่อน
+                self.show_quest_notification(f"NEW QUEST: {quest_name}")
+                # 2. ตั้งเวลาให้รายการเควสด้านข้าง "เลือนออกมา" หลังจากแจ้งเตือนหายไป (ประมาณ 3.5 วินาที)
+                Clock.schedule_once(lambda dt: self.update_quest_list_ui(animate=True), 3.5)
+            else:
+                # ถ้าไม่โชว์แจ้งเตือน ให้แสดงที่แถบข้างทันที
+                self.update_quest_list_ui(animate=True)
 
     def show_quest_notification(self, text):
         """แสดงกล่องแจ้งเตือน -> ค้างไว้ -> ค่อยๆ เลือนหายไป (Fade Out)"""
@@ -96,14 +100,10 @@ class QuestManager:
         anim += Animation(opacity=1, duration=2.0) # ค้างไว้
         anim += Animation(opacity=0, duration=1.0) # ค่อยๆ เลือนหาย
         
-        anim.bind(on_complete=lambda *args: self._remove_notification(label))
+        anim.bind(on_complete=lambda *args: root.remove_widget(label) if label.parent else None)
         anim.start(label)
+        self.notification_box = label
 
-    def _remove_notification(self, widget):
-        if widget.parent:
-            widget.parent.remove_widget(widget)
-        if self.notification_box == widget:
-            self.notification_box = None
 
     def update_quest_list_ui(self, animate=False):
         """อัปเดตรายการเควส พร้อมเอฟเฟกต์ค่อยๆ เลือนออกมา (Fade In / Slide In)"""
@@ -132,7 +132,6 @@ class QuestManager:
                 )
             
             def update_quest_graphics(instance, value):
-                # อัปเดตพื้นหลังอย่างเดียว (ห้ามแก้ text_size ที่นี่เด็ดขาด)
                 instance.bg_rect.pos = instance.pos
                 instance.bg_rect.size = instance.size
 
@@ -163,12 +162,15 @@ class QuestManager:
         quest_text = ""
         count = 0
         for q in self.active_quests.values():
-            if q.is_active:
-                if q.current_count >= q.target_count:
-                    # ถ้าครบแล้ว ให้โชว์แค่ชื่อเควส (เช่น RETURN TO THE SAD SOUL)
+            if q.is_active or q.completed_sidebar:
+                if q.completed_sidebar:
+                    quest_text += f"• COMPLETED: {q.name.upper()}"
+                elif q.current_count >= q.target_count:
                     quest_text += f"• {q.name.upper()}"
-                else:
+                elif q.target_count > 1:
                     quest_text += f"• {q.name.upper()}: {q.current_count}/{q.target_count}"
+                else:
+                    quest_text += f"• {q.name.upper()}"
                 count += 1
         
         self.quest_ui_label.text = quest_text
@@ -193,7 +195,14 @@ class QuestManager:
                     quest.current_count = quest.target_count
                     # ไม่ปิดเควสทันที เพื่อให้แสดงเป้าหมายใหม่ (เช่น Return to NPC)
                     if quest_id != "doll_parts":
-                        quest.is_active = False 
+                        quest.is_active = False
+                        quest.completed_sidebar = True
                         self.show_quest_notification(f"COMPLETED: {quest.name}")
+                        
+                        # ให้แสดง COMPLETED ในแถบข้าง 3 วินาทีแล้วค่อยหายไป
+                        def remove_from_sidebar(dt):
+                            quest.completed_sidebar = False
+                            self.update_quest_list_ui()
+                        Clock.schedule_once(remove_from_sidebar, 3.0)
                 
                 self.update_quest_list_ui(animate=False)
