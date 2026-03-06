@@ -46,10 +46,12 @@ PLAYER_IDLE_IMG = 'characters/assets/player/player_idle.png'
 PLAYER_WALK_IMG = 'characters/assets/player/player_walk.png'
 PLAYER_PORTRAIT_IMG = 'characters/assets/player/player_n.png'
 PLAYER_S_PORTRAIT_IMG = 'characters/assets/player/player_s.png'
-ANGEL_PORTRAIT_IMG = 'characters/assets/pic/Angle.png'
-DEVIL_PORTRAIT_IMG = 'characters/assets/pic/Devil.png'
-FATHER_PORTRAIT_IMG = 'characters/assets/pic/Father.png'
-MOTHER_PORTRAIT_IMG = 'characters/assets/pic/Mother.png'
+ANGEL_PORTRAIT_IMG = 'characters/assets/pic/Angle_n.png'
+DEVIL_PORTRAIT_IMG = 'characters/assets/pic/Devil_n.png'
+FATHER_PORTRAIT_IMG = 'characters/assets/pic/Father_n.png'
+FATHER_S_PORTRAIT_IMG = 'characters/assets/pic/Father_s.png'
+MOTHER_PORTRAIT_IMG = 'characters/assets/pic/Mother_n.png'
+MOTHER_S_PORTRAIT_IMG = 'characters/assets/pic/Mother_s.png'
 
 # แผนที่ไอเทมและรูปหน้าตัวละครตามพิกัดดาวใน Day 1
 STAR_ITEM_MAPPING = {

@@ -2,6 +2,7 @@
 from kivy.graphics import Color, Rectangle
 from characters.npc import NPC
 from characters.enemy import Enemy
+from characters.reaper import REAPER_START_POS
 from items.star import Star
 from assets.Tiles.map_loader import KivyTiledMap
 from settings import *

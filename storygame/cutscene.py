@@ -242,6 +242,14 @@ class CutsceneManager:
 
     def show_black_screen_transition(self):
         """แสดงฉากสีดำและบทสนทนาของ Angel"""
+        # หยุดการเดินและอนิเมชั่นของผู้เล่นทันที
+        self.game.player.is_moving = False
+        self.game.player.state = 'idle'
+        self.game.player.frame_index = 0
+        self.game.player.target_pos = list(self.game.player.logic_pos)
+        self.game.player.update_frame()
+        self.game.player.update_animation_speed()
+
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         
         self.game.black_overlay = Widget(size_hint=(1, 1))
