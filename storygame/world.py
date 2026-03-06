@@ -77,6 +77,10 @@ class WorldManager:
         # 4. รีเฟรชตำแหน่งกล้อง
         self.game.update_camera()
         self.game.game_map.update_chunks(self.game.player.logic_pos[0], self.game.player.logic_pos[1])
+        
+        # 5. อัปเดตเสียงเดินตามประเภทแมพ
+        self.game.player.is_in_home = 'home.tmj' in map_file
+        
         print(f"DEBUG: Map swapped to {map_file} (via World Manager)")
 
     def refresh_darkness(self):

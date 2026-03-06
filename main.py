@@ -153,6 +153,37 @@ class GameWidget(Widget):
                 s.loop = True
                 s.volume = 0.4 if etype == 1 else 0.5 # ปรับ volume ตามความเหมาะสม
                 self.ghost_sounds[etype] = s
+        
+        # โหลดเสียงรื้อของ/หาของ
+        self.find_sound = SoundLoader.load('assets/sound/find.wav')
+        if self.find_sound:
+            self.find_sound.volume = 0.7
+            
+        # โหลดเสียงตกใจเมื่อชนผี
+        self.shock_sound = SoundLoader.load('assets/sound/feeling/shocked.wav')
+        if self.shock_sound:
+            self.shock_sound.volume = 0.8
+            
+        # โหลดเสียงสงสัย (Curious) เมื่อมีทางเลือก
+        self.curious_sound = SoundLoader.load('assets/sound/feeling/curious.wav')
+        if self.curious_sound:
+            self.curious_sound.volume = 0.7
+            
+        # โหลดเสียงคร่ำครวญของ The Sad Soul (NPC1)
+        self.sad_soul_sound = SoundLoader.load('assets/sound/ghost/Crying_moaning_ambience_3.wav')
+        if self.sad_soul_sound:
+            self.sad_soul_sound.loop = True
+            self.sad_soul_sound.volume = 0.5
+            
+        # โหลดเสียงพูดของ Reaper
+        self.reaper_voice_sound = SoundLoader.load('assets/sound/feeling/reaper.wav')
+        if self.reaper_voice_sound:
+            self.reaper_voice_sound.volume = 0.8
+            
+        # โหลดเสียงคลิก (Click) เวลากดปุ่ม
+        self.click_sound = SoundLoader.load('assets/sound/click.wav')
+        if self.click_sound:
+            self.click_sound.volume = 0.6
 
         # 1. สร้าง Sorting Layer สำหรับตัวละคร (เพื่อให้วาดทับกันตามค่า Y)
         # ต้องสร้างก่อน Quest/Stars เผื่อมีการโหลดเซฟแล้วเรียกใช้ทันที
@@ -229,6 +260,8 @@ class GameWidget(Widget):
 
         # 5. สร้างตัวละครหลัก (ใช้พิกัดจากเซฟถ้ามี)
         self.player = Player(self.sorting_layer, x=start_pos[0], y=start_pos[1])
+        # ตั้งค่าเสียงเดินครั้งแรก
+        self.player.is_in_home = 'home.tmj' in starting_map
         
         # Draw Map Foreground ใน Container ใหม่
         self.map_after_group.add(Color(1, 1, 1, 1)) # รับประกันสีปกติ
@@ -400,6 +433,17 @@ class GameWidget(Widget):
         # ป้องกันอาการ 'กระโดด' หลังจากการชะงักโหลด (Cap DT)
         dt = min(dt, 0.05)
         
+        # จัดการเสียงของ Sad Soul (NPC1) จนกว่าจะข้ามวัน/หายไป
+        if self.sad_soul_sound:
+            # เช็คว่ามี NPC1 อยู่ในจอไหม (เช็คจาก image_path) และยังจางหายไม่จบ
+            sad_soul_active = any('NPC1' in n.image_path and not n.fading_done for n in self.npcs)
+            if not self.is_paused and sad_soul_active:
+                if self.sad_soul_sound.state != 'play':
+                    self.sad_soul_sound.play()
+            else:
+                if self.sad_soul_sound.state == 'play':
+                    self.sad_soul_sound.stop()
+
         # 1. จัดการตรรกะเกม (Logic) - ทำงานเฉพาะเมื่อไม่ได้คุยหรือหยุดเกม
         if self.is_cutscene_active:
             self.update_cutscene(dt)
@@ -443,6 +487,10 @@ class GameWidget(Widget):
                     enemy.start_fade()
                     self.heart_ui.take_damage()
                     
+                    # เล่นเสียงตกใจ
+                    if self.shock_sound:
+                        self.shock_sound.play()
+                    
                     # ตรวจสอบว่าเลือดหมดหรือยัง
                     if self.heart_ui.current_health <= 0:
                         self.respawn_at_reaper()
@@ -485,6 +533,8 @@ class GameWidget(Widget):
             for sound in self.ghost_sounds.values():
                 if sound.state == 'play':
                     sound.stop()
+            if self.player.breath_sound and self.player.breath_sound.state == 'play':
+                self.player.breath_sound.stop()
 
         # ---------------------------------------------------------
         # 2. กราฟิกที่ต้องอัปเดตเสมอทุกลูกเฟรม
@@ -532,6 +582,7 @@ class GameWidget(Widget):
         """อัปเดตข้อมูล Debug ที่มุมจอ"""
         grid_x, grid_y = px // TILE_SIZE, py // TILE_SIZE
         chunk_x, chunk_y = grid_x // 16, grid_y // 16
+        
         self.debug_label.text = (
             f"FPS: {Clock.get_fps():.0f}\n"
             f"Pos: ({px}, {py})\n"
@@ -593,6 +644,25 @@ class GameWidget(Widget):
         if hasattr(self, '_main_loop_event'):
             Clock.unschedule(self._main_loop_event)
         
+        # ปิดเสียงทั้งหมด
+        sounds_to_stop = [
+            self.curious_sound, self.sad_soul_sound, self.reaper_voice_sound,
+            self.click_sound, self.find_sound, self.shock_sound
+        ]
+        for s in sounds_to_stop:
+            if s and s.state == 'play':
+                s.stop()
+        
+        # ปิดเสียงผี
+        if hasattr(self, 'ghost_sounds'):
+            for s in self.ghost_sounds.values():
+                if s.state == 'play':
+                    s.stop()
+                    
+        # ล้าง Player (เสียงเท้า/เสียงหอบ)
+        if hasattr(self, 'player'):
+            self.player.cleanup()
+
         self.clear_interaction_hints()
         
         if hasattr(self, 'dialogue_manager'):
@@ -705,6 +775,12 @@ class GameWidget(Widget):
         self.clear_interaction_hints()
         
         if self.current_star_target:
+            # เล่นเสียงรื้อค้น (Find) และเสียงสงสัย (Curious) เพราะมีทางเลือก
+            if self.find_sound:
+                self.find_sound.play()
+            if self.curious_sound:
+                self.curious_sound.play()
+                
             star_pos = (self.current_star_target.x, self.current_star_target.y)
             portrait = STAR_ITEM_MAPPING.get(star_pos, {}).get("portrait")
             self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
@@ -749,6 +825,10 @@ class GameWidget(Widget):
     def process_search_spot(self, spot):
         """ประมวลผลการค้นหาตามจุดต่างๆ ในบ้าน"""
         self.clear_interaction_hints()
+        
+        # เล่นเสียงรื้อของ/หาของ
+        if self.find_sound:
+            self.find_sound.play()
         
         if spot == EMPTY_SPOT_HOME:
             self.show_vn_dialogue("Little girl", "Empty... they never leave anything for me anyway.")
@@ -829,6 +909,10 @@ class GameWidget(Widget):
         self.current_character_name = "Reaper"
         self.current_choices = choices if choices else []
         self.current_portrait = portrait
+        
+        # เล่นเสียงพูดของ Reaper ทุกครั้งที่เริ่มบทสนทนา
+        if self.reaper_voice_sound:
+            self.reaper_voice_sound.play()
         
         # แสดงข้อความแรก
         if self.current_dialogue_queue:
@@ -947,6 +1031,8 @@ class GameWidget(Widget):
 
     def on_choice_selected(self, choice):
         """จัดการเมื่อผู้เล่นเลือก Choice (เรียกใช้ตรรกะจาก choice.py)"""
+        if self.click_sound:
+            self.click_sound.play()
         handle_choice_selection(self, choice)
 
     # ---------------------------------------------------------
@@ -1007,6 +1093,9 @@ class GameWidget(Widget):
 
     def return_to_main_menu(self):
         """กลับไปหน้าจอหลัก (Title Screen)"""
+        # ล้างทรัพยากรทั้งหมด (เสียง/ปุ่มค้าง) ก่อนออกจาก GameWidget
+        self.cleanup()
+        
         self.resume_game()
         app = App.get_running_app()
         app.root.clear_widgets()
@@ -1118,6 +1207,15 @@ class MyApp(App):
     def build(self): 
         self.title = TITLE
         
+        # เล่นเสียง Ambiance Loop ตั้งแต่เริ่มเกม (เปิดโปรแกรมปุ๊บเปิดเสียงเลย)
+        ambiance_path = 'assets/sound/loop/Ambiance_Cave_Dark_Loop_Stereo.wav'
+        if os.path.exists(ambiance_path):
+            self.bg_loop = SoundLoader.load(ambiance_path)
+            if self.bg_loop:
+                self.bg_loop.loop = True
+                self.bg_loop.volume = 0.4
+                self.bg_loop.play()
+                
         self.root = FloatLayout()
         
         # แสดงหน้าจอปกเกมที่เริ่มเล่น (กด Enter เพื่อเริ่ม)

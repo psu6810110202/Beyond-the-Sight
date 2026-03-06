@@ -3,6 +3,8 @@ from kivy.uix.label import Label
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, Rectangle, Line
 from kivy.core.window import Window
+from kivy.core.audio import SoundLoader
+import os
 from settings import GAME_FONT
 from menu.screen import GameMenu
 
@@ -21,6 +23,11 @@ class PauseMenu(FloatLayout):
             "Return to Main Menu": menu_cb,
             "Exit Game": exit_cb
         }
+        
+        # โหลดเสียงคลิกสำหรับหน้า Pause
+        self.click_sound = SoundLoader.load('assets/sound/click.wav')
+        if self.click_sound:
+            self.click_sound.volume = 0.5
         
         # 1. พื้นหลังดำจางๆ
         with self.canvas.before:
@@ -95,6 +102,8 @@ class PauseMenu(FloatLayout):
             self.inner_menu.select_current()
         elif key == 'escape':
             # Resume เกมทันที
+            if self.click_sound:
+                self.click_sound.play()
             if "Resume Game" in self.callbacks:
                 self.callbacks["Resume Game"]()
         return True

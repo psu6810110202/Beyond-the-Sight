@@ -2,6 +2,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.uix.image import Image
 from kivy.core.image import Image as CoreImage
+from kivy.core.audio import SoundLoader
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, Rectangle, Line
@@ -165,6 +166,11 @@ class SaveLoadScreen(FloatLayout):
         self.slots = []
         self.index = 0
         
+        # โหลดเสียงคลิกสำหรับเมนูเซฟ
+        self.click_sound = SoundLoader.load('assets/sound/click.wav')
+        if self.click_sound:
+            self.click_sound.volume = 0.5
+        
         with self.canvas.before:
             Color(0, 0, 0, 1) # พื้นหลังดำสนิท
             self.full_bg = Rectangle(pos=self.pos, size=self.size)
@@ -282,6 +288,11 @@ class SaveLoadScreen(FloatLayout):
                 self.index = prev_indices[-1]
             else:
                 self.index = valid_indices[-1] # วนไปท้ายสุด
+            
+            # เล่นเสียงคลิกเมื่อเลื่อน
+            if self.click_sound:
+                self.click_sound.play()
+                
             self.update_selection()
         elif key == 'down':
             # หาค่าที่มากกว่าปัจจุบันในลิสต์ valid
@@ -290,15 +301,24 @@ class SaveLoadScreen(FloatLayout):
                 self.index = next_indices[0]
             else:
                 self.index = valid_indices[0] # วนไปเริ่มใหม่
+            
+            # เล่นเสียงคลิกเมื่อเลื่อน
+            if self.click_sound:
+                self.click_sound.play()
+                
             self.update_selection()
         elif key in ('enter', 'space'):
             if hasattr(self, 'confirm_popup') and self.confirm_popup:
                 # ถ้ากำลังโชว์ popup อยู่
                 if self.confirm_index == 0: # YES
+                    if self.click_sound:
+                        self.click_sound.play()
                     self.close_popup()
                     if self.callback:
                         self.callback(self.index + 1, self)
                 else: # NO
+                    if self.click_sound:
+                        self.click_sound.play()
                     self.close_popup()
                 return True
                 
@@ -307,8 +327,12 @@ class SaveLoadScreen(FloatLayout):
             
             # เช็คว่าเป็นการเซฟทับหรือไม่
             if self.mode == "SAVE" and self.slots[self.index].data is not None:
+                if self.click_sound:
+                    self.click_sound.play()
                 self.show_overwrite_confirmation()
             else:
+                if self.click_sound:
+                    self.click_sound.play()
                 if self.callback:
                     self.callback(self.index + 1, self)
         elif key == 'escape':
@@ -322,6 +346,8 @@ class SaveLoadScreen(FloatLayout):
             if hasattr(self, 'confirm_popup') and self.confirm_popup:
                 # สลับ YES / NO
                 self.confirm_index = 1 - self.confirm_index
+                if self.click_sound:
+                    self.click_sound.play()
                 self.update_popup_selection()
                 return True
         return False

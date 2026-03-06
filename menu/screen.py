@@ -8,6 +8,7 @@ from kivy.graphics import Color, Rectangle, Line
 from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
+from kivy.core.audio import SoundLoader
 from kivy.animation import Animation
 import os
 
@@ -77,6 +78,11 @@ class GameMenu(FloatLayout):
         self.buttons = []
         self.index = 0
         
+        # โหลดเสียงคลิกสำหรับเมนู
+        self.click_sound = SoundLoader.load('assets/sound/click.wav')
+        if self.click_sound:
+            self.click_sound.volume = 0.5
+        
         with self.canvas.before:
             # กรอบเมนูสีดำขอบขาว
             Color(0, 0, 0, 0.9) # พื้นหลังดำเกือบสนิท
@@ -131,6 +137,10 @@ class GameMenu(FloatLayout):
                 break
         else:
             self.index = old_index # ป้องกันค้างถ้าโดนปิดหมด
+        
+        # เล่นเสียงคลิกเมื่อเลื่อน
+        if self.click_sound and old_index != self.index:
+            self.click_sound.play()
             
         self.update_selection()
 
@@ -141,6 +151,11 @@ class GameMenu(FloatLayout):
     def select_current(self):
         if self.index in self.disabled_indices:
             return # กดไม่ได้
+        
+        # เล่นเสียงคลิกเมื่อกดตกลง
+        if self.click_sound:
+            self.click_sound.play()
+            
         if self.callback:
             self.callback(self.items[self.index])
 

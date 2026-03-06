@@ -2,6 +2,8 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
+from kivy.core.audio import SoundLoader
+import os
 from settings import GAME_FONT, WINDOW_HEIGHT
 
 class IntroScreen(FloatLayout):
@@ -31,6 +33,15 @@ class IntroScreen(FloatLayout):
         )
         self.add_widget(self.label)
         
+        # เสียงประตูเปิดตอนขึ้นวันใหม่
+        door_sound_path = 'assets/sound/door/Door_squeeky_2.wav'
+        if os.path.exists(door_sound_path):
+            sound = SoundLoader.load(door_sound_path)
+            if sound:
+                sound.volume = 0.6
+                sound.play()
+
+        # สำคัญ: ต้องผูกเหตุการณ์ Resize เพื่อให้อัปเดต UI ตามขนาดจอ
         self.bind(pos=self._update_ui, size=self._update_ui)
         
         # ตั้งเวลาให้ข้ามหน้าจอนี้อัตโนมัติ
@@ -38,7 +49,8 @@ class IntroScreen(FloatLayout):
         
     def _get_scaled_font_size(self):
         """Scale font size (Single point of control)"""
-        return 70 * (self.height / WINDOW_HEIGHT if self.height > 0 else 1.0)
+        # ปรับพื้นฐานจาก 70 เป็น 120 ให้ตัวใหญ่ขึ้นแบบพรีเมียม
+        return 120 * (self.height / WINDOW_HEIGHT if self.height > 0 else 1.0)
 
     def _update_ui(self, *args):
         # อัปเดตพื้นหลัง

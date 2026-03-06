@@ -23,6 +23,7 @@ class Player:
         self.logic_pos = [start_x, start_y]
         self.current_speed = WALK_SPEED
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
+        self.is_in_home = False # เช็คว่าอยู่ในบ้านหรือไม่เพื่อเปลี่ยนเสียงเดิน
         
         # โหลด Texture
         self.idle_texture = CoreImage(PLAYER_IDLE_IMG).texture
@@ -88,17 +89,32 @@ class Player:
                         self.walk_sounds.append(s)
         
         # โหลดเสียงวิ่ง
-        self.run_sounds = []
-        run_sound_dir = 'assets/sound/run'
-        if os.path.exists(run_sound_dir):
-            for file in os.listdir(run_sound_dir):
-                if file.endswith('.wav'):
-                    s = SoundLoader.load(os.path.join(run_sound_dir, file))
-                    if s:
-                        s.volume = 0.6 # เสียงวิ่งให้ดังกว่านิดหน่อย
-                        self.run_sounds.append(s)
+        self.run_sounds = self._load_sounds('assets/sound/run', 0.6)
+        
+        # โหลดเสียงเดินในบ้าน (ไม้)
+        self.walk_w_sounds = self._load_sounds('assets/sound/walk_w', 0.5)
+        
+        # โหลดเสียงวิ่งในบ้าน (ไม้)
+        self.run_w_sounds = self._load_sounds('assets/sound/run_w', 0.6)
+        
+        # โหลดเสียงหอบเมื่อเหนื่อย
+        self.breath_sound = SoundLoader.load('assets/sound/breath.wav')
+        if self.breath_sound:
+            self.breath_sound.loop = True
+            self.breath_sound.volume = 0.5
         
         self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)
+
+    def _load_sounds(self, directory, volume):
+        sounds = []
+        if os.path.exists(directory):
+            for file in os.listdir(directory):
+                if file.endswith('.wav'):
+                    s = SoundLoader.load(os.path.join(directory, file))
+                    if s:
+                        s.volume = volume
+                        sounds.append(s)
+        return sounds
 
     def update_frame(self):
         # เรียกใช้ตัวแปรที่ชื่อตรงกัน
@@ -139,10 +155,12 @@ class Player:
             
             # เล่นเสียงเดิน/วิ่ง (ในจังหวะลงเท้า: เฟรม 0 และ 4 ของอนิเมชั่น 8 เฟรม)
             if self.state == 'walk' and self.frame_index in [0, 4]:
-                if self.current_speed == RUN_SPEED and self.run_sounds:
-                    random.choice(self.run_sounds).play()
-                elif self.walk_sounds:
-                    random.choice(self.walk_sounds).play()
+                if self.current_speed == RUN_SPEED:
+                    sounds = self.run_w_sounds if self.is_in_home else self.run_sounds
+                    if sounds: random.choice(sounds).play()
+                else:
+                    sounds = self.walk_w_sounds if self.is_in_home else self.walk_sounds
+                    if sounds: random.choice(sounds).play()
             
         self.update_frame()
         
@@ -198,12 +216,16 @@ class Player:
         # Handle exhaustion recovery
         if self.exhausted and self.stamina >= self.max_stamina:
             self.exhausted = False
+            if self.breath_sound and self.breath_sound.state == 'play':
+                self.breath_sound.stop()
 
         if is_running and not self.exhausted:
             self.current_speed = RUN_SPEED
             self.stamina = max(0, self.stamina - STAMINA_DRAIN)
             if self.stamina <= 0:
                 self.exhausted = True
+                if self.breath_sound and self.breath_sound.state != 'play':
+                    self.breath_sound.play()
         else:
             self.current_speed = WALK_SPEED
             if self.stamina < self.max_stamina:
@@ -324,3 +346,19 @@ class Player:
         # Note: เราใช้ _get_interaction_target ของ main.py เป็นหลักแล้ว
         # เมธอดนี้อาจเหลือไว้เพียงเพื่อให้รองรับโค้ดเก่าในบางจุด
         return None, None, None, 0, 0
+
+    def cleanup(self):
+        """หยุดเสียงทั้งหมดของ Player"""
+        all_sound_groups = [
+            self.walk_sounds, self.run_sounds, 
+            self.walk_w_sounds, self.run_w_sounds
+        ]
+        
+        for group in all_sound_groups:
+            for s in group:
+                if s and s.state == 'play':
+                    s.stop()
+                    
+        if hasattr(self, 'breath_sound') and self.breath_sound:
+            if self.breath_sound.state == 'play':
+                self.breath_sound.stop()

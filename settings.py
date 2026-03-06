@@ -23,8 +23,8 @@ PLAYER_START_Y = 80
 
 # Stamina
 MAX_STAMINA = 100
-STAMINA_DRAIN = MAX_STAMINA / (4 * FPS)  # ใช้เวลา 4 วินาทีจนกว่า Stamina จะหมด
-STAMINA_REGEN = MAX_STAMINA / (5 * FPS)  # ใช้เวลา 5 วินาทีในการฟื้นฟูจนเต็ม
+STAMINA_DRAIN = MAX_STAMINA / (3 * FPS)  # ใช้เวลา 3 วินาทีจนกว่า Stamina จะหมด
+STAMINA_REGEN = MAX_STAMINA / (6 * FPS)  # ใช้เวลา 6 วินาทีในการฟื้นฟูจนเต็ม
 
 MAP_FILE = 'assets/Tiles/beyond.tmj'
 SPLASH_COVER_IMG = 'assets/Covers/ปกเกม.png'
