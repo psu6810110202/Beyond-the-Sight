@@ -19,20 +19,13 @@ def handle_choice_selection(game, choice):
         game.player.update_frame()
         
     elif choice == "I'll go":
-        # ขยับไปข้างหน้า 1 บล็อค (TILE_SIZE)
-        game.warning_dismissed = True # ปิดการแจ้งเตือนถาวรสำหรับครั้งนี้
-        game.refresh_darkness() # ล้างหมอกสีดำทิ้งทันที
-        px, py = game.player.logic_pos
-        if game.player.direction == 'up': py += TILE_SIZE
-        elif game.player.direction == 'down': py -= TILE_SIZE
-        elif game.player.direction == 'left': px -= TILE_SIZE
-        elif game.player.direction == 'right': px += TILE_SIZE
+        # ขยับไปข้างหน้า 1 บล็อก โดยใช้ระบบการเดินของ Player ทอดๆ มา
+        game.warning_dismissed = True
+        game.refresh_darkness()
         
-        # อัปเดตตำแหน่ง (โดยไม่เช็คการชนกำแพงตามคำสั่งให้ขยับทันที)
-        game.player.logic_pos = [px, py]
-        game.player.target_pos = [px, py]
-        game.player.sync_graphics_pos() # อัปเดตตำแหน่งภาพทันที
-        game.player.update_frame()
+        dir_map = {'up': (0, TILE_SIZE), 'down': (0, -TILE_SIZE), 'left': (-TILE_SIZE, 0), 'right': (TILE_SIZE, 0)}
+        dx, dy = dir_map.get(game.player.direction, (0, 0))
+        game.player.start_move(dx, dy)
 
     elif choice == "PICK UP":
         # ตรวจสอบว่ามีดาวที่กำลัง interact อยู่หรือไม่

@@ -1,16 +1,26 @@
 from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
+from kivy.core.audio import SoundLoader
+import random
+import os
 from settings import *
 
 class Player:
-    def __init__(self, canvas):
+    def __init__(self, canvas, x=None, y=None):
         self.canvas = canvas
         self.is_moving = False
-        start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
-        start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
+        
+        # กำหนดตำแหน่งเริ่มต้น (จากพิกัดที่ส่งมา หรือจากค่าเริ่มต้นใน settings)
+        if x is not None and y is not None:
+            start_x, start_y = x, y
+        else:
+            start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
+            start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
+            
+        self.x, self.y = start_x, start_y
         self.target_pos = [start_x, start_y]
-        self.logic_pos = [start_x, start_y]  # ตำแหน่ง 32x32 ทางตรรกะสำหรับการคำนวณเดินตาม Grid
+        self.logic_pos = [start_x, start_y]
         self.current_speed = WALK_SPEED
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
         
@@ -65,6 +75,29 @@ class Player:
             
         self.update_frame()
         self.current_fps = 2
+        
+        # โหลดเสียงเดิน
+        self.walk_sounds = []
+        walk_sound_dir = 'assets/sound/walk'
+        if os.path.exists(walk_sound_dir):
+            for file in os.listdir(walk_sound_dir):
+                if file.endswith('.wav'):
+                    s = SoundLoader.load(os.path.join(walk_sound_dir, file))
+                    if s:
+                        s.volume = 0.5
+                        self.walk_sounds.append(s)
+        
+        # โหลดเสียงวิ่ง
+        self.run_sounds = []
+        run_sound_dir = 'assets/sound/run'
+        if os.path.exists(run_sound_dir):
+            for file in os.listdir(run_sound_dir):
+                if file.endswith('.wav'):
+                    s = SoundLoader.load(os.path.join(run_sound_dir, file))
+                    if s:
+                        s.volume = 0.6 # เสียงวิ่งให้ดังกว่านิดหน่อย
+                        self.run_sounds.append(s)
+        
         self.anim_event = Clock.schedule_interval(self.animate, 1.0 / self.current_fps)
 
     def update_frame(self):
@@ -90,22 +123,26 @@ class Player:
         self.rect.tex_coords = (u, v + h, u + w, v + h, u + w, v, u, v)
         
     def animate(self, dt):
-        # ตรวจสอบ state ปัจจุบันว่าควรจะเป็นอะไร
-        new_state = 'walk' if self.is_moving else 'idle'
-        
-        # ถ้ามีการสลับระหว่าง "ยืนนิ่ง" กับ "เดิน" ให้ทำการรีเซตเฟรมอนิเมชันกลับไปเริ่มที่ 0
+        # ตรวจสอบ state ปัจจุบัน
+        is_moving_now = self.is_moving or getattr(self, 'cutscene_mode', False)
+        new_state = 'walk' if is_moving_now else 'idle'
+
         if self.state != new_state:
             self.state = new_state
-            # ดึงเฉพาะภาพ Idle กรอบแรกแบบเฉียบพลัน เพื่อไม่ให้มีหน่วงเมื่อหยุดการเดิน/วิ่ง
-            self.frame_index = 0
-            if new_state == 'idle':
-                # บังคับอัปลงจอก่อนเลยจะได้เห็นว่าหยุดนิ่งแล้ว
-                self.update_frame()
-                return
-        else:
-            # ถ้า state เดิม ให้เล่นเฟรมถัดไป
+            if not getattr(self, 'cutscene_mode', False):
+                self.frame_index = 0
+        
+        # บวกเฟรมเสมอในทุกรอบที่ animate ถูกเรียก (ตราบใดที่ไม่ใช่ idle นิ่งๆ)
+        if self.state != 'idle' or self.frame_index != 0:
             max_frames = self.anim_config[self.state]['cols']
             self.frame_index = (self.frame_index + 1) % max_frames
+            
+            # เล่นเสียงเดิน/วิ่ง (ในจังหวะลงเท้า: เฟรม 0 และ 4 ของอนิเมชั่น 8 เฟรม)
+            if self.state == 'walk' and self.frame_index in [0, 4]:
+                if self.current_speed == RUN_SPEED and self.run_sounds:
+                    random.choice(self.run_sounds).play()
+                elif self.walk_sounds:
+                    random.choice(self.walk_sounds).play()
             
         self.update_frame()
         
@@ -147,9 +184,14 @@ class Player:
             
         # 4. Return to idle instantly if not moving
         if not self.is_moving and self.state != 'idle':
-            self.state = 'idle'
-            self.frame_index = 0
-            self.update_frame()
+            # ถ้าอยู่ในคัทซีนและเป็นการเดินต่อเนื่อง ไม่ต้องรีเซตเฟรมเป็น 0 ทุกช่อง
+            if not getattr(self, 'cutscene_mode', False):
+                self.state = 'idle'
+                self.frame_index = 0
+                self.update_frame()
+            else:
+                # ในคัทซีน ให้ค้างท่าเดินไว้จนกว่าจะสั่งหยุดจริงๆ
+                pass
 
     def update_stamina(self, is_running):
         """Manages stamina drain, regeneration, and exhausted state."""
@@ -169,11 +211,10 @@ class Player:
 
     def update_animation_speed(self):
         """Sets animation FPS based on movement state and fatigue."""
-        if self.is_moving:
+        if self.is_moving or getattr(self, 'cutscene_mode', False):
             is_running = self.current_speed == RUN_SPEED
             target_fps = 12 if is_running else 8
         else:
-            # Slower idle animation while recovering or resting
             target_fps = 3 if self.stamina < self.max_stamina else 2
         
         if self.current_fps != target_fps:
@@ -258,63 +299,28 @@ class Player:
         return False
 
     def continue_move(self):
-        cur_x, cur_y = self.logic_pos
-        tar_x, tar_y = self.target_pos
+        """เลื่อนตำแหน่งผู้เล่นเข้าหาเป้าหมาย (Grid-based)"""
+        for i in range(2): # x, y
+            if self.logic_pos[i] < self.target_pos[i]:
+                self.logic_pos[i] = min(self.logic_pos[i] + self.current_speed, self.target_pos[i])
+            elif self.logic_pos[i] > self.target_pos[i]:
+                self.logic_pos[i] = max(self.logic_pos[i] - self.current_speed, self.target_pos[i])
 
-        # ใช้ current_speed แทน PLAYER_SPEED เพื่อให้วิ่งเร็วขึ้นจริง
-        if cur_x < tar_x: cur_x = min(cur_x + self.current_speed, tar_x)
-        elif cur_x > tar_x: cur_x = max(cur_x - self.current_speed, tar_x)
-        if cur_y < tar_y: cur_y = min(cur_y + self.current_speed, tar_y)
-        elif cur_y > tar_y: cur_y = max(cur_y - self.current_speed, tar_y)
-
-        self.logic_pos = [cur_x, cur_y]
+        self.x, self.y = self.logic_pos
         self.sync_graphics_pos()
-        
-        if cur_x == tar_x and cur_y == tar_y:
+        if self.logic_pos == self.target_pos:
             self.is_moving = False
 
     def sync_graphics_pos(self):
-        """อัปเดตตำแหน่งภาพ (Graphics) ให้ตรงกับตำแหน่งทางตรรกะ (Logic)"""
-        cur_x, cur_y = self.logic_pos
-        offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
-        offset_y = TILE_SIZE / 2
-        self.rect.pos = (cur_x + offset_x, cur_y + offset_y)
+        """อัปเดตตำแหน่งกราฟิกให้ตรงกับ Logic"""
+        ox = (TILE_SIZE - PLAYER_WIDTH) / 2
+        oy = TILE_SIZE / 2
+        self.rect.pos = (self.logic_pos[0] + ox, self.logic_pos[1] + oy)
 
     def interact(self, npcs, reaper):
         """
-        Check for interaction with NPCs or Reaper.
-        Returns (target_object, target_type, npc_index, dist_x, dist_y) if found, else (None, None, None, 0, 0).
+        Check for interaction. (Now simplified as main.py handles the core logic)
         """
-        player_pos = self.logic_pos
-        
-        # 1. Check Reaper
-        # ใช้ TILE_SIZE แทน WIDTH/HEIGHT ของ Hitbox เพื่อให้จุดศูนย์กลางอยู่กลางบล็อกจริงๆ
-        reaper_center_x = reaper.x + TILE_SIZE / 2
-        reaper_center_y = reaper.y + TILE_SIZE / 2
-        player_center_x = player_pos[0] + TILE_SIZE / 2
-        player_center_y = player_pos[1] + TILE_SIZE / 2
-        
-        reaper_distance_x = abs(player_center_x - reaper_center_x)
-        reaper_distance_y = abs(player_center_y - reaper_center_y)
-        
-        # เงื่อนไข Cardinal Only: ต้องมีด้านหนึ่งที่แทบจะตรงกัน (<= 4px) 
-        # และอีกด้านหนึ่งต้องอยู่ในระยะ 1 ช่อง (<= TILE_SIZE + 2)
-        is_reaper_near = (reaper_distance_x <= 4 and reaper_distance_y <= TILE_SIZE + 2) or (reaper_distance_y <= 4 and reaper_distance_x <= TILE_SIZE + 2)
-        
-        if is_reaper_near:
-            return reaper, "reaper", None, reaper_distance_x, reaper_distance_y
-            
-        # 2. Check NPCs
-        for i, npc in enumerate(npcs):
-            npc_center_x = npc.x + TILE_SIZE / 2
-            npc_center_y = npc.y + TILE_SIZE / 2
-            distance_x = abs(player_center_x - npc_center_x)
-            distance_y = abs(player_center_y - npc_center_y)
-            
-            is_npc_near = (distance_x <= 4 and distance_y <= TILE_SIZE + 2) or \
-                          (distance_y <= 4 and distance_x <= TILE_SIZE + 2)
-            
-            if is_npc_near:
-                return npc, "npc", i, distance_x, distance_y
-                
+        # Note: เราใช้ _get_interaction_target ของ main.py เป็นหลักแล้ว
+        # เมธอดนี้อาจเหลือไว้เพียงเพื่อให้รองรับโค้ดเก่าในบางจุด
         return None, None, None, 0, 0

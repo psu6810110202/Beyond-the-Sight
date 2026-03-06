@@ -3,7 +3,7 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle, Line, Ellipse
 from kivy.clock import Clock
-from settings import GAME_FONT
+from settings import GAME_FONT, WINDOW_HEIGHT
 from storygame.chat import DIALOGUE_CONFIG
 from storygame.choice import draw_choice_buttons, clear_choices
 import math
@@ -23,8 +23,13 @@ class DialogueManager:
         self.chat_tri_event = None
         self.item_tri_event = None
 
+    def _get_scaled_font_size(self):
+        """Scale font size (Single point of control)"""
+        # Assuming self.game.height is the relevant height for scaling
+        return 70 * (self.game.height / WINDOW_HEIGHT if self.game.height > 0 else 1.0)
+
     def get_ui_scale(self):
-        from settings import WINDOW_HEIGHT
+        # WINDOW_HEIGHT is now imported at the top
         return self.game.height / WINDOW_HEIGHT
 
     def create_pixel_triangle(self, scale, pos_y_ratio=0.1):
@@ -129,16 +134,14 @@ class DialogueManager:
             from settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG
             
             # เลือกรูปตามชื่อตัวละคร
-            if character_name == "Angel":
-                default_portrait = ANGEL_PORTRAIT_IMG
-            elif character_name == "Devil":
-                default_portrait = DEVIL_PORTRAIT_IMG
-            elif character_name == "Father":
-                default_portrait = FATHER_PORTRAIT_IMG
-            elif character_name == "Mother":
-                default_portrait = MOTHER_PORTRAIT_IMG
-            else:
-                default_portrait = PLAYER_PORTRAIT_IMG
+            # เลือกรูปตามชื่อตัวละคร (สั่งการทอดๆ จากชื่อ)
+            portrait_map = {
+                "Angel": ANGEL_PORTRAIT_IMG,
+                "Devil": DEVIL_PORTRAIT_IMG,
+                "Father": FATHER_PORTRAIT_IMG,
+                "Mother": MOTHER_PORTRAIT_IMG
+            }
+            default_portrait = portrait_map.get(character_name, PLAYER_PORTRAIT_IMG)
             # กำหนดขนาดเฉพาะของตัวละคร (Angel ให้ใหญ่ขึ้น)
             char_scale_mult = 1.3 if character_name == "Angel" else 1.0
                 
