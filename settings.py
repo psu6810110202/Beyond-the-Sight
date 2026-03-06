@@ -80,11 +80,16 @@ ENEMY_TYPES = {
     2: {
         'idle': {'path': 'characters/assets/Enemy/Enemy2_idle.png', 'cols': 1, 'rows': 4},
         'walk': {'path': 'characters/assets/Enemy/Enemy2_walk.png', 'cols': 8, 'rows': 4}
+    },
+    3: {
+        'idle': {'path': 'characters/assets/Enemy/Enemy3_idle.png', 'cols': 1, 'rows': 4},
+        'walk': {'path': 'characters/assets/Enemy/Enemy3_walk.png', 'cols': 8, 'rows': 4}
     }
 }
 
 # ตำแหน่งเกิดและประเภทของศัตรู
 ENEMY_SPAWN_DATA = [
     {'pos': (1280, 240), 'type': 1},
-    {'pos': (1584, 112), 'type': 2}
+    {'pos': (1584, 112), 'type': 2},
+    {'pos': (800, 80), 'type': 3}
 ]
