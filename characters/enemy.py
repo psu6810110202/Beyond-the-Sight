@@ -39,7 +39,7 @@ class Enemy:
         # Animation properties
         self.state = 'idle'
         self.frame_index = 0
-        self.current_fps = 8
+        self.current_fps = 12
         self.direction_change_timer = 0
         self.direction_change_interval = 3.0
         self.directions = ['down', 'left', 'right', 'up']
@@ -131,7 +131,11 @@ class Enemy:
                 return
         else:
             max_frames = self.anim_config[self.state]['cols']
-            self.frame_index = (self.frame_index + 1) % max_frames
+            # Smooth frame progression
+            self.frame_index += dt * self.current_fps
+            if self.frame_index >= max_frames:
+                self.frame_index = self.frame_index % max_frames
+            self.frame_index = int(self.frame_index)
             
         self.update_frame()
         self.update_animation_speed()
@@ -139,9 +143,9 @@ class Enemy:
     def update_animation_speed(self):
         """Sets animation FPS based on movement state and fatigue like Player."""
         if self.is_moving:
-            target_fps = 8  # Walking speed (same as Player)
+            target_fps = 16  # Faster walking animation for smoother movement
         else:
-            target_fps = 2  # Idle speed (same as Player)
+            target_fps = 4  # Smoother idle animation
         
         if self.current_fps != target_fps:
             self.current_fps = target_fps

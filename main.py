@@ -420,7 +420,7 @@ class GameWidget(Widget):
         self.y_sorting()
 
     def respawn_at_reaper(self):
-        """เมื่อหัวใจหมด วาปผู้เล่นกลับไปหา Reaper และรีเซ็ตหัวใจ"""
+        """เมื่อหัวใจหมด วาปผู้เล่นกลับไปยังจุดเริ่มต้นและรีเซ็ตหัวใจ"""
         self.death_count += 1
         print(f"Player died. Total deaths: {self.death_count}")
         
