@@ -420,16 +420,17 @@ class GameWidget(Widget):
         self.y_sorting()
 
     def respawn_at_reaper(self):
-        """เมื่อหัวใจหมด วาปผู้เล่นกลับไปหา Reaper และรีเซ็ตหัวใจ"""
+        """เมื่อหัวใจหมด วาปผู้เล่นกลับไปยังจุดเริ่มต้นและรีเซ็ตหัวใจ"""
         self.death_count += 1
         print(f"Player died. Total deaths: {self.death_count}")
         
-        # วาปผู้เล่นไปยังตำแหน่ง Reaper (หรือเยื้องออกมานิดหน่อยเผื่อไม่ให้ทับกัน)
-        rx, ry = self.reaper.logic_pos
-        self.player.logic_pos = [rx, ry - TILE_SIZE]
-        self.player.target_pos = [rx, ry - TILE_SIZE]
+        # วาปผู้เล่นไปยังตำแหน่งเริ่มต้นเดิม
+        start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
+        start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
+        self.player.logic_pos = [start_x, start_y]
+        self.player.target_pos = [start_x, start_y]
         self.player.sync_graphics_pos()
-        self.player.direction = 'up'
+        self.player.direction = 'down'
         self.player.update_frame()
         
         # รีเซ็ตเลือด
