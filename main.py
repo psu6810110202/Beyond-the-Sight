@@ -1026,7 +1026,13 @@ class GameWidget(Widget):
         return ["..."]
 
     def get_reaper_dialogue(self, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยของ Reaper ครั้งละ 1 ประโยคแบบสุ่ม"""
+        """คืนค่าลิสต์ข้อความคุยของ Reaper ครั้งละ 1 ประโยคแบบสุ่ม หรือคำใบ้ถ้ามีเควสอยู่"""
+        quest = self.quest_manager.active_quests.get("doll_parts")
+        
+        # ถ้าเควสกำลังดำเนินการอยู่ (รับมาแล้วแต่ยังเก็บไม่ครบ) ให้ Reaper บอกคำใบ้
+        if quest and quest.is_active and quest.current_count < quest.target_count:
+            return ["What he worries about... was thrown away with the unwanted things.", "Try searching that trash pile, you might find something."]
+            
         return [random.choice(REAPER_DIALOGUES)]
 
     def on_choice_selected(self, choice):
