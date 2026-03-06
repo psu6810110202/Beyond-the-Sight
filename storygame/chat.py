@@ -32,12 +32,19 @@ NPC_DIALOGUES = {
 
 # ข้อความคุยของ Reaper (จะถูกสุ่มเลือก)
 REAPER_DIALOGUES = [
-    "ความตายมาเยือน... แต่ยังไม่ถึงเวลาของเธอ",
-    "ฉันไม่ใช่ศัตรู... ฉันมาเพื่อพาเธอไป",
-    "โลกนี้มืดมน... แต่ยังมีความหวัง",
-    "เธอกำลังมองหาคำตอบอยู่ใช่ไหม?",
-    "ทุกชีวิตต้องจบลง... แต่ไม่ใช่วันนี้",
-    "มาติดต่อกันซะบ้าง... มันเหงาเหลือเกิน"
+    "Rest for a while? I'll keep watch.",
+    "Don't worry, I'll protect you.",
+    "You're doing great! Keep it up.",
+    "I'm always here for you.",
+    "You're not alone.",
+    "I'll be waiting."
+]
+
+# ข้อความตอนตาย
+REAPER_DEATH_QUOTES = [
+    "Open your eyes. You're safe now.",
+    "Wake up. Don't let the cold settle in your bones.",
+    "Stay alert. The shadows feed on those who linger too long."
 ]
 
 # ข้อความบทนำ (Day 1 Intro)
@@ -59,6 +66,15 @@ WARNING_DIALOGUE = [
     "Are you sure you want to go? It's pretty dangerous in there."
 ]
 WARNING_CHOICES = ["I'll go", "Ok"]
+
+# ข้อความสอนวิธีใช้ของ (Tutorial)
+TUTORIAL_DIALOGUE = [
+    "Look! There are shadows wandering around this area.",
+    "Try using the [Blue Stone] I gave you by pressing the [Q] key.",
+    "It will emit a flash that stuns any nearby shadows for a short moment.",
+    "But be careful, the light takes about 15 seconds to recharge after each use.",
+    "Use it wisely to escape if they get too close!"
+]
 
 # --- UI Settings สำหรับกล่องข้อความ ---
 DIALOGUE_CONFIG = {

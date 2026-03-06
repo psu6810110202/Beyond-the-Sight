@@ -3,6 +3,7 @@ from kivy.uix.label import Label
 from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
 from kivy.animation import Animation
+from kivy.core.window import Window
 from settings import GAME_FONT
 
 class QuestData:
@@ -112,12 +113,13 @@ class QuestManager:
             self.quest_ui_label = Label(
                 text="",
                 font_name=GAME_FONT,
-                size_hint=(0.25, 0.05),
-                pos_hint={'x': -0.25, 'top': 0.86}, # เริ่มจากนอกจอตามความกว้างใหม่
+                size_hint=(None, 0.05), # ใช้ None เพื่อให้ขยายตามตัวอักษรได้จริงๆ
+                width=200,
+                pos_hint={'x': -0.25, 'top': 0.86},
                 halign='left',
                 valign='middle',
                 color=(1, 1, 1, 1),
-                padding=[10, 0],
+                padding=[15, 0],
                 opacity=0
             )
             
@@ -130,21 +132,43 @@ class QuestManager:
                 )
             
             def update_quest_graphics(instance, value):
+                # อัปเดตพื้นหลังอย่างเดียว (ห้ามแก้ text_size ที่นี่เด็ดขาด)
                 instance.bg_rect.pos = instance.pos
                 instance.bg_rect.size = instance.size
-                # รักษาตัวอักษรขนาดใหญ่ไว้ (70% ของความสูงแถบ)
-                instance.font_size = instance.height * 0.7
-                instance.text_size = instance.size
-            
+
+            def update_width_by_texture(instance, value):
+                # ปรับความกว้างตามเนื้อหาข้อความ + padding
+                # การเปลี่ยน width ที่นี่จะไป trigger size ซึ่งจะไปรัน update_quest_graphics ต่อ
+                new_width = instance.texture_size[0] + 40
+                if abs(instance.width - new_width) > 1:
+                    instance.width = new_width
+
             self.quest_ui_label.bind(pos=update_quest_graphics, size=update_quest_graphics)
+            self.quest_ui_label.bind(texture_size=update_width_by_texture)
+            
+            def update_font_size(instance, value):
+                # ปรับขนาดฟอนต์ตามความสูงหน้าจอ (Responsive)
+                # แถบสูง 0.05 ของหน้าจอ, ฟอนต์เอา 70% ของแถบ
+                self.quest_ui_label.font_size = Window.height * 0.05 * 0.7
+            
+            Window.bind(height=update_font_size)
+            update_font_size(None, Window.height) # เรียกครั้งแรก
+        
+        # ตรวจสอบว่า Widget อยู่ในตำแหน่ง Root ที่ถูกต้องหรือไม่ (ป้องกันปัญหาโหลดเซฟแล้ว UI หาย)
+        if self.quest_ui_label.parent != root:
+            if self.quest_ui_label.parent:
+                self.quest_ui_label.parent.remove_widget(self.quest_ui_label)
             root.add_widget(self.quest_ui_label)
 
         quest_text = ""
         count = 0
         for q in self.active_quests.values():
             if q.is_active:
-                # เอาช่องว่างหน้าจุดออกเพื่อให้ชิดขอบที่สุด
-                quest_text += f"• {q.name.upper()}: {q.current_count}/{q.target_count}"
+                if q.current_count >= q.target_count:
+                    # ถ้าครบแล้ว ให้โชว์แค่ชื่อเควส (เช่น RETURN TO THE SAD SOUL)
+                    quest_text += f"• {q.name.upper()}"
+                else:
+                    quest_text += f"• {q.name.upper()}: {q.current_count}/{q.target_count}"
                 count += 1
         
         self.quest_ui_label.text = quest_text
@@ -152,10 +176,24 @@ class QuestManager:
         if count > 0:
             if animate:
                 # ค่อยๆ เลื่อนออกมา (Slide In) และเลือนชัดขึ้น (Fade In)
-                anim = Animation(pos_hint={'x': 0}, opacity=1, duration=1.0, t='out_quad')
+                anim = Animation(pos_hint={'x': 0, 'top': 0.86}, opacity=1, duration=1.0, t='out_quad')
                 anim.start(self.quest_ui_label)
             else:
-                self.quest_ui_label.pos_hint = {'x': 0}
+                self.quest_ui_label.pos_hint = {'x': 0, 'top': 0.86}
                 self.quest_ui_label.opacity = 1
         else:
             self.quest_ui_label.opacity = 0
+    def update_quest_progress(self, quest_id, amount=1):
+        """อัปเดตความคืบหน้าของเควส"""
+        if quest_id in self.active_quests:
+            quest = self.active_quests[quest_id]
+            if quest.is_active:
+                quest.current_count += amount
+                if quest.current_count >= quest.target_count:
+                    quest.current_count = quest.target_count
+                    # ไม่ปิดเควสทันที เพื่อให้แสดงเป้าหมายใหม่ (เช่น Return to NPC)
+                    if quest_id != "doll_parts":
+                        quest.is_active = False 
+                        self.show_quest_notification(f"COMPLETED: {quest.name}")
+                
+                self.update_quest_list_ui(animate=False)
