@@ -74,9 +74,18 @@ class Enemy:
                 'walk': {'tex': None, 'cols': 1, 'rows': 4}
             }
 
-        # Row mapping (แยกแถวระหว่าง idle และ walk)
-        idle_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
-        walk_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
+        # Row mapping (แยกแถวระหว่าง idle และ walk) - แก้ไขสำหรับ Enemy 2 และ 3
+        if self.enemy_type == 1:
+            idle_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
+            walk_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
+        elif self.enemy_type == 2 or self.enemy_type == 3:
+            idle_rows = {'down': 1, 'left': 3, 'right': 2, 'up': 0}
+            walk_rows = {'down': 2, 'left': 3, 'right': 1, 'up': 0}
+        else:
+            # Default mapping
+            idle_rows = {'down': 1, 'left': 2, 'right': 0, 'up': 3}
+            walk_rows = {'down': 1, 'left': 2, 'right': 0, 'up': 3}
+            
         self.anim_row_map = {'idle': idle_rows, 'walk': walk_rows}
 
     def _init_graphics(self):
@@ -122,6 +131,13 @@ class Enemy:
     
     def animate(self, dt):
         """Handles state transitions and frame updates."""
+        # ถ้ากำลังจางหาย ให้หยุดอนิเมชันและค้างท่า idle
+        if self.is_fading:
+            self.state = 'idle'
+            self.frame_index = 0  # ค้างที่เฟรมแรกของ idle
+            self.update_frame()
+            return
+            
         new_state = 'walk' if self.is_moving else 'idle'
         
         if self.state != new_state:
@@ -153,7 +169,7 @@ class Enemy:
             self.anim_event.cancel()
             self.anim_event = Clock.schedule_interval(self.animate, 1.0 / target_fps)
             
-    def update(self, dt, player_pos, reaper_pos=None, map_rects=None):
+    def update(self, dt, player_pos, reaper_pos=None, map_rects=None, enemies=None):
         """Main update loop called by the game logic."""
         if self.is_fading:
             self.is_chasing = False
@@ -189,7 +205,7 @@ class Enemy:
             dist = self.calculate_distance(player_pos)
             if dist <= self.detection_radius and self.has_line_of_sight(player_pos, map_rects):
                 self.is_chasing = True
-                self.chase_player_grid(player_pos, reaper_pos, map_rects)
+                self.chase_player_grid(player_pos, reaper_pos, map_rects, enemies)
             else:
                 self.is_chasing = False
         else:
@@ -201,7 +217,7 @@ class Enemy:
         """Calculates distance between enemy and target (เหมือน player)."""
         return math.sqrt((target_pos[0] - self.logic_pos[0])**2 + (target_pos[1] - self.logic_pos[1])**2)
         
-    def chase_player_grid(self, player_pos, reaper_pos=None, map_rects=None):
+    def chase_player_grid(self, player_pos, reaper_pos=None, map_rects=None, enemies=None):
         """Implements grid-based chasing logic with safe zone detection."""
         # เมื่อไล่ล่า เราจะยกเลิกการหน่วงเวลาเพื่อให้เข้าหาผู้เล่นได้ทันที
         self.turn_delay = 0
@@ -217,7 +233,7 @@ class Enemy:
             # เช็คว่าแกน Y เดินได้ไหม
             new_x = self.logic_pos[0]
             new_y = self.logic_pos[1] + move_y
-            if self._is_pos_safe_and_clear(new_x, new_y, reaper_pos, map_rects):
+            if self._is_pos_safe_and_clear(new_x, new_y, reaper_pos, map_rects, enemies):
                 self.direction = new_dir
                 self.frame_index = 0
                 self.start_move(0, move_y)
@@ -231,7 +247,7 @@ class Enemy:
             # เช็คว่าแกน X เดินได้ไหม
             new_x = self.logic_pos[0] + move_x
             new_y = self.logic_pos[1]
-            if self._is_pos_safe_and_clear(new_x, new_y, reaper_pos, map_rects):
+            if self._is_pos_safe_and_clear(new_x, new_y, reaper_pos, map_rects, enemies):
                 self.direction = new_dir
                 self.frame_index = 0
                 self.start_move(move_x, 0)
@@ -243,14 +259,14 @@ class Enemy:
             new_dir = 'up' if dy > 0 else 'down'
             new_x = self.logic_pos[0]
             new_y = self.logic_pos[1] + move_y
-            if self._is_pos_safe_and_clear(new_x, new_y, reaper_pos, map_rects):
+            if self._is_pos_safe_and_clear(new_x, new_y, reaper_pos, map_rects, enemies):
                 self.direction = new_dir
                 self.frame_index = 0
                 self.start_move(0, move_y)
                 return
 
-    def _is_pos_safe_and_clear(self, new_x, new_y, reaper_pos, map_rects):
-        """ตรวจสอบว่าตำแหน่งใหม่ปลอดภัยจาก Reaper และไม่มีกำแพงขวาง"""
+    def _is_pos_safe_and_clear(self, new_x, new_y, reaper_pos, map_rects, enemies=None):
+        """ตรวจสอบว่าตำแหน่งใหม่ปลอดภัยจาก Reaper และไม่มีกำแพงหรือศัตรูอื่นขวาง"""
         # 1. เช็คขอบเขตแผนที่
         if not (0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE):
             return False
@@ -260,6 +276,10 @@ class Enemy:
                 
         # 3. เช็คกำแพง
         if map_rects and self.check_map_collision(new_x, new_y, map_rects):
+            return False
+            
+        # 4. เช็คการชนกับศัตรูตัวอื่น
+        if enemies and self.check_enemy_collision(new_x, new_y, enemies):
             return False
             
         return True
@@ -294,6 +314,28 @@ class Enemy:
                 enemy_rect[0] + enemy_rect[2] > r[0] and
                 enemy_rect[1] < r[1] + r[3] and
                 enemy_rect[1] + enemy_rect[3] > r[1]):
+                return True
+        return False
+
+    def check_enemy_collision(self, new_x, new_y, enemies):
+        """ตรวจสอบว่าตำแหน่งใหม่จะชนกับศัตรูตัวอื่นหรือไม่"""
+        enemy_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
+        
+        for other_enemy in enemies:
+            # ข้ามตัวเอง
+            if other_enemy.id == self.id:
+                continue
+            # ข้ามศัตรูที่กำลังจางหาย
+            if other_enemy.is_fading:
+                continue
+                
+            other_rect = [other_enemy.logic_pos[0], other_enemy.logic_pos[1], TILE_SIZE, TILE_SIZE]
+            
+            # ใช้ Logic กล่องแบบห้ามซ้อนทับกันเต็มขนาด
+            if (enemy_rect[0] < other_rect[0] + other_rect[2] and
+                enemy_rect[0] + enemy_rect[2] > other_rect[0] and
+                enemy_rect[1] < other_rect[1] + other_rect[3] and
+                enemy_rect[1] + enemy_rect[3] > other_rect[1]):
                 return True
         return False
 
