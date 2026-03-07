@@ -30,6 +30,7 @@ import random
 from characters.player import Player
 from characters.npc import NPC
 from characters.reaper import Reaper
+from items.candle import Candle
 from characters.enemy import Enemy
 
 from assets.Heart.heart import HeartUI
@@ -41,7 +42,7 @@ from menu.camera import Camera
 from menu.pause import PauseMenu
 
 from storygame.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
-from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUES, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
+from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUES, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG, CANDLE_LIGHT_DIALOGUE, CANDLE_LIGHT_CHOICES # นำเข้าข้อความและค่าตั้งค่า
 from storygame.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
 from storygame.story import StoryManager # นำเข้า Story Manager
 from storygame.quest import QuestManager # นำเข้าหน้าจอกองเควส
@@ -59,11 +60,23 @@ class GameWidget(Widget):
         self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
         self.collected_stars = initial_data.get('collected_stars', []) if initial_data else []
         
+        self.candles = []
+        self.current_candle_target = None
+        # โหลดจำนวนเทียนที่จุดไปแล้วจากเซฟ
+        self.current_candle_lit_count = initial_data.get('current_candle_lit_count', 0) if initial_data else 0
+        
         # คลีนข้อมูล Day 1 ถ้าโหลดมาเป็นวันอื่น (User Request)
         if initial_data and initial_data.get('day', 1) > 1:
             self.collected_stars = []
+        else:
+            # ถ้าเป็น Day 1 หรือเริ่มเกมใหม่ ให้รีเซ็ตจำนวนเทียนด้วย
+            self.current_candle_lit_count = 0
             
         self.has_received_blue_stone = initial_data.get('has_received_blue_stone', False) if initial_data else False
+        self.has_received_lantern = initial_data.get('has_received_lantern', False) if initial_data else False
+        
+        self.is_dialogue_active = False
+        self.is_reaper_save_prompt = False
         
         # สถานะวันปัจจุบัน (ค่าเริ่มต้นคือ Day 1)
         self.current_day = initial_data.get('day', 1) if initial_data else 1
@@ -73,6 +86,9 @@ class GameWidget(Widget):
         self.tutorial_mode = False # สถานะชั่วคราวบอกว่ากำลังเล่นบทเรียนสอนใช้ของหรือไม่
         self.letters_held = initial_data.get('letters_held', 0) if initial_data else 0
         self.delivered_house_indices = initial_data.get('delivered_house_indices', []) if initial_data else []
+        self.is_reaper_save_prompt = False
+        self.is_dialogue_active = False
+        self.extra_reapers = []  # Initialize early to avoid attribute errors
         
         # ระบบเวลาเล่น (Play Time)
         self.play_time = initial_data.get('play_time', 0) if initial_data else 0
@@ -280,14 +296,8 @@ class GameWidget(Widget):
         self.npcs = []
         self.create_npcs()
         
-        # 3. สร้าง Reaper
-        self.reaper = Reaper(self.sorting_layer)
-        self.extra_reapers = []
-        if self.current_day == 2:
-            extra_reap = Reaper(self.sorting_layer, x=304, y=288)
-            extra_reap.direction = 'right'
-            extra_reap.update_frame()
-            self.extra_reapers.append(extra_reap)
+        # 3. สร้าง Reapers (หลักและ Extra) ผ่าน WorldManager เพื่อความสอดคล้องกันทุกวันและการโหลดเกม
+        self.world_manager.create_reapers()
         
         # 4. สร้าง Enemies
         self.enemies = []
@@ -295,6 +305,10 @@ class GameWidget(Widget):
         
         # 4.5. วาดรอยประทับหน้าบ้าน (หากเป็น Day 2) ไว้รองรับกรณีโหลดเซฟใหม่
         self.world_manager.create_house_marks()
+        
+        # 4.6. สร้างเทียน (กรณีโหลดเซฟแล้วมีเควสค้างอยู่)
+        if "light_candles" in self.quest_manager.active_quests:
+            self.create_candles()
         self.world_manager.restore_delivered_marks()
         
         # 5. Stars จะถูกสร้างหลังคุยกับ NPC1
@@ -359,6 +373,9 @@ class GameWidget(Widget):
         self.reaper.update_frame()
         self.player.direction = 'right'
         self.player.update_frame()
+        
+        # เปิดธงเพื่อให้แสดงหน้าจอเซฟหลังคุยจบ
+        self.is_reaper_save_prompt = True
         
         # ดึงบทสนทนาเริ่มต้นตามวัน (Safe fallback to Day 1)
         dialogue = INTRO_DIALOGUES.get(self.current_day, INTRO_DIALOGUES[1])
@@ -463,6 +480,42 @@ class GameWidget(Widget):
         if key_name in self.pressed_keys:
             self.pressed_keys.remove(key_name)
 
+    def set_candle_color(self, color_name):
+        """เปลี่ยนสีเทียนตามที่เลือกและอัปเดตสถานะ"""
+        from settings import CANDLE_COLOR_MAPPING
+        from storygame.chat import CANDLE_SUCCESS_DIALOGUE
+        if self.current_candle_target and not self.current_candle_target.is_lit:
+            candle = self.current_candle_target
+            candle.set_color(color_name)
+            
+            # ตรวจสอบความถูกต้อง (User Request: แดง=688,1312, ฟ้า=528,960, เหลือง=462,560)
+            target_color = CANDLE_COLOR_MAPPING.get((candle.x, candle.y))
+            if color_name != target_color:
+                self.quest_item_fail = True
+                print(f"DEBUG: Incorrect color at ({candle.x}, {candle.y}). Expected {target_color}, got {color_name}")
+            
+            self.current_candle_lit_count += 1
+            print(f"Candle lit with {color_name}. Total lit: {self.current_candle_lit_count}")
+
+            # อัปเดตความคืบหน้าเควสผ่าน Quest Manager
+            if "light_candles" in self.quest_manager.active_quests:
+                self.quest_manager.update_quest_progress("light_candles", 1)
+
+            if self.current_candle_lit_count >= 3:
+                # ปรับข้อความให้ชัดเจน (Return to Old Soul)
+                self.show_vn_dialogue("Little girl", CANDLE_SUCCESS_DIALOGUE)
+                
+                # เปลี่ยนเป้าหมายเควสให้กลับไปหา Old Soul
+                q = self.quest_manager.active_quests.get("light_candles")
+                if q:
+                    q.name = "Return to The Old Soul"
+                    self.quest_manager.update_quest_list_ui()
+            else:
+                self.show_vn_dialogue("Little girl", f"The candle glows {color_name.lower()}.")
+        else:
+            self.show_vn_dialogue("Little girl", "This candle is already burning brightly.")
+
+
     def move_step(self, dt):
         try:
             self._move_step_logic(dt)
@@ -495,7 +548,7 @@ class GameWidget(Widget):
             
             # 1. การเคลื่อนที่ของตัวละคร
             all_reapers = [self.reaper] + getattr(self, 'extra_reapers', [])
-            self.player.move(self.pressed_keys, self.npcs, all_reapers, self.game_map.solid_rects)
+            self.player.move(self.pressed_keys, self.npcs, all_reapers, self.game_map.solid_rects, getattr(self, 'candles', []))
             self.heart_ui.update_stamina(self.player.get_stamina_ratio())
             
             # อัปเดต NPCs / Reaper / Enemies
@@ -506,9 +559,13 @@ class GameWidget(Widget):
                 er.update(dt, self.player.logic_pos)
             
             for enemy in self.enemies[:]:
-                reaper_pos = (self.reaper.x, self.reaper.y)
+                # ส่งรายการตำแหน่ง reaper ทั้งหมด (หลัก + extra) ไปให้ศัตรูตรวจสอบ Safe Zone
+                reaper_positions = [(self.reaper.x, self.reaper.y)]
+                for er in getattr(self, 'extra_reapers', []):
+                    reaper_positions.append((er.x, er.y))
+                    
                 # ส่ง solid_rects และ enemies เข้าไปด้วยเพื่อให้ศัตรูไม่เดินทะลุกำแพงและไม่ชนกัน
-                enemy.update(dt, self.player.logic_pos, reaper_pos, self.game_map.solid_rects, self.enemies)
+                enemy.update(dt, self.player.logic_pos, reaper_positions, self.game_map.solid_rects, self.enemies)
 
                 # บันทึกสถานะศัตรูที่กำลังจางหาย (ไม่ว่าจะจากชนหรือวง Reaper) ให้จดจำในเซฟ
                 if enemy.is_fading:
@@ -663,7 +720,7 @@ class GameWidget(Widget):
         # เพิ่ม Reaper เฉพาะเมื่อไม่อยู่ในจุดพัก (เช่น ตอนเปลี่ยนแมพมาบ้าน)
         reaper_list = [self.reaper] if (self.reaper.logic_pos[0] > -1000) else []
         reaper_list.extend(getattr(self, 'extra_reapers', []))
-        sortable_chars = [self.player] + reaper_list + self.npcs + self.enemies + self.stars
+        sortable_chars = [self.player] + reaper_list + self.npcs + self.enemies + self.stars + self.candles
         
         def get_sort_y(char):
             base_y = char.y if hasattr(char, 'y') else char.logic_pos[1]
@@ -806,6 +863,11 @@ class GameWidget(Widget):
         star_target, _, _ = self._get_interaction_target(self.stars, limit=20)
         self.current_star_target = star_target
         if star_target: return 
+        
+        # เช็คไอเทมเทียน (Day 3)
+        candle_target, _, _ = self._get_interaction_target(self.candles, limit=20)
+        self.current_candle_target = candle_target
+        if candle_target: return
 
         # เช็ค NPC / Reaper (ระยะ 32)
         target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper] + getattr(self, 'extra_reapers', []), limit=32)
@@ -879,6 +941,15 @@ class GameWidget(Widget):
             self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
             return
 
+        # 1. เช็คจุดไฟเทียน (Day 3)
+        if self.current_candle_target:
+            if self.current_candle_target.is_lit:
+                self.show_vn_dialogue("Little girl", "This candle is already burning brightly.")
+                return
+                
+            self.show_vn_dialogue("Little girl", CANDLE_LIGHT_DIALOGUE, choices=CANDLE_LIGHT_CHOICES)
+            return
+
         target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper] + getattr(self, 'extra_reapers', []), limit=32)
         if target:
             npc_index = self.npcs.index(target) if target in self.npcs else -1
@@ -942,9 +1013,7 @@ class GameWidget(Widget):
         
         # หยุดการเดินของ Player ทันที
         self.pressed_keys.clear()
-        self.player.is_moving = False
-        self.player.state = 'idle'
-        self.player.update_animation_speed()
+        self.player.stop()
         
         # หันหน้าเข้าหากัน
         if abs(dx) > abs(dy):
@@ -966,6 +1035,7 @@ class GameWidget(Widget):
         self.player.update_frame()
         
         if isinstance(target, Reaper):
+            self.is_reaper_save_prompt = True
             dialogue = self.get_reaper_dialogue(dx, dy)
             self.show_dialogue_above_reaper(dialogue)
         else:
@@ -1007,6 +1077,8 @@ class GameWidget(Widget):
         
         # แสดงข้อความแรก
         if self.current_dialogue_queue:
+            self.is_dialogue_active = True
+            self.player.stop()
             first_text = self.current_dialogue_queue[0]
             self.dialogue_manager.show_vn_dialogue(npc_name, first_text)
             
@@ -1025,6 +1097,8 @@ class GameWidget(Widget):
         
         # แสดงข้อความแรก
         if self.current_dialogue_queue:
+            self.is_dialogue_active = True
+            self.player.stop()
             first_text = self.current_dialogue_queue[0]
             # แสดง Choice เฉพาะเมื่ออยู่หน้าสุดท้าย
             is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
@@ -1036,6 +1110,8 @@ class GameWidget(Widget):
 
     def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
         """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
+        self.is_dialogue_active = True
+        self.player.stop()
         self.current_character_name = character_name
         if choices:
             self.current_choices = choices
@@ -1053,32 +1129,35 @@ class GameWidget(Widget):
         """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ (Delegated)"""
         self.is_dialogue_active = True
         self.pressed_keys.clear()
-        self.player.is_moving = False
-        self.player.state = 'idle'
-        self.player.update_animation_speed()
-        self.player.update_frame()
+        self.player.stop()
         self.current_character_name = text # เพื่อให้ Story Manager รู้ว่าอะไรเพิ่งจบ
         self.dialogue_manager.show_item_discovery(text, image_path, choices=choices)
         root = self.dialogue_root if self.dialogue_root else self
         
     def close_dialogue(self):
         """ปิดกล่องข้อความคุยและคืนสถานะเกม"""
+        # จำสถานะก่อนรีเซ็ต (ต้องทำก่อนเรียก dialogue_manager.close_dialogue เพราะมันจะเคลียร์ current_choices)
+        last_char = getattr(self, 'current_character_name', None)
+        has_choices = len(getattr(self, 'current_choices', [])) > 0
+        
         self.dialogue_manager.close_dialogue()
 
-        # จำสถานะ Choice ไว้ก่อนรีเซ็ต
-        last_char = self.current_character_name
-        has_choices = len(self.current_choices) > 0
-        
         # คืนสถานะการคุย
         self.is_dialogue_active = False
         self._on_close_dialogue_reset()
         
+        # ปลดล็อกกล้องถ้าไม่ได้ติดคัทซีนตัวเมือง/เนื้อเรื่องหลัก
+        if not self.is_cutscene_active:
+            self.camera.locked = False
+        
         # ตรวจสอบว่าเป็นการจบคัทซีนเนื้อเรื่องเสริมหรือไม่
         if self.is_cutscene_active and getattr(self, 'cutscene_step', 0) == 11:
             self.cutscene_manager.end_side_story_cutscene()
+            self.camera.locked = False
         
         # ส่งต่อ Logic เนื้อเรื่องให้ Story Manager จัดการทอดๆ ต่อไป
         self.story_manager.handle_dialogue_end(last_char, has_choices)
+        self.is_reaper_save_prompt = False
         
         # รีเซ็ตสถานะโหมดสอนเสมอ (Story Manager จะเป็นคนคุม tutorial_mode ในอนาคต)
         self.tutorial_mode = False
@@ -1098,16 +1177,25 @@ class GameWidget(Widget):
         if self.current_choices and self.current_dialogue_index == len(self.current_dialogue_queue) - 1:
             return
 
-        # 1. เช็คก่อนว่าแชทปัจจุบันคือประโยคที่ต้องให้หินหรือไม่ (ถ้าใช่ ให้โชว์แจ้งเตือนไอเทมก่อนขยับไปประโยคถัดไป)
+        # 1. เช็คก่อนว่าแชทปัจจุบันคือประโยคที่ต้องให้ของหรือไม่ (ถ้าใช่ ให้โชว์แจ้งเตือนไอเทมก่อนขยับไปประโยคถัดไป)
         if self.current_dialogue_index < len(self.current_dialogue_queue):
             current_text = self.current_dialogue_queue[self.current_dialogue_index]
+            
+            # Event: ได้รับ Blue Stone (Day 1)
             if "Here, take this [Blue Stone] with you" in current_text and not self.has_received_blue_stone:
-                # ซ่อนแชทก่อนโชว์ไอเทมตามคำขอ
-                self.preserved_character_name = self.current_character_name # จำชื่อไว้ก่อนโดนทับ
+                self.preserved_character_name = self.current_character_name 
                 self.dialogue_manager.close_dialogue()
                 self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
                 self.has_received_blue_stone = True
-                return # กลับออกไปเพื่อให้ user กด Enter ปิดไอเทมก่อน
+                return 
+                
+            # Event: ได้รับ Lantern (Day 3)
+            if "Take this lantern. You'll need it to light the candles" in current_text and not self.has_received_lantern:
+                self.preserved_character_name = self.current_character_name
+                self.dialogue_manager.close_dialogue()
+                self.show_item_discovery("Received [Lantern]", "assets/Items/Lantern.png")
+                self.has_received_lantern = True
+                return
 
         if getattr(self, 'preserved_character_name', None) is not None:
             self.current_character_name = self.preserved_character_name
@@ -1165,6 +1253,17 @@ class GameWidget(Widget):
                 elif quest.is_active:
                     return ["..."]
 
+        if npc_name == "The Old Soul":
+            quest = self.quest_manager.active_quests.get("light_candles")
+            if quest:
+                if quest.current_count >= quest.target_count:
+                    from storygame.chat import OLD_SOUL_SUCCESS, OLD_SOUL_FAIL
+                    if getattr(self, "quest_item_fail", False):
+                        return [OLD_SOUL_FAIL]
+                    return [OLD_SOUL_SUCCESS]
+                elif quest.is_active:
+                    return ["The red flowers in the vase...", "The blue rug in the hallway...", "The yellow sunlight on the porch...", "If only I could see those colors again..."]
+
         if npc_name in NPC_DIALOGUES:
             return NPC_DIALOGUES[npc_name]
         return ["..."]
@@ -1178,6 +1277,10 @@ class GameWidget(Widget):
         quest_letters = self.quest_manager.active_quests.get("deliver_letters")
         if quest_letters and quest_letters.is_active and quest_letters.current_count < quest_letters.target_count:
             return ["Every silent message seeks its twin carved in wood... lead it home"]
+
+        quest_candles = self.quest_manager.active_quests.get("light_candles")
+        if quest_candles and quest_candles.is_active and quest_candles.current_count < quest_candles.target_count:
+            return ["He already told you the order. Just follow the sequence of his memories."]
 
         return [random.choice(REAPER_DIALOGUES)]
 
@@ -1274,6 +1377,9 @@ class GameWidget(Widget):
     def create_stars(self):
         self.world_manager.create_stars()
 
+    def create_candles(self):
+        self.world_manager.create_candles()
+
     # ---------------------------------------------------------
     # Visual Effects & World
     # ---------------------------------------------------------
@@ -1286,7 +1392,7 @@ class GameWidget(Widget):
     def recreate_world(self):
         self.world_manager.recreate_world()
 
-    def handle_day_transition(self):
+    def handle_day_transition(self, increment=True):
         """จัดการการตัดฉากขึ้นวันใหม่"""
         if not self._pending_day_transition: return
         self._pending_day_transition = False
@@ -1306,7 +1412,8 @@ class GameWidget(Widget):
         root.add_widget(black_overlay)
         
         # 2. เพิ่ม Day Counter
-        self.current_day += 1
+        if increment:
+            self.current_day += 1
         
         # 3. Animation Sequence
         anim = Animation(opacity=1, duration=1.5) # จอค่อยๆ มืดลง
@@ -1450,6 +1557,18 @@ class MyApp(App):
         # นำ debug_label แปะที่ FloatLayout (UI หน้าจอจริงๆ) ให้พ้นจากกล้องซูม/หมุน
         game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
         self.root.add_widget(game.debug_label) 
+
+    def create_candles(self):
+        """สร้างไอเทมเทียนตามพิกัดใน settings.py"""
+        from settings import CANDLE_SPAWN_LOCATIONS
+        # ล้างของเดิมก่อน
+        for c in self.candles:
+            c.destroy()
+        self.candles = []
+        
+        for x, y in CANDLE_SPAWN_LOCATIONS:
+            candle = Candle(self.sorting_layer, x, y)
+            self.candles.append(candle)
 
     def on_start(self):
         # ผูกเหตุการณ์คีย์บอร์ดระดับ Window เพื่อให้กด F11 ได้ทุกหน้าจอ

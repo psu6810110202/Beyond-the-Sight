@@ -26,10 +26,10 @@ class Reaper:
         # Spritesheet row mapping for idle state
         self.anim_row_map = {
             'idle': {
-                'down': 3, 
-                'left': 0, 
-                'right': 1, 
-                'up': 2
+                'down': 0, 
+                'left': 3, 
+                'right': 2, 
+                'up': 1
             }
         }
         
@@ -54,6 +54,9 @@ class Reaper:
         self.target_pos = [self.x, self.y]
         self.is_moving = False
         self.safe_zone_radius = SAFE_ZONE_RADIUS
+        self.is_fading = False
+        self.alpha = 1.0
+        self.fading_done = False
         
         # Graphics initialization
         self._init_graphics()
@@ -67,7 +70,8 @@ class Reaper:
         self.group = InstructionGroup()
         
         # Protection aura (gentle blue glow) - Draw FIRST
-        self.group.add(Color(0.3, 0.7, 1.0, 0.1))
+        self.aura_color = Color(0.3, 0.7, 1.0, 0.1)
+        self.group.add(self.aura_color)
         self.protection_circle = Ellipse(
             pos=(self.x - self.safe_zone_radius + TILE_SIZE // 2, 
                     self.y - self.safe_zone_radius + TILE_SIZE // 2),
@@ -78,9 +82,10 @@ class Reaper:
         
         # Main sprite
         if self.idle_texture:
-            self.group.add(Color(1, 1, 1, 1))
+            self.sprite_color = Color(1, 1, 1, 1)
         else:
-            self.group.add(Color(1, 0, 0, 1)) 
+            self.sprite_color = Color(1, 0, 0, 1) 
+        self.group.add(self.sprite_color)
         
         offset_x = (TILE_SIZE - REAPER_VISUAL_WIDTH) / 2
         offset_y = TILE_SIZE / 2
@@ -105,7 +110,10 @@ class Reaper:
         # Calculate texture coordinates for the current direction and frame
         u = self.frame_index * w
         row_index = self.anim_row_map.get(self.state, {}).get(self.direction, 0)
-        v = row_index * h
+        
+        # Standardize vertical coordinate (Kivy textures often need Y-flip correction)
+        # Match the logic used in Player and Enemy classes
+        v = 1.0 - ((row_index + 1) * h)
         
         self.rect.texture = tex
         # Map texture to rect corners (standard sprite mapping)
@@ -120,6 +128,17 @@ class Reaper:
     
     def update(self, dt, player_pos):
         """Main logic update called by the game engine."""
+        if self.is_fading:
+            self.alpha -= dt * 2.0 # จางหายเร็วขึ้น (0.5 วินาที)
+            if self.alpha <= 0:
+                self.alpha = 0
+                self.fading_done = True
+            
+            # อัปเดตกราฟิก
+            self.sprite_color.a = self.alpha
+            self.aura_color.a = self.alpha * 0.1 # ออร่าจางตาม
+            return
+
         # Check protection
         dist = self.calculate_distance(player_pos)
         if dist <= self.safe_zone_radius:
@@ -181,3 +200,10 @@ class Reaper:
                 self.x + TILE_SIZE > player_pos[0] and
                 self.y < player_pos[1] + TILE_SIZE and
                 self.y + TILE_SIZE > player_pos[1])
+
+    def destroy(self):
+        """Cleans up canvas instructions and events."""
+        if self.canvas and self.group in self.canvas.children:
+            self.canvas.remove(self.group)
+        if hasattr(self, 'anim_event'):
+            self.anim_event.cancel()

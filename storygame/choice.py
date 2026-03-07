@@ -212,6 +212,9 @@ def handle_choice_selection(game, choice):
         if hasattr(game, 'pending_letter_type'): del game.pending_letter_type
         game.close_dialogue()
 
+    elif choice in ["RED", "BLUE", "YELLOW"]:
+        game.set_candle_color(choice)
+
 def draw_choice_buttons(game, choices):
     """วาดปุ่มทางเลือก (UI Logic)"""
     root = game.dialogue_root if game.dialogue_root else game

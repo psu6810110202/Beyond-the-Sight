@@ -194,8 +194,8 @@ class QuestManager:
                 if quest.current_count >= quest.target_count:
                     quest.current_count = quest.target_count
                     # ไม่ปิดเควสทันที เพื่อให้แสดงเป้าหมายใหม่ (เช่น Return to NPC)
-                    # ทั้ง doll_parts (Day 1) และ deliver_letters (Day 2) ต้องอยู่ต่อจนกว่าจะคุยจบ
-                    if quest_id not in ["doll_parts", "deliver_letters"]:
+                    # เควสเหล่านี้ต้องอยู่ต่อจนกว่าจะเปลี่ยน Objective และคุยกับ NPC จบ
+                    if quest_id not in ["doll_parts", "deliver_letters", "light_candles"]:
                         quest.is_active = False
                         quest.completed_sidebar = True
                         self.show_quest_notification(f"COMPLETED: {quest.name}")

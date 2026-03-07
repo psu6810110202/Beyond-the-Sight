@@ -13,6 +13,54 @@ class WorldManager:
     def __init__(self, game):
         self.game = game
         
+    def create_reapers(self):
+        """จัดการการสร้าง Reaper หลักและ Extra Reapers ตามความก้าวหน้าของวัน"""
+        from characters.reaper import Reaper, REAPER_START_POS
+        
+        # 1. จัดการ Reaper หลัก (ถ้ายังไม่มี)
+        if not hasattr(self.game, 'reaper') or self.game.reaper is None:
+            self.game.reaper = Reaper(self.game.sorting_layer)
+        else:
+            # ถ้ามีอยู่แล้ว ให้รีเซ็ตตำแหน่ง (กรณีข้ามวัน)
+            if self.game.reaper.group not in self.game.sorting_layer.children:
+                self.game.sorting_layer.add(self.game.reaper.group)
+            
+            self.game.reaper.x, self.game.reaper.y = REAPER_START_POS
+            self.game.reaper.logic_pos = list(REAPER_START_POS)
+            self.game.reaper.target_pos = list(REAPER_START_POS)
+            self.game.reaper.update_visual_positions()
+            self.game.reaper.alpha = 1.0
+            self.game.reaper.is_fading = False
+            self.game.reaper.fading_done = False
+            if hasattr(self.game.reaper, 'sprite_color'):
+                self.game.reaper.sprite_color.a = 1.0
+
+        # 2. จัดการ Extra Reapers (ล้างของเก่าก่อน)
+        if not hasattr(self.game, 'extra_reapers'):
+            self.game.extra_reapers = []
+        
+        for er in self.game.extra_reapers:
+            er.destroy() # เรียกใช้ method ใหม่ที่สร้างไว้
+        self.game.extra_reapers = []
+
+        # 3. สร้าง Extra Reapers ตามวัน (ใช้ >= เพื่อให้คงอยู่จนจบเกม)
+        day = getattr(self.game, 'current_day', 1)
+        if day >= 2:
+            # จุดสำหรับ Day 2 (กลาง-ล่างซ้าย)
+            extra_reap = Reaper(self.game.sorting_layer, x=304, y=288)
+            extra_reap.direction = 'right'
+            extra_reap.update_frame()
+            extra_reap.update_visual_positions()
+            self.game.extra_reapers.append(extra_reap)
+            
+        if day >= 3:
+            # จุดสำหรับ Day 3 (ตามที่ User กำหนด: 480, 1312)
+            extra_reap2 = Reaper(self.game.sorting_layer, x=480, y=1312)
+            extra_reap2.direction = 'down'
+            extra_reap2.update_frame()
+            extra_reap2.update_visual_positions()
+            self.game.extra_reapers.append(extra_reap2)
+
     def create_npcs(self):
         """สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน settings.py"""
         for i in range(min(NPC_COUNT, len(NPC_IMAGE_LIST))):
@@ -45,25 +93,34 @@ class WorldManager:
             # ล้างข้อมูลออกหลังจากโหลดครั้งแรกเพื่อไม่ให้ค้างตอนเปลี่ยนแมพ/รีเซ็ตโลก
             initial_data.pop('enemies_data', None)
 
-        # 2. หากไม่มีข้อมูลในเซฟ (เริ่มวันใหม่หรือเปลี่ยนแมพ) ให้ใช้ตรรกะปกติ
         if not has_saved_enemies:
+            # 2. หากไม่มีข้อมูลในเซฟ (เริ่มวันใหม่) ให้ใช้ตรรกะปกติ
             enemy_list = []
             
-            # ดึงศัตรูตามวันที่จาก settings (Day 1 ดึงแค่ key 1, Day 2 ดึง key 1 และ 2)
-            if self.game.current_day >= 1:
-                enemy_list.extend(ENEMY_SPAWN_DATA.get(1, []))
-            if self.game.current_day >= 2:
-                enemy_list.extend(ENEMY_SPAWN_DATA.get(2, []))
-
-            for i, data in enumerate(enemy_list):
-                x, y = data['pos']
-                etype = data.get('type', 1)
-                
-                if i in self.game.destroyed_enemies:
-                    continue
+            # รวมรายการศัตรูสะสมตามวัน
+            current_day = self.game.current_day
+            for d in range(1, current_day + 1):
+                enemies_for_day = ENEMY_SPAWN_DATA.get(d, [])
+                for idx, data in enumerate(enemies_for_day):
+                    # สร้าง ID แบบคงที่ (Static ID) เพื่อไม่ให้ตำแหน่งพิกัดใน Destroyed ตีกันเมื่อเพิ่มศัตรูใหม่
+                    # เช่น ศัตรู Day 1 ตัวที่ 0 จะมี ID 0, Day 2 ตัวที่ 0 จะมี ID 4 (ถ้า Day 1 มี 4 ตัว)
+                    # หมายเหตุ: เรายังคงใช้เลขเรียงเพื่อความ Simple ในขั้นนี้ แต่ทำให้เห็นภาพรวมง่ายขึ้น
+                    x, y = data['pos']
+                    etype = data.get('type', 1)
                     
-                enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=i, enemy_type=etype)
-                self.game.enemies.append(enemy)
+                    # คำนวณ Index รวม (เลียนแบบ enumerate(enemy_list) เดิมเพื่อไม่ให้เซฟเก่าพัง)
+                    global_idx = 0
+                    for prev_d in range(1, d):
+                        global_idx += len(ENEMY_SPAWN_DATA.get(prev_d, []))
+                    global_idx += idx
+                    
+                    if global_idx in self.game.destroyed_enemies:
+                        continue
+                        
+                    enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=global_idx, enemy_type=etype)
+                    self.game.enemies.append(enemy)
+            
+            print(f"DEBUG: Created {len(self.game.enemies)} static enemies for Day {current_day} (No save data used)")
 
             # หากพิกัดอันตรายถูกเปิดแล้ว ให้สุ่มศัตรูเพิ่มเติม
             if self.game.warning_dismissed and self.game.game_map.filename == MAP_FILE:
@@ -80,7 +137,10 @@ class WorldManager:
         attempts = 0
         solid_rects = self.game.game_map.solid_rects
         
-        candidate_positions = list(ENEMY_SPAWN_DATA)
+        candidate_positions = []
+        for day, spawns in ENEMY_SPAWN_DATA.items():
+            if day <= self.game.current_day:
+                candidate_positions.extend(spawns)
         candidates_xy = [(d['pos'][0], d['pos'][1]) for d in candidate_positions]
         
         while spawned < count and attempts < 2000:
@@ -104,8 +164,13 @@ class WorldManager:
                 # สำหรับ Day 1: ห้ามเกิดในเขตปลอดภัย (ล่างขวา)
                 if x >= 656 and y <= 464:
                     continue
+            elif self.game.current_day == 3:
+                # สำหรับ Day 3: "ครึ่งล่างกับซ้ายบนปลอดภัย" -> อันตรายแค่ "ขวาบน" (x >= 880 และ y >= 464)
+                # ดังนั้นถ้าไม่ได้อยู่ในเขต ขวาบน ให้ข้ามการเกิดศัตรู
+                if not (x >= 880 and y >= 464):
+                    continue
             else:
-                # สำหรับ Day 2+: ห้ามเกิดในเขตปลอดภัย (แถบล่างทั้งหมด บ้านทุกหลัง)
+                # สำหรับ Day 2, 4, 5: ห้ามเกิดในเขตปลอดภัย (แถบล่างทั้งหมด)
                 if y <= 464:
                     continue
             
@@ -155,6 +220,38 @@ class WorldManager:
             is_true = (i < 3)
             star = Star(self.game.sorting_layer, x, y, is_true=is_true)
             self.game.stars.append(star)
+
+    def create_candles(self):
+        """สร้างเทียนที่พิกัดต่างๆ สำหรับเควส Day 3"""
+        from items.candle import Candle
+        from settings import CANDLE_SPAWN_LOCATIONS
+        
+        # ตรวจสอบว่ามีเทียนอยู่แล้วหรือไม่เพื่อไม่ให้สร้างซับซ้อน
+        if not hasattr(self.game, 'candles'):
+            self.game.candles = []
+            
+        initial_data = getattr(self.game, 'initial_data', None)
+        lit_data = {}
+        if initial_data and 'lit_candle_positions' in initial_data:
+            # สร้าง dict ของพิกัด -> สี เพื่อให้เช็คได้เร็ว
+            for ldata in initial_data['lit_candle_positions']:
+                pos_tuple = tuple(ldata['pos'])
+                lit_data[pos_tuple] = ldata['color']
+
+        for x, y in CANDLE_SPAWN_LOCATIONS:
+            # เช็คว่ามีเทียนที่พิกัดนี้แลิวหรือชัง (กันการสร้างซ้ำ)
+            exists = False
+            for c in self.game.candles:
+                if c.logic_pos == [x, y]:
+                    exists = True
+                    break
+            if not exists:
+                candle = Candle(self.game.sorting_layer, x, y)
+                self.game.candles.append(candle)
+                
+                # ฟื้นฟูสถานะการจุดถ้ามีในเซฟ
+                if (x, y) in lit_data:
+                    candle.set_color(lit_data[(x, y)])
 
     def create_house_marks(self):
         """สร้างรูปสัญลักษณ์ต่างๆ บนผนังหน้าบ้านใน Day 2"""
@@ -239,62 +336,94 @@ class WorldManager:
             
         self.game.darkness_group.clear()
         
-        # โชว์หมอกเฉพาะแมพหลักและยังไม่ได้ Dismiss Warning
-        if not self.game.warning_dismissed and self.game.game_map.filename == MAP_FILE:
-            base_alpha = 0.4
-            fade_range = 160
+        # ปิดหมอกเมื่อกดยอมรับไปแล้วในวันอื่น หรือเปลี่ยนไปแมพในบ้าน
+        if self.game.warning_dismissed or self.game.game_map.filename != MAP_FILE:
+            return
             
-            if self.game.current_day == 1 or self.game.current_day == 3:
-                # Day 1: x=656, Day 3: x=480 (Safe area is bottom-right)
-                dark_x_start = (656 if self.game.current_day == 1 else 480) - fade_range
-                dark_y_start = 464 + fade_range
+        base_alpha = 0.4
+        fade_range = 160
+        
+        if self.game.current_day == 1:
+            # Day 1: x=656 (Safe area is bottom-right)
+            dark_x_start = 656 - fade_range
+            dark_y_start = 464 + fade_range
+            
+            # ส่วนทึบ
+            self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+            # แถบซ้ายทั้งหมด
+            self.game.darkness_group.add(Rectangle(pos=(0, 0), size=(dark_x_start, MAP_HEIGHT)))
+            # แถบบน (ในส่วนที่เหลือทางขวา)
+            self.game.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start), size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)))
+            
+            # ส่วนไล่สี (Gradient)
+            fade_steps = 40
+            step_size = fade_range / fade_steps
+            for i in range(fade_steps):
+                alpha = base_alpha * (1 - (i / fade_steps))
+                self.game.darkness_group.add(Color(0, 0, 0, alpha))
                 
-                # ส่วนทึบ
-                self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
-                # แถบซ้ายทั้งหมด
-                self.game.darkness_group.add(Rectangle(pos=(0, 0), size=(dark_x_start, MAP_HEIGHT)))
-                # แถบบน (ในส่วนที่เหลือทางขวา)
-                self.game.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start), size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)))
+                # วาดแถบแนวตั้ง (จากซ้ายไปขวา)
+                self.game.darkness_group.add(Rectangle(
+                    pos=(dark_x_start + (i * step_size), 0), 
+                    size=(step_size + 0.5, dark_y_start)
+                ))
+                # วาดแถบแนวนอน (จากบนลงล่าง) 
+                self.game.darkness_group.add(Rectangle(
+                    pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), 
+                    size=(MAP_WIDTH - dark_x_start, step_size + 0.5)
+                ))
+        elif self.game.current_day == 3:
+            # Day 3: หมอกอยู่เฉพาะ ขวาบน (x >= 880 และ y >= 464)
+            # ครึ่งล่าง (y < 464) และ ซ้ายบน (x < 880) ปลอดภัย
+            dark_x_start = 880 + fade_range
+            dark_y_start = 464 + fade_range
+            
+            # ส่วนทึบ (ขวาบน ทึบสนิท)
+            self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+            self.game.darkness_group.add(Rectangle(
+                pos=(dark_x_start, dark_y_start), 
+                size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)
+            ))
+            
+            # ส่วนไล่สี (Gradient) - จางไปเข้ม
+            fade_steps = 40
+            step_size = fade_range / fade_steps
+            for i in range(fade_steps):
+                alpha = base_alpha * (i / fade_steps)
+                self.game.darkness_group.add(Color(0, 0, 0, alpha))
                 
-                # ส่วนไล่สี (Gradient)
-                fade_steps = 40
-                step_size = fade_range / fade_steps
-                for i in range(fade_steps):
-                    alpha = base_alpha * (1 - (i / fade_steps))
-                    self.game.darkness_group.add(Color(0, 0, 0, alpha))
-                    
-                    # วาดแถบแนวตั้ง (จากซ้ายไปขวา)
-                    self.game.darkness_group.add(Rectangle(
-                        pos=(dark_x_start + (i * step_size), 0), 
-                        size=(step_size + 0.5, dark_y_start)
-                    ))
-                    
-                    # วาดแถบแนวนอน (จากบนลงล่าง) 
-                    self.game.darkness_group.add(Rectangle(
-                        pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), 
-                        size=(MAP_WIDTH - dark_x_start, step_size + 0.5)
-                    ))
-            else:
-                # สำหรับ Day 2, 4, 5: ใช้เฉพาะพิกัด Y (Safe area คือแถบล่างทั้งหมด)
-                dark_y_start = 464 + fade_range
+                # เส้นแนวตั้ง (ไล่จาก 880 ไปทางขวาเฉพาะส่วนบน)
+                self.game.darkness_group.add(Rectangle(
+                    pos=(880 + (i * step_size), 464), 
+                    size=(step_size + 0.5, MAP_HEIGHT - 464)
+                ))
                 
-                # ส่วนทึบ (ครอบคลุมพื้นที่ด้านบนทั้งหมด)
-                self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
-                self.game.darkness_group.add(Rectangle(pos=(0, dark_y_start), size=(MAP_WIDTH, MAP_HEIGHT - dark_y_start)))
+                # เส้นแนวนอน (ไล่จาก 464 ขึ้นไปข้างบนเฉพาะส่วนขวา)
+                self.game.darkness_group.add(Rectangle(
+                    pos=(880, 464 + (i * step_size)), 
+                    size=(MAP_WIDTH - 880, step_size + 0.5)
+                ))
+        elif self.game.current_day in (2, 5):
+            # สำหรับ Day 2, 5: ใช้เฉพาะพิกัด Y (Safe area คือแถบล่างทั้งหมด)
+            dark_y_start = 464 + fade_range
+            
+            # ส่วนทึบ (ครอบคลุมพื้นที่ด้านบนทั้งหมด)
+            self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+            self.game.darkness_group.add(Rectangle(pos=(0, dark_y_start), size=(MAP_WIDTH, MAP_HEIGHT - dark_y_start)))
+            
+            # ส่วนไล่สี (Gradient) แนวนอนอย่างเดียว
+            fade_steps = 40
+            step_size = fade_range / fade_steps
+            for i in range(fade_steps):
+                alpha = base_alpha * (1 - (i / fade_steps))
+                self.game.darkness_group.add(Color(0, 0, 0, alpha))
                 
-                # ส่วนไล่สี (Gradient) แนวนอนอย่างเดียว
-                fade_steps = 40
-                step_size = fade_range / fade_steps
-                for i in range(fade_steps):
-                    alpha = base_alpha * (1 - (i / fade_steps))
-                    self.game.darkness_group.add(Color(0, 0, 0, alpha))
-                    
-                    self.game.darkness_group.add(Rectangle(
-                        pos=(0, dark_y_start - ((i+1) * step_size)), 
-                        size=(MAP_WIDTH, step_size + 0.5)
-                    ))
+                self.game.darkness_group.add(Rectangle(
+                    pos=(0, dark_y_start - ((i+1) * step_size)), 
+                    size=(MAP_WIDTH, step_size + 0.5)
+                ))
 
-            self.game.darkness_group.add(Color(1, 1, 1, 1))
+        self.game.darkness_group.add(Color(1, 1, 1, 1))
 
     def recreate_world(self):
         """รีโหลดโลกทั้งหมดเมื่อข้ามวัน"""
@@ -304,6 +433,12 @@ class WorldManager:
                 if hasattr(entity, 'destroy'):
                     entity.destroy()
         self.game.npcs, self.game.enemies, self.game.stars = [], [], []
+        
+        # 1.1 Remove blue overlay if any
+        if hasattr(self.game, 'blue_overlay') and self.game.blue_overlay:
+            if self.game.blue_overlay.parent:
+                self.game.blue_overlay.parent.remove_widget(self.game.blue_overlay)
+            self.game.blue_overlay = None
         
         # 2. Map Reset
         if self.game.game_map.filename != MAP_FILE:
@@ -323,39 +458,7 @@ class WorldManager:
         self.game.player.update_animation_speed()
         self.game.player.update_frame()
         
-        # 4. Respawn Entities
-        if hasattr(self.game, 'reaper') and self.game.reaper:
-            # Re-add to sorting layer if it was cleared during cutscene transition
-            if self.game.reaper.group not in self.game.sorting_layer.children:
-                self.game.sorting_layer.add(self.game.reaper.group)
-                
-            self.game.reaper.x, self.game.reaper.y = REAPER_START_POS
-            self.game.reaper.logic_pos = list(REAPER_START_POS)
-            self.game.reaper.target_pos = list(REAPER_START_POS)
-            self.game.reaper.update_visual_positions()
-            
-        # ล้าง Extra Reapers ที่ค้างอยู่ (ถ้ามี)
-        for er in getattr(self.game, 'extra_reapers', []):
-            if hasattr(er, 'destroy'):
-                er.destroy()
-        self.game.extra_reapers = []
-        
-        # เพิ่ม Extra Reaper ตามวัน
-        from characters.reaper import Reaper
-        if self.game.current_day >= 2:
-            # จุดเดิมจาก Day 2
-            extra_reap = Reaper(self.game.sorting_layer, x=304, y=288)
-            extra_reap.direction = 'right'
-            extra_reap.update_frame()
-            self.game.extra_reapers.append(extra_reap)
-            
-        if self.game.current_day >= 3:
-            # จุดใหม่สำหรับ Day 3
-            extra_reap2 = Reaper(self.game.sorting_layer, x=432, y=288)
-            extra_reap2.direction = 'left'
-            extra_reap2.update_frame()
-            self.game.extra_reapers.append(extra_reap2)
-            
+        self.create_reapers()
         self.create_npcs()
         self.create_enemies()
         self.create_stars()

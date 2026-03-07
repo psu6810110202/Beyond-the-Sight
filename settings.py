@@ -52,6 +52,7 @@ FATHER_PORTRAIT_IMG = 'characters/assets/pic/Father_n.png'
 FATHER_S_PORTRAIT_IMG = 'characters/assets/pic/Father_s.png'
 MOTHER_PORTRAIT_IMG = 'characters/assets/pic/Mother_n.png'
 MOTHER_S_PORTRAIT_IMG = 'characters/assets/pic/Mother_s.png'
+REAPER_PORTRAIT_IMG = 'characters/assets/Reaper/Reaper_n.png'
 
 # แผนที่ไอเทมและรูปหน้าตัวละครตามพิกัดดาวใน Day 1
 STAR_ITEM_MAPPING = {
@@ -141,6 +142,12 @@ ENEMY_SPAWN_DATA = {
         {'pos': (144, 336), 'type': 2},
         {'pos': (464, 208), 'type': 3},
         {'pos': (496, 416), 'type': 1}
+    ],
+    3: [
+        {'pos': (752, 784), 'type': 2},
+        {'pos': (416, 1120), 'type': 3},
+        {'pos': (528, 720), 'type': 1},
+        {'pos': (432, 1456), 'type': 2}
     ]
 }
 
@@ -151,3 +158,16 @@ SEARCHABLE_SPOTS_HOME = [
 ]
 EMPTY_SPOT_HOME = (240, 112)
 HOME_EAT_POS = (16, 176)
+
+# ตำแหน่งเทียนใน Day 3
+CANDLE_IMG = 'assets/Items/candle/candle.png'
+CANDLE_SPAWN_LOCATIONS = [
+    (688, 1312), (528, 960), (462, 560)
+]
+
+# การจับคู่สีที่ถูกต้องสำหรับแต่ละจุด (User Request)
+CANDLE_COLOR_MAPPING = {
+    (688, 1312): "RED",
+    (528, 960):  "BLUE",
+    (462, 560):  "YELLOW"
+}
