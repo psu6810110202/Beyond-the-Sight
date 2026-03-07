@@ -273,6 +273,12 @@ class Player:
             self.target_pos = [new_x, new_y]
             self.is_moving = True
             
+            # บังคับแสดงท่าก้าวขาทันที (โดยเฉพาะเมื่อเดินแค่ 1 ช่อง สล็อตเวลาจะไม่พอให้อนิเมชั่นเล่นเอง)
+            if self.state != 'walk':
+                self.state = 'walk'
+                self.frame_index = 1
+                self.update_frame()
+            
     def check_map_collision(self, new_x, new_y, map_rects):
         """ตรวจสอบว่าตำแหน่งใหม่จะชนกับกำแพง (Map tiles) หรือไม่"""
         player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
@@ -308,15 +314,18 @@ class Player:
         """ตรวจสอบว่าตำแหน่งใหม่จะชนกับ Reaper หรือไม่"""
         player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
         
-        # ใช้พิกัด x, y ตัวแปรหลักของระบบ Hitbox ใหม่ 
-        reaper_rect = [reaper.x, reaper.y, TILE_SIZE, TILE_SIZE]
-        
-        # ตรวจสอบการชนระหว่างสี่เหลี่ยม
-        if (player_rect[0] < reaper_rect[0] + reaper_rect[2] and
-            player_rect[0] + player_rect[2] > reaper_rect[0] and
-            player_rect[1] < reaper_rect[1] + reaper_rect[3] and
-            player_rect[1] + player_rect[3] > reaper_rect[1]):
-            return True
+        reapers = reaper if isinstance(reaper, list) else [reaper]
+        for r in reapers:
+            if not r: continue
+            # ใช้พิกัด x, y ตัวแปรหลักของระบบ Hitbox ใหม่ 
+            reaper_rect = [r.x, r.y, TILE_SIZE, TILE_SIZE]
+            
+            # ตรวจสอบการชนระหว่างสี่เหลี่ยม
+            if (player_rect[0] < reaper_rect[0] + reaper_rect[2] and
+                player_rect[0] + player_rect[2] > reaper_rect[0] and
+                player_rect[1] < reaper_rect[1] + reaper_rect[3] and
+                player_rect[1] + player_rect[3] > reaper_rect[1]):
+                return True
         
         return False
 

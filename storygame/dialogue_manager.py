@@ -15,6 +15,7 @@ class DialogueManager:
         self.dialogue_text = None
         self.name_label = None
         self.portrait_widget = None
+        self.left_portrait_widget = None
         self.is_item_notif_active = False
         self.item_notif_widget = None
         self.last_notif_text = ""
@@ -65,7 +66,7 @@ class DialogueManager:
                 tri_widget.update_now(tri_widget)
         return Clock.schedule_interval(_animate, 0.03)
 
-    def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None):
+    def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         cfg = DIALOGUE_CONFIG
         scale = self.get_ui_scale()
@@ -127,25 +128,32 @@ class DialogueManager:
         if choices:
             draw_choice_buttons(self.game, choices)
 
-        # รายชื่อตัวละครที่มีรูป Portrait
+        # รายชื่อตัวละครปกติที่มีรูป Portrait ประจำตัว
         portrait_characters = ["Little girl", "Angel", "Devil", "Father", "Mother"]
         
-        if character_name in portrait_characters:
+        # ถ้ามีการระบุรูป Portrait มา (เช่น รูปบ้าน หรือรูปไอเทม) หรือเป็นตัวละครที่มีรูปประจำตัว
+        if portrait or character_name in portrait_characters:
             from settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG
             
-            # เลือกรูปตามชื่อตัวละคร
-            # เลือกรูปตามชื่อตัวละคร (สั่งการทอดๆ จากชื่อ)
-            portrait_map = {
-                "Angel": ANGEL_PORTRAIT_IMG,
-                "Devil": DEVIL_PORTRAIT_IMG,
-                "Father": FATHER_PORTRAIT_IMG,
-                "Mother": MOTHER_PORTRAIT_IMG
-            }
-            default_portrait = portrait_map.get(character_name, PLAYER_PORTRAIT_IMG)
-            # กำหนดขนาดเฉพาะของตัวละคร (Angel ให้ใหญ่ขึ้น)
-            char_scale_mult = 1.3 if character_name == "Angel" else 1.0
-                
-            p_source = portrait if portrait else default_portrait
+            # 1. แสดงรูปตามที่ส่งมาสำรองไว้ก่อน
+            p_source = portrait
+            
+            # 2. ถ้าไม่ได้ส่งรูปมา แต่ชื่ออยู่ในลิสต์ ให้ดึงรูปประจำตัวมาใช้
+            if not p_source and character_name in portrait_characters:
+                portrait_map = {
+                    "Angel": ANGEL_PORTRAIT_IMG,
+                    "Devil": DEVIL_PORTRAIT_IMG,
+                    "Father": FATHER_PORTRAIT_IMG,
+                    "Mother": MOTHER_PORTRAIT_IMG
+                }
+                p_source = portrait_map.get(character_name, PLAYER_PORTRAIT_IMG)
+            
+            # ถ้าสุดท้ายมีรูปให้โชว์ (p_source ไม่เป็น None)
+            if p_source:
+                # ทุกรูป (ไม่ว่าจะตัวละครหรือไอเทม) ให้ใช้สเกลมาตรฐานเดียวกับ Little girl
+                char_scale_mult = 1.0
+                if "Items" in p_source or "mark" in p_source:
+                    char_scale_mult = 0.6 # ปรับให้ใหญ่ขึ้นตามคำขอ แต่ไม่ถึง 1.0 เพื่อกันภาพแตกมากเกินไป
             p_size = 280 * scale * char_scale_mult
             
             # ให้ขอบล่างของภาพ (Y) วางอยู่บนขอบบนของกล่องข้อความพอดี (box_h)
@@ -206,8 +214,120 @@ class DialogueManager:
                     self.portrait_rect.size = self.portrait_widget.size
                     self.portrait_rect.pos = (x_pos, y_base)
                     print(f"DEBUG: Updated portrait source to {p_source} with scale {char_scale_mult}")
-        
+
+        # --- Handle Left Portrait ---
+        if left_portrait:
+            l_char_scale_mult = 1.0
+            if "Items" in left_portrait or "mark" in left_portrait:
+                l_char_scale_mult = 0.6
+            l_p_size = 280 * scale * l_char_scale_mult
+            l_x_pos = 20 * scale
+            l_y_base = box_h
+            
+            if not self.left_portrait_widget:
+                self.left_portrait_widget = Widget(size_hint=(None, None), size=(l_p_size, l_p_size))
+                with self.left_portrait_widget.canvas:
+                    Color(1, 1, 1, 1)
+                    try:
+                        tex = CoreImage(left_portrait).texture
+                        tex.mag_filter = 'nearest'
+                        tex.min_filter = 'nearest'
+                        self.left_portrait_rect = Rectangle(texture=tex, size=self.left_portrait_widget.size, pos=(l_x_pos, l_y_base))
+                    except Exception:
+                        self.left_portrait_rect = Rectangle(source=left_portrait, size=self.left_portrait_widget.size, pos=(l_x_pos, l_y_base))
+                root.add_widget(self.left_portrait_widget)
+                
+                if not hasattr(self, '_left_portrait_update_bound'):
+                    def _l_p_upd(instance, value):
+                        if self.left_portrait_widget and self.left_portrait_rect:
+                            sc = self.get_ui_scale()
+                            cur_box_h = DIALOGUE_CONFIG["box_height"] * sc
+                            mult = getattr(self.left_portrait_widget, 'char_scale_mult', 1.0)
+                            new_p_size = 280 * sc * mult
+                            new_x_pos = 20 * sc
+                            new_y_base = cur_box_h
+                            self.left_portrait_widget.size = (new_p_size, new_p_size)
+                            self.left_portrait_rect.size = self.left_portrait_widget.size
+                            self.left_portrait_rect.pos = (new_x_pos, new_y_base)
+                    self.game.bind(size=_l_p_upd)
+                    self._left_portrait_update_bound = True
+                
+                self.left_portrait_widget.char_scale_mult = l_char_scale_mult
+            else:
+                if hasattr(self, 'left_portrait_rect'):
+                    try:
+                        tex = CoreImage(left_portrait).texture
+                        tex.mag_filter = 'nearest'
+                        tex.min_filter = 'nearest'
+                        self.left_portrait_rect.texture = tex
+                    except Exception:
+                        self.left_portrait_rect.source = left_portrait
+                    self.left_portrait_widget.char_scale_mult = l_char_scale_mult
+                    self.left_portrait_widget.size = (l_p_size, l_p_size)
+                    self.left_portrait_rect.size = self.left_portrait_widget.size
+                    self.left_portrait_rect.pos = (l_x_pos, l_y_base)
+
         self.game.is_dialogue_active = True
+
+    def update_right_portrait(self, p_source):
+        """อัปเดตหรือซ่อนภาพ Portrait ฝั่งขวากลางคันระหว่างคุย"""
+        if not p_source:
+            if self.portrait_widget:
+                self.portrait_widget.opacity = 0
+            return
+            
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        scale = self.get_ui_scale()
+        box_h = DIALOGUE_CONFIG["box_height"] * scale
+        char_scale_mult = 1.0
+        if "Items" in p_source or "mark" in p_source:
+            char_scale_mult = 0.6
+        p_size = 280 * scale * char_scale_mult
+        y_base = box_h
+        x_pos = self.game.width - p_size - (20 * scale)
+
+        if not self.portrait_widget:
+            self.portrait_widget = Widget(size_hint=(None, None), size=(p_size, p_size))
+            with self.portrait_widget.canvas:
+                Color(1, 1, 1, 1)
+                try:
+                    tex = CoreImage(p_source).texture
+                    tex.mag_filter = 'nearest'
+                    tex.min_filter = 'nearest'
+                    self.portrait_rect = Rectangle(texture=tex, size=self.portrait_widget.size, pos=(x_pos, y_base))
+                except Exception:
+                    self.portrait_rect = Rectangle(source=p_source, size=self.portrait_widget.size, pos=(x_pos, y_base))
+            root.add_widget(self.portrait_widget)
+            
+            if not hasattr(self, '_portrait_update_bound'):
+                def _p_upd(instance, value):
+                    if self.portrait_widget and self.portrait_rect:
+                        sc = self.get_ui_scale()
+                        cur_box_h = DIALOGUE_CONFIG["box_height"] * sc
+                        mult = getattr(self.portrait_widget, 'char_scale_mult', 1.0)
+                        new_p_size = 280 * sc * mult
+                        new_x_pos = self.game.width - new_p_size - (20 * sc)
+                        new_y_base = cur_box_h
+                        self.portrait_widget.size = (new_p_size, new_p_size)
+                        self.portrait_rect.size = self.portrait_widget.size
+                        self.portrait_rect.pos = (new_x_pos, new_y_base)
+                self.game.bind(size=_p_upd)
+                self._portrait_update_bound = True
+        
+        self.portrait_widget.opacity = 1
+        self.portrait_widget.char_scale_mult = char_scale_mult
+        self.portrait_widget.size = (p_size, p_size)
+        
+        if hasattr(self, 'portrait_rect'):
+            try:
+                tex = CoreImage(p_source).texture
+                tex.mag_filter = 'nearest'
+                tex.min_filter = 'nearest'
+                self.portrait_rect.texture = tex
+            except Exception:
+                self.portrait_rect.source = p_source
+            self.portrait_rect.size = self.portrait_widget.size
+            self.portrait_rect.pos = (x_pos, y_base)
 
     def update_ui_scaling(self):
         if self.game.is_dialogue_active and self.dialogue_bg:
@@ -229,20 +349,24 @@ class DialogueManager:
         if self.portrait_widget:
             if self.portrait_widget.parent: self.portrait_widget.parent.remove_widget(self.portrait_widget)
             self.portrait_widget = None
+        if self.left_portrait_widget:
+            if self.left_portrait_widget.parent: self.left_portrait_widget.parent.remove_widget(self.left_portrait_widget)
+            self.left_portrait_widget = None
         self.dialogue_text = None
         self.name_label = None
         clear_choices(self.game)
 
-    def show_item_discovery(self, text, image_path=None):
+    def show_item_discovery(self, text, image_path=None, choices=None):
         if self.item_notif_widget: # ไม่ใช้ is_item_notif_active เช็คเพื่อรองรับการ refresh
              self.close_item_discovery()
              
         self.last_notif_text = text
         self.last_notif_image = image_path
+        self.last_notif_choices = choices
         
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         scale = self.get_ui_scale()
-        self.item_notif_widget = FloatLayout(size_hint=(1, 0.3), pos_hint={'center_x': 0.5, 'center_y': 0.55})
+        self.item_notif_widget = FloatLayout(size_hint=(1, 0.35), pos_hint={'center_x': 0.5, 'center_y': 0.55})
         with self.item_notif_widget.canvas.before:
             Color(0, 0, 0, 0.75)
             self.notif_banner_rect = Rectangle()
@@ -254,30 +378,56 @@ class DialogueManager:
             self.notif_line_top.points = [i.x, i.top, i.right, i.top]
             self.notif_line_bottom.points = [i.x, i.y, i.right, i.y]
         self.item_notif_widget.bind(size=u_b, pos=u_b)
+        
         text_label = Label(text=text, font_name=GAME_FONT, font_size=36 * scale, color=(1, 1, 1, 1),
                           size_hint=(1, None), height=40 * scale, pos_hint={'center_x': 0.5, 'center_y': 0.8}, bold=True)
-        i_sz = 90 * scale # ลดขนาดลงนิดนึงให้สมดุล
-        i_box = Widget(size_hint=(None, None), size=(i_sz, i_sz), pos_hint={'center_x': 0.5, 'center_y': 0.4})
-        with i_box.canvas:
-            Color(1, 1, 1, 1)
-            try:
-                tex = CoreImage(image_path).texture
-                tex.mag_filter = 'nearest'
-                tex.min_filter = 'nearest'
-                self.item_icon_rect = Rectangle(texture=tex, size=(i_sz, i_sz))
-            except Exception:
-                self.item_icon_rect = Rectangle(source=image_path, size=(i_sz, i_sz))
-        def u_i_p(i, v):
-            self.item_icon_rect.pos = i.pos
-        i_box.bind(pos=u_i_p, size=u_i_p)
-
-        # ปรับ pos_y_ratio ให้ต่ำลงเพื่อไม่ให้สามเหลี่ยมซ้อนภาพไอเทม
-        tri = self.create_pixel_triangle(scale, pos_y_ratio=0.08)
         self.item_notif_widget.add_widget(text_label)
-        self.item_notif_widget.add_widget(i_box)
-        self.item_notif_widget.add_widget(tri)
+
+        # จัดการรูปภาพ (รองรับทั้ง path เดียว และ list ของหลาย path)
+        if image_path:
+            from kivy.uix.boxlayout import BoxLayout
+            images = [image_path] if isinstance(image_path, str) else image_path
+            
+            i_sz = 90 * scale
+            spacing = 20 * scale
+            total_w = (len(images) * i_sz) + ((len(images) - 1) * spacing if len(images) > 1 else 0)
+            
+            # Container สำหรับวางไอเทมหลายชิ้นเรียงกัน
+            icon_layout = BoxLayout(
+                orientation='horizontal', 
+                size_hint=(None, None), 
+                size=(total_w, i_sz),
+                pos_hint={'center_x': 0.5, 'center_y': 0.35},
+                spacing=spacing
+            )
+            
+            for img in images:
+                box = Widget(size_hint=(None, None), size=(i_sz, i_sz))
+                with box.canvas:
+                    Color(1, 1, 1, 1)
+                    try:
+                        tex = CoreImage(img).texture
+                        tex.mag_filter = 'nearest'
+                        tex.min_filter = 'nearest'
+                        box.rect = Rectangle(texture=tex, size=(i_sz, i_sz))
+                    except Exception:
+                        box.rect = Rectangle(source=img, size=(i_sz, i_sz))
+                def u_i_r(i, v):
+                    i.rect.pos = i.pos
+                box.bind(pos=u_i_r, size=u_i_r)
+                icon_layout.add_widget(box)
+                
+            self.item_notif_widget.add_widget(icon_layout)
+
+        if choices:
+            draw_choice_buttons(self.game, choices)
+        else:
+            # ปรับ pos_y_ratio ให้ต่ำลงเพื่อไม่ให้สามเหลี่ยมซ้อนภาพไอเทม
+            tri = self.create_pixel_triangle(scale, pos_y_ratio=0.08)
+            self.item_notif_widget.add_widget(tri)
+            self.item_tri_event = self.animate_pixel_triangle(tri)
+            
         root.add_widget(self.item_notif_widget)
-        self.item_tri_event = self.animate_pixel_triangle(tri)
         self.is_item_notif_active = True
 
     def close_item_discovery(self):
@@ -286,3 +436,4 @@ class DialogueManager:
             self.item_notif_widget.parent.remove_widget(self.item_notif_widget)
         self.item_notif_widget = None
         self.is_item_notif_active = False
+        clear_choices(self.game) # ลบปุ่ม Choice เสมอเมื่อปิด

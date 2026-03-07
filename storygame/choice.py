@@ -47,9 +47,8 @@ def handle_choice_selection(game, choice):
             
             if star_pos in curr_map:
                 if not curr_map[star_pos].get("fail", False):
-                    # สำหรับ Day 1 ความสำเร็จนับตรงนี้
-                    if game.current_day == 1:
-                        game.quest_success_count += 1
+                    # ความสำเร็จของวันจะไปนับรวมทีเดียวตอนจบเควสใน story.py
+                    pass
                 else:
                     game.quest_item_fail = True
             
@@ -98,8 +97,129 @@ def handle_choice_selection(game, choice):
             
             game.current_star_target = None
 
-    elif choice == "LEAVE IT":
-        game.current_star_target = None
+    elif choice == "Leave a letter":
+        from settings import HOUSE_MARKS_MAPPING
+        mark_path = None
+        if hasattr(game, 'pending_drop_spot'):
+            mark_path = HOUSE_MARKS_MAPPING.get(tuple(game.pending_drop_spot[0]))
+            
+        used_letters = []
+        for entry in game.delivered_house_indices:
+            img = entry.get('img', '')
+            if 'circle_v.png' in img: used_letters.append('Circle Note')
+            elif 'cross_v.png' in img: used_letters.append('Cross Note')
+            elif 'square_v.png' in img: used_letters.append('Square Note')
+            
+        available_notes = [n for n in ["Circle Note", "Cross Note", "Square Note"] if n not in used_letters]
+        
+        game.show_vn_dialogue("Little girl", "Which letter should I use?", 
+                             choices=available_notes + ["Let me think again"], portrait=None, left_portrait=mark_path)
+
+    elif choice in ["Circle Note", "Cross Note", "Square Note"]:
+        game.pending_letter_type = choice
+        img_map = {
+            "Circle Note": "assets/Items/note/circle.png",
+            "Cross Note":  "assets/Items/note/cross.png",
+            "Square Note": "assets/Items/note/square.png"
+        }
+        mark_path = None
+        if hasattr(game, 'pending_drop_spot'):
+            from settings import HOUSE_MARKS_MAPPING
+            mark_path = HOUSE_MARKS_MAPPING.get(tuple(game.pending_drop_spot[0]))
+            
+        game.show_vn_dialogue("Little girl", f"Are you sure you want to use the {choice}?", 
+                             choices=["Drop it", "Let me think again"], portrait=img_map[choice], left_portrait=mark_path)
+
+    elif choice == "Drop it":
+        if game.current_day == 2 and hasattr(game, 'pending_drop_spot') and game.pending_drop_spot:
+            spot, spot_index = game.pending_drop_spot
+            
+            # ตรวจสอบว่าเคยส่งบ้านนี้ไปหรือยัง
+            already_done = False
+            for entry in game.delivered_house_indices:
+                if isinstance(entry, dict) and entry.get("index") == spot_index:
+                    already_done = True; break
+            
+            if game.letters_held > 0 and not already_done:
+                from settings import HOUSE_MARKS_MAPPING
+                # ตรวจสอบความถูกต้องโดยการจับคู่ "ชื่อรูป Mark" กับ "ชื่อ Note" (ไม่ใช้พิกัด)
+                mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
+                if mark_path:
+                    # ดึงชื่อจาก path (เช่น assets/mark/circle.png -> circle)
+                    mark_filename = mark_path.split('/')[-1].split('.')[0].lower()
+                    # ดึงชื่อจากไอเทม (เช่น Circle Note -> circle)
+                    note_name = game.pending_letter_type.split(' ')[0].lower()
+                    
+                    if mark_filename != note_name:
+                        game.quest_item_fail = True
+                        print(f"DEBUG: Failure! House Mark '{mark_filename}' does not match Note '{note_name}'")
+                else:
+                    game.quest_item_fail = True # ไม่มี Mark แต่จะวาง = ผิด
+
+                game.letters_held -= 1
+                game.quest_manager.update_quest_progress("deliver_letters", 1)
+                
+                if hasattr(game, 'pickup_sound') and game.pickup_sound:
+                    game.pickup_sound.play()
+                
+                # หาพิกัดวาง (ทางซ้ายของตัวละคร 16px) และรูป _v
+                letter_map = {
+                    "Circle Note": "assets/Items/note/circle_v.png",
+                    "Cross Note":  "assets/Items/note/cross_v.png",
+                    "Square Note": "assets/Items/note/square_v.png"
+                }
+                v_img_path = letter_map.get(game.pending_letter_type, "assets/Items/note/square_v.png")
+                
+                # ตัวละครหันซ้าย
+                game.player.direction = 'left'
+                game.player.update_frame()
+                
+                # คำนวณจุดวาง (ซ้ายตัวละคร)
+                drop_x = game.player.logic_pos[0] - 16
+                drop_y = game.player.logic_pos[1]
+                
+                # วาดรูปลงเลเยอร์ delivered_marks_group ทันที
+                from kivy.core.image import Image as CoreImage
+                from kivy.graphics import Rectangle, Color
+                try:
+                    tex = CoreImage(v_img_path).texture
+                    tex.min_filter = 'nearest'
+                    tex.mag_filter = 'nearest'
+                    game.delivered_marks_group.add(Color(1, 1, 1, 1))
+                    game.delivered_marks_group.add(Rectangle(texture=tex, pos=(drop_x, drop_y), size=(16, 16)))
+                except Exception as e:
+                    print(f"Error drawing drop mark: {e}")
+
+                # เก็บข้อมูลไว้ใน delivered_house_indices
+                mark_data = {
+                    "index": spot_index,
+                    "pos": (drop_x, drop_y),
+                    "img": v_img_path
+                }
+                game.delivered_house_indices.append(mark_data)
+
+                # เช็คว่าส่งครบหรือยัง
+                quest = game.quest_manager.active_quests.get("deliver_letters")
+                if quest and quest.current_count >= quest.target_count:
+                    game.show_vn_dialogue("Little girl", "That's the last house. I should head back to The Postman.")
+                    quest.name = "Return to The Postman"
+                    game.quest_manager.update_quest_list_ui()
+                
+                if hasattr(game, 'pending_drop_spot'): del game.pending_drop_spot
+                if hasattr(game, 'pending_letter_type'): del game.pending_letter_type
+                
+                game.close_dialogue()
+                return
+    elif choice == "Leave it":
+        if hasattr(game, 'pending_drop_spot'): del game.pending_drop_spot
+        if hasattr(game, 'pending_letter_type'): del game.pending_letter_type
+        game.close_dialogue()
+
+    elif choice == "Let me think again":
+        # เปลี่ยนกลับให้ปิดบทสนทนาและยกเลิกเลยตามคำขอ
+        if hasattr(game, 'pending_drop_spot'): del game.pending_drop_spot
+        if hasattr(game, 'pending_letter_type'): del game.pending_letter_type
+        game.close_dialogue()
 
 def draw_choice_buttons(game, choices):
     """วาดปุ่มทางเลือก (UI Logic)"""
@@ -162,6 +282,21 @@ def update_choice_visuals(game):
         return
         
     bg_opacity = DIALOGUE_CONFIG.get("bg_opacity", 0.85)
+
+    # กรณีเลือกจดหมาย ให้รูปภาพทางขวาเปลี่ยนตามตัวเลือกที่ไฮไลท์อยู่
+    if hasattr(game, 'pending_drop_spot') and not hasattr(game, 'pending_letter_type'):
+        selected_text = game.choice_buttons[game.choice_index].text
+        img_map = {
+            "CIRCLE NOTE": "assets/Items/note/circle.png",
+            "CROSS NOTE":  "assets/Items/note/cross.png",
+            "SQUARE NOTE": "assets/Items/note/square.png"
+        }
+        if selected_text in img_map:
+            if hasattr(game, 'dialogue_manager'):
+                game.dialogue_manager.update_right_portrait(img_map[selected_text])
+        else:
+            if hasattr(game, 'dialogue_manager'):
+                game.dialogue_manager.update_right_portrait(None)
     
     for i, btn in enumerate(game.choice_buttons):
         if i == game.choice_index:

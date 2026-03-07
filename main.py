@@ -215,6 +215,14 @@ class GameWidget(Widget):
         self.map_after_group = InstructionGroup()
         self.canvas.after.add(self.map_after_group)
         
+        # เลเยอร์สำหรับเครื่องหมายที่วางไปแล้ว (Day 2)
+        self.delivered_marks_group = InstructionGroup()
+        self.canvas.before.add(self.delivered_marks_group)
+
+        # เลเยอร์สำหรับเครื่องหมายบนผนัง (Day 2)
+        self.house_marks_group = InstructionGroup()
+        self.canvas.before.add(self.house_marks_group)
+        
         # จัดการเควส
         self.quest_manager = QuestManager(self)
         if initial_data and 'quests' in initial_data:
@@ -274,10 +282,20 @@ class GameWidget(Widget):
         
         # 3. สร้าง Reaper
         self.reaper = Reaper(self.sorting_layer)
+        self.extra_reapers = []
+        if self.current_day == 2:
+            extra_reap = Reaper(self.sorting_layer, x=288, y=288)
+            extra_reap.direction = 'right'
+            extra_reap.update_frame()
+            self.extra_reapers.append(extra_reap)
         
         # 4. สร้าง Enemies
         self.enemies = []
         self.create_enemies()
+        
+        # 4.5. วาดรอยประทับหน้าบ้าน (หากเป็น Day 2) ไว้รองรับกรณีโหลดเซฟใหม่
+        self.world_manager.create_house_marks()
+        self.world_manager.restore_delivered_marks()
         
         # 5. Stars จะถูกสร้างหลังคุยกับ NPC1
 
@@ -476,13 +494,16 @@ class GameWidget(Widget):
             self.play_time += dt
             
             # 1. การเคลื่อนที่ของตัวละคร
-            self.player.move(self.pressed_keys, self.npcs, self.reaper, self.game_map.solid_rects)
+            all_reapers = [self.reaper] + getattr(self, 'extra_reapers', [])
+            self.player.move(self.pressed_keys, self.npcs, all_reapers, self.game_map.solid_rects)
             self.heart_ui.update_stamina(self.player.get_stamina_ratio())
             
             # อัปเดต NPCs / Reaper / Enemies
             for npc in self.npcs:
                 npc.update(dt)
             self.reaper.update(dt, self.player.logic_pos)
+            for er in getattr(self, 'extra_reapers', []):
+                er.update(dt, self.player.logic_pos)
             
             for enemy in self.enemies[:]:
                 reaper_pos = (self.reaper.x, self.reaper.y)
@@ -521,17 +542,22 @@ class GameWidget(Widget):
                         self.respawn_at_reaper()
                 
                 # ตรวจสอบว่าศัตรูเข้าใกล้ Reaper หรือยัง (Safe Zone)
-                reaper_center_x = self.reaper.x + TILE_SIZE / 2
-                reaper_center_y = self.reaper.y + TILE_SIZE / 2
                 enemy_center_x = enemy.logic_pos[0] + TILE_SIZE / 2
                 enemy_center_y = enemy.logic_pos[1] + TILE_SIZE / 2
-                dist_to_reaper = ((enemy_center_x - reaper_center_x)**2 + (enemy_center_y - reaper_center_y)**2)**0.5
                 
-                if dist_to_reaper < SAFE_ZONE_RADIUS:
-                    print(f"Enemy {enemy.id} entered safe zone and starting fade!")
-                    if enemy.id not in self.destroyed_enemies:
-                        self.destroyed_enemies.append(enemy.id)
-                    enemy.start_fade()
+                for r_obj in [self.reaper] + getattr(self, 'extra_reapers', []):
+                    r_cx = r_obj.x + TILE_SIZE / 2
+                    r_cy = r_obj.y + TILE_SIZE / 2
+                    dist = ((enemy_center_x - r_cx)**2 + (enemy_center_y - r_cy)**2)**0.5
+                    
+                    if dist < SAFE_ZONE_RADIUS:
+                        # ตรวจสอบว่ามีกำแพงกั้นระหว่างศัตรูกับ Reaper หรือไม่
+                        if enemy.has_line_of_sight((r_obj.x, r_obj.y), self.game_map.solid_rects):
+                            print(f"Enemy {enemy.id} entered safe zone and starting fade!")
+                            if enemy.id not in self.destroyed_enemies:
+                                self.destroyed_enemies.append(enemy.id)
+                            enemy.start_fade()
+                            break
 
             # --- จัดการเสียงผีไล่ตามประเภทตัวละคร ---
             chasing_types = {e.enemy_type for e in self.enemies if e.is_chasing}
@@ -622,6 +648,7 @@ class GameWidget(Widget):
 
         # เพิ่ม Reaper เฉพาะเมื่อไม่อยู่ในจุดพัก (เช่น ตอนเปลี่ยนแมพมาบ้าน)
         reaper_list = [self.reaper] if (self.reaper.logic_pos[0] > -1000) else []
+        reaper_list.extend(getattr(self, 'extra_reapers', []))
         sortable_chars = [self.player] + reaper_list + self.npcs + self.enemies + self.stars
         
         def get_sort_y(char):
@@ -639,7 +666,7 @@ class GameWidget(Widget):
     def update_camera(self):
         """อัปเดตตำแหน่งกล้องตามผู้เล่น"""
         # ป้องกันไม่ให้โดนดึงกลับไปหาผู้เล่นในขณะที่มีคัทซีนแพนกล้อง
-        if getattr(self, 'is_cutscene_active', False) and getattr(self, 'cutscene_step', 0) == 10:
+        if getattr(self, 'is_cutscene_active', False) and getattr(self, 'cutscene_step', 0) == 11:
             return
 
         # ถ้าเป็นแมพบ้าน ไม่ต้อง Clamp กล้อง (ให้ตัวละครอยู่กลางจอเสมอแม้จะอยู่ขอบแมพ)
@@ -767,7 +794,7 @@ class GameWidget(Widget):
         if star_target: return 
 
         # เช็ค NPC / Reaper (ระยะ 32)
-        target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper], limit=32)
+        target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper] + getattr(self, 'extra_reapers', []), limit=32)
         if target:
             hint_text = "E"
             box_width = 25
@@ -792,7 +819,7 @@ class GameWidget(Widget):
             self.interaction_hints.append(hint)
             return
 
-        # เช็คจุดวางจดหมาย (Day 2)
+        # เช็คจุดวางจดหมาย (Day 2) - ไม่แสดงปุ่ม E และ Marker ตามคำขอ
         if self.current_day == 2 and self.letters_held > 0:
             for i, spot in enumerate(HOUSE_DOOR_SPOTS):
                 # ถ้าพิกัดนี้ถูกส่งไปแล้ว ให้ข้าม
@@ -801,30 +828,8 @@ class GameWidget(Widget):
                     
                 px, py = self.player.logic_pos
                 if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
-                    hint = Label(
-                        text="[E] DROP LETTER",
-                        font_name=GAME_FONT,
-                        font_size='18sp',
-                        size_hint=(None, None),
-                        size=(120, 40),
-                        color=(1, 1, 1, 1),
-                        halign='center',
-                        valign='middle',
-                        bold=True
-                    )
-                    with hint.canvas.before:
-                        Color(0, 0, 0, 0.8)
-                        hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
-                    
-                    hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
-                    hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
-                    
-                    spos = self.camera.world_to_screen(spot[0] + TILE_SIZE/2, spot[1] + 32)
-                    hint.pos = (spos[0] - 60, spos[1])
-                    
-                    if self.dialogue_root: self.dialogue_root.add_widget(hint)
-                    self.interaction_hints.append(hint)
-                    self.current_drop_spot = (spot, i)
+                    # ไม่สร้าง Hint Label แล้ว แต่เก็บค่าเป้าหมายไว้ให้ interact() ทำงานได้เมื่อกด E
+                    self.pending_drop_spot = (spot, i)
                     return
 
         # เช็คจุดค้นหา (ไม่แสดงปุ่ม E ตามคำขอ)
@@ -835,27 +840,17 @@ class GameWidget(Widget):
         self.clear_interaction_hints()
         
         # 0. เช็คการวางจดหมาย (Day 2 Priority)
-        if self.current_day == 2 and hasattr(self, 'current_drop_spot') and self.current_drop_spot:
-            spot, spot_index = self.current_drop_spot
+        if self.current_day == 2 and hasattr(self, 'pending_drop_spot') and self.pending_drop_spot:
+            from settings import HOUSE_MARKS_MAPPING
+            spot, spot_index = self.pending_drop_spot
             px, py = self.player.logic_pos
             if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
                 if self.letters_held > 0 and spot_index not in self.delivered_house_indices:
-                    self.letters_held -= 1
-                    self.delivered_house_indices.append(spot_index)
-                    self.quest_manager.update_quest_progress("deliver_letters", 1)
-                    
-                    if self.pickup_sound: # ใช้เสียง pickup แทน
-                         self.pickup_sound.play()
-                    
-                    self.show_vn_dialogue("Little girl", "There. The postman will be happy.")
-                    self.current_drop_spot = None
-                    
-                    # เช็คว่าส่งครบหรือยัง
-                    quest = self.quest_manager.active_quests.get("deliver_letters")
-                    if quest and quest.current_count >= quest.target_count:
-                        self.show_vn_dialogue("Little girl", "That was the last one. I should head back to The Postman.")
-                        quest.name = "Return to The Postman"
-                        self.quest_manager.update_quest_list_ui()
+                    # ขั้นตอนที่ 0: โชว์รูปสัญลักษณ์และสำรวจก่อน (ยังไม่มีช้อย)
+                    mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
+                    self.pending_drop_spot = (spot, spot_index)
+                    self.house_inspection_step = True # Flag เพื่อให้ก้าวต่อไปโชว์ Choice
+                    self.show_vn_dialogue("Little girl", "I found a mark on this house door...", portrait=mark_path)
                     return
 
         if self.current_star_target:
@@ -870,7 +865,7 @@ class GameWidget(Widget):
             self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
             return
 
-        target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper], limit=32)
+        target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper] + getattr(self, 'extra_reapers', []), limit=32)
         if target:
             npc_index = self.npcs.index(target) if target in self.npcs else -1
             self.process_interaction(target, npc_index, dx, dy)
@@ -970,15 +965,16 @@ class GameWidget(Widget):
                 
             dialogue = self.get_proximity_dialogue(npc_name, dx, dy)
             if dialogue:
-                self.show_dialogue_above_npc(target, dialogue)
+                self.show_dialogue_above_npc(target, dialogue, npc_name=npc_name)
 
     # ---------------------------------------------------------
     # Dialogue & Quest Logic
     # ---------------------------------------------------------
-    def show_dialogue_above_npc(self, npc, dialogue):
+    def show_dialogue_above_npc(self, npc, dialogue, npc_name=None):
         """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        # คำนวณชื่อ NPC - ถ้าเป็นตัวแรก (index 0) ให้ชื่อ "The Sad Soul"
-        npc_name = "The Sad Soul" if self.npcs.index(npc) == 0 else f"NPC{self.npcs.index(npc) + 1}"
+        # ถ้าไม่ได้ระบุชื่อมา ให้คำนวณตาม Index (Fallback)
+        if npc_name is None:
+            npc_name = "The Sad Soul" if self.npcs.index(npc) == 0 else f"NPC{self.npcs.index(npc) + 1}"
         
         # ตั้งค่าคิวข้อความ
         self.current_dialogue_queue = dialogue
@@ -1029,7 +1025,7 @@ class GameWidget(Widget):
             portrait=self.current_portrait
         )
 
-    def show_item_discovery(self, text, image_path=None):
+    def show_item_discovery(self, text, image_path=None, choices=None):
         """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ (Delegated)"""
         self.is_dialogue_active = True
         self.pressed_keys.clear()
@@ -1037,7 +1033,8 @@ class GameWidget(Widget):
         self.player.state = 'idle'
         self.player.update_animation_speed()
         self.player.update_frame()
-        self.dialogue_manager.show_item_discovery(text, image_path)
+        self.current_character_name = text # เพื่อให้ Story Manager รู้ว่าอะไรเพิ่งจบ
+        self.dialogue_manager.show_item_discovery(text, image_path, choices=choices)
         root = self.dialogue_root if self.dialogue_root else self
         
     def close_dialogue(self):
@@ -1097,6 +1094,16 @@ class GameWidget(Widget):
                 portrait=self.current_portrait
             )
         else:
+            # ตรวจสอบลำดับการตรวจบ้าน Day 2 (ลำดับที่ 0 -> 1)
+            if getattr(self, 'house_inspection_step', False) and hasattr(self, 'pending_drop_spot'):
+                from settings import HOUSE_MARKS_MAPPING
+                self.house_inspection_step = False
+                spot = self.pending_drop_spot[0]
+                mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
+                self.show_vn_dialogue("Little girl", "Should I leave a letter?", 
+                                     choices=["Leave a letter", "Leave it"], portrait=mark_path)
+                return
+
             self.close_dialogue()
 
     def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
@@ -1267,6 +1274,7 @@ class GameWidget(Widget):
             # ล้างข้อมูลของวันเก่าที่จบไปแล้ว (Cleanup - User Request)
             if self.current_day > 1:
                 self.collected_stars = []
+                self.destroyed_enemies = [] # รีศัตรูให้กลับมาเกิดใหม่ทุกวัน
                 day1_quests = ["doll_parts", "find_food"]
                 for qid in day1_quests:
                     if qid in self.quest_manager.active_quests:
@@ -1281,6 +1289,7 @@ class GameWidget(Widget):
             self.quest_manager.update_quest_list_ui()
 
             self.recreate_world()
+            self.world_manager.create_house_marks()
             
             # 4. แสดง IntroScreen (Day X) เหมือนหน้าจอแรกสุดของเกม
             def start_fading_in():

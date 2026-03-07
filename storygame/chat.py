@@ -9,10 +9,12 @@ NPC_DIALOGUES = {
         "Please...it's so cold here...could you help me find them?"
     ],
     "The Postman": [
-        "Oh dear... oh dear. This fog is a nightmare.",
-        "I have all these letters to deliver, but I can't even see the doors anymore.",
-        "I think I dropped some of them near the old well while I was trying to find my way.",
-        "Could you help me? If you find the letters, please place them in front of the houses with the blue lanterns."
+        "Who's there?... Oh, it's just a child.",
+        "Please, help me... I have these letters, and the seals on them are clear enough to read.",
+        "But these alleys are like a maze... I've been walking in circles and simply cannot find the houses.",
+        "If you know your way around these slums... please switch the letters back to where they belong.",
+        "There are still letters left in this bag... Look at the covers; the symbols aren't hard to see at all.",
+        "Go on, little one... I'm counting on you."
     ],
     "NPC3": [
         "คุณมาจากไหนกัน?",

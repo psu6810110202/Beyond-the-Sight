@@ -13,7 +13,13 @@ STORY_CONFIG = {
             {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
         ]
     },
-    2: {"name": "Day 2", "visible_npcs": [1], "warning_triggers": []},
+    2: {
+        "name": "Day 2", 
+        "visible_npcs": [1], 
+        "warning_triggers": [
+            {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
+        ]
+    },
     3: {"name": "Day 3", "visible_npcs": [2], "warning_triggers": []},
     4: {"name": "Day 4", "visible_npcs": [3], "warning_triggers": []},
     5: {"name": "Day 5", "visible_npcs": [4], "warning_triggers": []}
@@ -95,8 +101,8 @@ class StoryManager:
         if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode:
             self.game.show_save_screen()
         
-        # 2. Angel: จบคัทซีนเข้าบ้าน
-        if last_character == "Angel":
+        # 2. Angel/Devil: จบคัทซีนเข้าบ้าน
+        if last_character in ["Angel", "Devil"]:
             self.game.end_cutscene()
             
         # 3. The Sad Soul (Quest Day 1)
@@ -106,6 +112,10 @@ class StoryManager:
         # 4. The Postman (Quest Day 2)
         if last_character == "The Postman":
             self._handle_postman_logic()
+
+        # 4.1 หลังจากกดรับไอเทม "LETTERS" ให้ขึ้นประโยคบ่น (User Request)
+        if last_character == "LETTERS":
+            self.game.show_vn_dialogue("Little girl", "I got the letters from the postman. I should find the houses with blue marks to deliver these.")
             
         # 5. Little girl (Quest Search Food)
         if last_character == "Little girl" and getattr(self.game, '_pending_food_success', False):
@@ -137,13 +147,22 @@ class StoryManager:
     def _handle_postman_logic(self):
         quest = self.game.quest_manager.active_quests.get("deliver_letters")
         if not quest:
-            self.game.quest_manager.start_quest("deliver_letters", "Deliver Letters", target=3)
-            self.game.world_manager.create_letters()
+            # มอบหมายเควสและให้จดหมาย (เปลี่ยนเป้าหมายเป็น 3 หลัง)
+            self.game.quest_manager.start_quest("deliver_letters", "Deliver the letters", target=3)
+            self.game.letters_held = 3
+            # แสดงหน้าจอพบไอเทม (โชว์รูปจดหมายทั้ง 3 แบบ: circle, cross, square)
+            letter_images = [
+                "assets/Items/note/circle.png",
+                "assets/Items/note/cross.png",
+                "assets/Items/note/square.png"
+            ]
+            self.game.show_item_discovery("LETTERS", letter_images)
         elif quest.is_active and quest.current_count >= quest.target_count:
             # ตรวจสอบความสำเร็จเควส (ใน Day 2 จดหมายทุพฉบับจริงหมด)
             self.game.quest_success_count += 1
             
             quest.is_active = False
-            self.game.quest_manager.show_quest_notification("COMPLETED: DELIVER LETTERS")
+            # แสดงชื่อเควสที่ถูกต้องในการแจ้งเตือนตอนจบ
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)

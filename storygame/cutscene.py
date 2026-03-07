@@ -49,17 +49,29 @@ class CutsceneManager:
             if len(self.game.npcs) == 0:
                 # เฟสเดินออก
                 cam_x = -self.game.camera.trans_pos.x
+                cam_y = -self.game.camera.trans_pos.y
                 scale_f = self.game.camera.scale.x
                 visible_w = self.game.width / scale_f if scale_f != 0 else CAMERA_WIDTH
+                visible_h = self.game.height / scale_f if scale_f != 0 else CAMERA_HEIGHT
+                
                 right_edge = cam_x + (visible_w / 2) + 48
+                bottom_edge = cam_y - (visible_h / 2) - 48
+                
+                direction = 'down' if self.game.current_day == 2 else 'right'
                 
                 if self.game.player.is_moving:
                     self.game.player.continue_move()
                 else:
                     self.game.player.current_speed = WALK_SPEED
-                    self.game.player.move({'right'})
+                    self.game.player.move({direction})
                 
-                if self.game.player.logic_pos[0] > right_edge:
+                reached_edge = False
+                if direction == 'right' and self.game.player.logic_pos[0] > right_edge:
+                    reached_edge = True
+                elif direction == 'down' and self.game.player.logic_pos[1] < bottom_edge:
+                    reached_edge = True
+                
+                if reached_edge:
                     self.game.cutscene_step = 2
                     self.show_black_screen_transition()
 
@@ -270,24 +282,46 @@ class CutsceneManager:
         root.add_widget(self.game.black_overlay)
         
         # ตัดสินใจเนื่อเรื่อง (สั่งทอดๆ)
-        if self.game.quest_success_count >= 3:
-            texts = [
-                "You still hold the light in your hands, little one...",
-                "Though this place is shrouded in darkness, your kindness has saved that soul.",
-                "Go and rest now. You will need your strength for tomorrow."
-            ]
+        success = not getattr(self.game, 'quest_item_fail', False)
+        
+        if self.game.current_day == 1:
+            character_name = "Angel"
+            if self.game.quest_success_count >= 3 or success:
+                texts = [
+                    "You still hold the light in your hands, little one...",
+                    "Though this place is shrouded in darkness, your kindness has saved that soul.",
+                    "Go and rest now. You will need your strength for tomorrow."
+                ]
+            else:
+                texts = [
+                    "Your hands are trembling... It’s alright.",
+                    "Sometimes, destiny is too heavy for a child to carry alone.",
+                    "Let’s go home for now. We can always start again tomorrow."
+                ]
+        elif self.game.current_day == 2:
+            character_name = "Devil"
+            if success:
+                texts = [
+                    "Heh... keep playing the hero, kid.",
+                    "You can save a ghost, but the humans lurking behind you? They haven't changed a bit.",
+                    "But fine, I'll give it to you—you did well today.",
+                    "Now, get back home before those people start getting suspicious."
+                ]
+            else:
+                texts = [
+                    "See that? In the end, you can't save anyone—not even yourself.",
+                    "But don't you go crying now; this wretched world has always been this way.",
+                    "Come here, let me escort you back to that hell you call 'home' yourself."
+                ]
         else:
-            texts = [
-                "Your hands are trembling... It’s alright.",
-                "Sometimes, destiny is too heavy for a child to carry alone.",
-                "Let’s go home for now. We can always start again tomorrow."
-            ]
+            character_name = "Angel"
+            texts = ["The night continues..."]
         
         self.game.current_dialogue_queue = texts
         self.game.current_dialogue_index = 0
-        self.game.current_character_name = "Angel"
+        self.game.current_character_name = character_name
         self.game.is_dialogue_active = True
-        self.game.dialogue_manager.show_vn_dialogue("Angel", texts[0])
+        self.game.dialogue_manager.show_vn_dialogue(character_name, texts[0])
 
     def end_cutscene(self):
         """จบ Cutscene และย้ายตัวละครเข้าบ้าน"""

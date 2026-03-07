@@ -63,21 +63,18 @@ STAR_ITEM_MAPPING = {
     (1152, 416): {"img": "assets/Items/metal/metal3.png",    "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
 }
 
-# ตำแหน่งการเกิดของจดหมายใน Day 2
-LETTER_SPAWN_LOCATIONS = [
-    (800, 300), (848, 200), (750, 250) # รอบๆ บ่อน้ำ
-]
-
 # ตำแหน่งหน้าบ้านที่ต้องเอาไปวาง (Day 2)
 HOUSE_DOOR_SPOTS = [
-    (1104, 336), (1296, 336), (1488, 336)
+    (240, 128), (64, 128), (560, 432), (784, 432), (992, 272)
 ]
 
-# แผนที่ไอเทมจดหมายใน Day 2
-LETTER_ITEM_MAPPING = {
-    (800, 300): {"img": "assets/Items/note/square.png", "portrait": PLAYER_PORTRAIT_IMG, "fail": False},
-    (848, 200): {"img": "assets/Items/note/square.png", "portrait": PLAYER_PORTRAIT_IMG, "fail": False},
-    (750, 250): {"img": "assets/Items/note/square.png", "portrait": PLAYER_PORTRAIT_IMG, "fail": False},
+# แมปพิกัดประตูกับรูปสัญลักษณ์ (Day 2)
+HOUSE_MARKS_MAPPING = {
+    (240, 128): "assets/mark/Hippo.png",
+    (64, 128):  "assets/mark/bird.png",
+    (560, 432): "assets/mark/circle.png",
+    (784, 432): "assets/mark/cross.png",
+    (992, 272): "assets/mark/square.png"
 }
 
 # NPC Settings

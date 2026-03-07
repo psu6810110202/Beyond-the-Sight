@@ -159,10 +159,11 @@ class SaveSlot(FloatLayout):
 
 class SaveLoadScreen(FloatLayout):
     """Screen for selecting a save/load slot."""
-    def __init__(self, mode="LOAD", callback=None, **kwargs):
+    def __init__(self, mode="LOAD", callback=None, on_close_cb=None, **kwargs):
         super().__init__(**kwargs)
         self.mode = mode
         self.callback = callback
+        self.on_close_cb = on_close_cb
         self.slots = []
         self.index = 0
         
@@ -463,12 +464,10 @@ class SaveLoadScreen(FloatLayout):
     def close(self):
         if hasattr(self, 'confirm_popup') and self.confirm_popup:
             self.close_popup()
-        if self._keyboard:
+        if getattr(self, '_keyboard', None):
             self._keyboard.unbind(on_key_down=self._on_key_down)
+            self._keyboard.release()
             self._keyboard = None
-        
-        # คืนค่า Keyboard ให้ GameWidget หรือตัวรับอื่นๆ
-        Window.release_all_keyboards()
         
         parent = self.parent
         if parent:
@@ -481,11 +480,14 @@ class SaveLoadScreen(FloatLayout):
             # ลบตัวเองออก
             parent.remove_widget(self)
             
-            # คืน Focus ให้หน้าจอหลัก (Title หรือ Game)
-            if hasattr(parent, 'request_keyboard_back'):
-                parent.request_keyboard_back()
-            elif hasattr(self.callback, '__self__') and hasattr(self.callback.__self__, 'request_keyboard_back'):
-                self.callback.__self__.request_keyboard_back()
+            if getattr(self, 'on_close_cb', None):
+                self.on_close_cb()
+            else:
+                # คืน Focus ให้หน้าจอหลัก (Title หรือ Game)
+                if hasattr(parent, 'request_keyboard_back'):
+                    parent.request_keyboard_back()
+                elif hasattr(self.callback, '__self__') and hasattr(self.callback.__self__, 'request_keyboard_back'):
+                    self.callback.__self__.request_keyboard_back()
 
     def _on_keyboard_closed(self):
         pass

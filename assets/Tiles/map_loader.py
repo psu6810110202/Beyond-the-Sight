@@ -28,6 +28,7 @@ class KivyTiledMap:
         self.core_images = [] # Prevent garbage collection
         self.solid_rects = []
         self.well_fg_gids = set()
+        self.well_roof_gids = set()
         self.well_solid_gids = set()
         self.tile_hitboxes = {} # gid -> list of (x, y, w, h)
         self.visible_chunks = set()
@@ -163,9 +164,15 @@ class KivyTiledMap:
         return 0.1 / tex.width, 0.1 / tex.height
 
     def setup_well(self, tsx_name, firstgid, columns, tilecount):
-        if "Well1" in tsx_name:
-            self.well_fg_gids.update(range(firstgid, firstgid + columns))
+        if "well" in tsx_name.lower():
+            # แถวแรก (บนสุด/หลังบ่อ) -> Roof (บังหัวเมื่ออยู่หลังบ่อ) และไม่มี Hitbox
+            self.well_roof_gids.update(range(firstgid, firstgid + columns))
+            
+            # บล็อกที่เหลือทั้งหมด (ตั้งแต่แถว 2 จนถึงแถวสุดท้าย) -> ให้ดัก Hitbox (Solid)
             self.well_solid_gids.update(range(firstgid + columns, firstgid + tilecount))
+            
+            # แถวสุดท้าย (หน้าบ่อ) -> Foreground (วาดทับหน้าเท้า) และมี Hitbox (เพราะรวมอยู่ใน solid_gids แล้ว)
+            self.well_fg_gids.update(range(firstgid + tilecount - columns, firstgid + tilecount))
 
     # --- Mesh Building ---
 
@@ -191,7 +198,7 @@ class KivyTiledMap:
             # Logic classifications
             # ใช้ (kw,) หรือ [kw] เพื่อป้องกันการไล่ตรวจทีละตัวอักษร
             # ตรวจสอบว่าเป็นชั้นหลังคา (สูงที่สุด) หรือไม่
-            is_roof = any(kw in name for kw in ("หลังคา", "roof", "หลังคา2 ชั้น"))
+            is_roof = any(kw in name for kw in ("หลังคา", "roof", "หลังคา2 ชั้น", "funiture3", "furniture3"))
             
             # กฎพิเศษสำหรับ home.tmj: ให้เลเยอร์ "เหนือ" อยู่ชั้นหน้าสุด (High Z)
             map_basename = os.path.basename(self.filename).lower()
@@ -209,14 +216,24 @@ class KivyTiledMap:
             if "beyond.tmj" in self.filename.lower() and "ขยะ" in name:
                 is_fg = True
                 
-            is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg and not is_roof
+            # กฎพิกัดบ่อน้ำ (User Request): well2 = พื้น, well1 = บ่อ
+            if "well2" in name:
+                is_ground = True
+                is_fg = False
+                is_well = False
+            elif "well1" in name:
+                is_well = True
+                is_ground = False
+                is_fg = False
+            else:
+                is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg and not is_roof
+                is_well = "well" in name
             
             # Solid implies physical collision.
             is_solid = not is_ground and (
                 any(kw in name for kw in ("ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor")) or
                 name.lower() in ("funiture", "funiture2", "furniture", "props")
             ) and not any(kw in name for kw in ("resources",))
-            is_well = "well1" in name
             
             opacity = layer.get('opacity', 1.0)
 
@@ -311,9 +328,9 @@ class KivyTiledMap:
         obj_px_h = int(ch / scale) if ch is not None else tsh
         w, h = obj_px_w * scale, obj_px_h * scale
 
-        # Special Case: Well (Split into BG/Bottom and FG/Top)
-        if is_well and (gid in self.well_fg_gids or gid in self.well_solid_gids) and cw is not None:
-            self._handle_well_split(x, y, w, h, obj_px_w, obj_px_h, scale, tx, ty_inv, tsh, t_info, cx, cy, l_bg, l_fg)
+        # Special Case: Well (Split into BG/Bottom and Roof/Top)
+        if is_well and (gid in self.well_roof_gids or gid in self.well_fg_gids or gid in self.well_solid_gids) and cw is not None:
+            self._handle_well_split(x, y, w, h, obj_px_w, obj_px_h, scale, tx, ty_inv, tsh, t_info, cx, cy, l_bg, l_fg, l_roof)
             return
 
         # Collision Logic
@@ -330,7 +347,7 @@ class KivyTiledMap:
         verts = [x, y, uvs[0], uvs[1], x+w, y, uvs[2], uvs[3], x+w, y+h, uvs[4], uvs[5], x, y+h, uvs[6], uvs[7]]
         
         # Decide Target Mesh (Roof vs FG vs BG vs Ground)
-        if is_roof:
+        if is_roof or gid in self.well_roof_gids:
             target_l = l_roof
         elif is_fg or gid in self.well_fg_gids:
             target_l = l_fg
@@ -341,12 +358,13 @@ class KivyTiledMap:
             
         self._add_to_mesh_data(target_l, cx, cy, tex, verts)
 
-    def _handle_well_split(self, x, y, w, h, opw, oph, scale, tx, ty_i, tsw_h, t_info, cx, cy, l_bg, l_fg):
+    def _handle_well_split(self, x, y, w, h, opw, oph, scale, tx, ty_i, tsw_h, t_info, cx, cy, l_bg, l_fg, l_roof):
         tex = t_info[0]
         pad_x, pad_y = self._get_uv_padding(tex)
         
-        # Bottom (BG + Solid) - 75% height
-        bh_px_h = int(oph * 0.75)
+        # Bottom (BG + Solid) - เหลือส่วนล่างไว้ 
+        # th_px_h = 16 (1 block) ส่วนที่บังหัว/ตัว
+        bh_px_h = max(0, int(oph - 16)) 
         bh_h = bh_px_h * scale
         bh_inv_y = ty_i + tsw_h - bh_px_h
         reg_b = tex.get_region(tx, bh_inv_y, opw, bh_px_h)
@@ -368,7 +386,7 @@ class KivyTiledMap:
         tu1, tv1 = reg_t.tex_coords[4]-pad_x, reg_t.tex_coords[5]-pad_y
         
         t_verts = [x, th_y, tu0, tv0, x+w, th_y, tu1, tv0, x+w, th_y+th_h, tu1, tv1, x, th_y+th_h, tu0, tv1]
-        self._add_to_mesh_data(l_fg, cx, cy, tex, t_verts)
+        self._add_to_mesh_data(l_roof, cx, cy, tex, t_verts)
 
     def _get_final_uvs(self, gid_full, t_info):
         # Always use the tile's own base UVs from the tileset

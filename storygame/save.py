@@ -19,7 +19,8 @@ class SaveManager:
         
         save_screen = SaveLoadScreen(
             mode="SAVE",
-            callback=self.on_save_confirmed
+            callback=self.on_save_confirmed,
+            on_close_cb=self.game.request_keyboard_back
         )
         if self.game.dialogue_root:
             self.game.dialogue_root.add_widget(save_screen)
@@ -85,9 +86,21 @@ class SaveManager:
 
     def load_game_from_pause(self):
         """เปิดหน้าจอโหลดเซฟจากเมนู Pause"""
+        def on_close_load():
+            from kivy.core.window import Window
+            if self.game.is_paused and getattr(self.game, 'pause_menu', None):
+                pm = self.game.pause_menu
+                if pm._keyboard:
+                    pm._keyboard.unbind(on_key_down=pm._on_key_down)
+                pm._keyboard = Window.request_keyboard(pm._keyboard_closed, pm)
+                pm._keyboard.bind(on_key_down=pm._on_key_down)
+            else:
+                self.game.request_keyboard_back()
+
         load_screen = SaveLoadScreen(
             mode="LOAD", 
-            callback=self._on_pause_load_selected
+            callback=self._on_pause_load_selected,
+            on_close_cb=on_close_load
         )
         if self.game.dialogue_root:
             self.game.dialogue_root.add_widget(load_screen)

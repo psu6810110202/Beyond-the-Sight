@@ -5,6 +5,7 @@ from characters.enemy import Enemy
 from characters.reaper import REAPER_START_POS
 from items.star import Star
 from assets.Tiles.map_loader import KivyTiledMap
+from kivy.core.image import Image as CoreImage
 from settings import *
 import random
 
@@ -79,10 +80,15 @@ class WorldManager:
             x = r.randint(32, MAP_WIDTH - 64)
             y = r.randint(32, MAP_HEIGHT - 64)
             
-            # บังคับให้เกิดเฉพาะใน 'เขตอันตราย' (ฝั่งซ้ายหรือบน ตามที่เคยกั้นหมอก)
-            if x >= 656 and y <= 464:
-                continue
-
+            # บังคับให้เกิดเฉพาะใน 'เขตอันตราย'
+            if self.game.current_day == 1:
+                # สำหรับ Day 1: ห้ามเกิดในเขตปลอดภัย (ล่างขวา)
+                if x >= 656 and y <= 464:
+                    continue
+            else:
+                # สำหรับ Day 2+: ห้ามเกิดในเขตปลอดภัย (แถบล่างทั้งหมด)
+                if y <= 464:
+                    continue
             
             # ไม่ให้ศัตรูชิดกันเกินไปตามคำขอ
             too_close = False
@@ -131,19 +137,49 @@ class WorldManager:
             star = Star(self.game.sorting_layer, x, y, is_true=is_true)
             self.game.stars.append(star)
 
-    def create_letters(self):
-        """สร้างจดหมายตามพิกัดที่กำหนดใน Day 2"""
+    def create_house_marks(self):
+        """สร้างรูปสัญลักษณ์ต่างๆ บนผนังหน้าบ้านใน Day 2"""
+        self.game.house_marks_group.clear()
         if self.game.current_day != 2:
             return
             
-        for i, (x, y) in enumerate(LETTER_SPAWN_LOCATIONS):
-            # ตรวจสอบว่าจดหมายจุดนี้ถูกเก็บไปแล้วหรือยัง
-            if [x, y] in self.game.collected_stars or (x, y) in self.game.collected_stars:
-                continue
+        from kivy.core.image import Image as CoreImage
+        from settings import HOUSE_MARKS_MAPPING
+        
+        self.game.house_marks_group.add(Color(1, 1, 1, 1))
+        
+        for (x, y), file_path in HOUSE_MARKS_MAPPING.items():
+            try:
+                tex = CoreImage(file_path).texture
+                if tex:
+                    tex.min_filter = 'nearest'
+                    tex.mag_filter = 'nearest'
+                    
+                    # แปะไว้บนผนัง (y + 16) ขนาด 16px
+                    rect = Rectangle(texture=tex, pos=(x, y + 16), size=(16, 16))
+                    self.game.house_marks_group.add(rect)
+            except Exception as e:
+                print(f"Error loading mark texture {file_path}: {e}")
+
+    def restore_delivered_marks(self):
+        """วาดจดหมายที่วางไปแล้วใหม่ให้เชื่อมโยงกับ Graphic Layer (Persist visuals)"""
+        self.game.delivered_marks_group.clear()
+        if self.game.current_day != 2:
+            return
             
-            # ใน Day 2 จดหมายทุกฉบับเป็นของจริง (is_true=True)
-            letter = Star(self.game.sorting_layer, x, y, is_true=True)
-            self.game.stars.append(letter)
+        from kivy.core.image import Image as CoreImage
+        from kivy.graphics import Rectangle, Color
+        for entry in self.game.delivered_house_indices:
+            if isinstance(entry, dict):
+                try:
+                    tex = CoreImage(entry["img"]).texture
+                    if tex:
+                        tex.min_filter = 'nearest'
+                        tex.mag_filter = 'nearest'
+                        self.game.delivered_marks_group.add(Color(1, 1, 1, 1))
+                        self.game.delivered_marks_group.add(Rectangle(texture=tex, pos=entry["pos"], size=(16, 16)))
+                except Exception as e:
+                    print(f"Error restoring delivered mark: {e}")
 
     def change_map(self, map_file):
         """โหลดแมพใหม่และรีเซ็ตกราฟิกแมพ (รับประกันความสะอาด 100%)"""
@@ -195,7 +231,9 @@ class WorldManager:
                 
                 # ส่วนทึบ
                 self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+                # แถบซ้ายทั้งหมด
                 self.game.darkness_group.add(Rectangle(pos=(0, 0), size=(dark_x_start, MAP_HEIGHT)))
+                # แถบบน (ในส่วนที่เหลือทางขวา)
                 self.game.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start), size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)))
                 
                 # ส่วนไล่สี (Gradient) - ปรับให้เนียนขึ้นเป็น 40 ขั้น
@@ -205,7 +243,7 @@ class WorldManager:
                     alpha = base_alpha * (1 - (i / fade_steps))
                     self.game.darkness_group.add(Color(0, 0, 0, alpha))
                     
-                    # วาดแถบแนวตั้ง (จากซ้ายไปขวา) - จำกัดความสูงไม่ให้ซ้อนกับแถบแนวนอน
+                    # วาดแถบแนวตั้ง (จากซ้ายไปขวา)
                     self.game.darkness_group.add(Rectangle(
                         pos=(dark_x_start + (i * step_size), 0), 
                         size=(step_size + 0.5, dark_y_start)
@@ -216,6 +254,25 @@ class WorldManager:
                         pos=(dark_x_start, dark_y_start - ((i+1) * step_size)), 
                         size=(MAP_WIDTH - dark_x_start, step_size + 0.5)
                     ))
+            else:
+                # สำหรับ Day 2+: ใช้เฉพาะพิกัด Y
+                dark_y_start = 464 + fade_range
+                
+                # ส่วนทึบ (ครอบคลุมพื้นที่ด้านบนทั้งหมด)
+                self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+                self.game.darkness_group.add(Rectangle(pos=(0, dark_y_start), size=(MAP_WIDTH, MAP_HEIGHT - dark_y_start)))
+                
+                # ส่วนไล่สี (Gradient) แนวนอนอย่างเดียว
+                fade_steps = 40
+                step_size = fade_range / fade_steps
+                for i in range(fade_steps):
+                    alpha = base_alpha * (1 - (i / fade_steps))
+                    self.game.darkness_group.add(Color(0, 0, 0, alpha))
+                    
+                    self.game.darkness_group.add(Rectangle(
+                        pos=(0, dark_y_start - ((i+1) * step_size)), 
+                        size=(MAP_WIDTH, step_size + 0.5)
+                    ))
 
             self.game.darkness_group.add(Color(1, 1, 1, 1))
 
@@ -224,8 +281,8 @@ class WorldManager:
         # 1. Cleanup
         for e_list in [self.game.npcs, self.game.enemies, self.game.stars]:
             for entity in e_list:
-                if hasattr(entity, 'group') and entity.group in self.game.sorting_layer.children:
-                    self.game.sorting_layer.remove(entity.group)
+                if hasattr(entity, 'destroy'):
+                    entity.destroy()
         self.game.npcs, self.game.enemies, self.game.stars = [], [], []
         
         # 2. Map Reset
@@ -260,6 +317,8 @@ class WorldManager:
         self.create_npcs()
         self.create_enemies()
         self.create_stars()
-        self.create_letters()
+        self.create_house_marks()
+        
+        self.restore_delivered_marks()
         self.refresh_darkness()
         self.game.request_keyboard_back()
