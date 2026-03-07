@@ -135,6 +135,14 @@ class StoryManager:
         if last_character == "The Old Soul":
             self._handle_old_soul_logic()
 
+        # 6. The Lady at the Window (Quest Day 4)
+        if last_character == "The Lady at the Window":
+            self._handle_lady_logic()
+
+        # 7. The Soul (Quest Day 5)
+        if last_character == "The Soul":
+            self._handle_soul_logic()
+
         # 4.1 หลังจากกดรับไอเทม "LETTERS" ให้ขึ้นประโยคบ่น (User Request)
         if last_character == "LETTERS":
             self.game.show_vn_dialogue("Little girl", "I got the letters from the postman. I should find the houses with blue marks to deliver these.")
@@ -155,6 +163,22 @@ class StoryManager:
         if last_character == "Mother" and self.game.current_day == 2:
             if hasattr(self.game, 'cutscene_manager'):
                 self.game.cutscene_manager.end_day2_parent_cutscene()
+
+    def _handle_lady_logic(self):
+        quest = self.game.quest_manager.active_quests.get("find_key")
+        if not quest:
+            # เริ่มเควส "Find Key" (ไม่ต้องโชว์ตัวเลขจำนวน)
+            self.game.quest_manager.start_quest("find_key", "Find Key", target=1)
+            self.game.create_stars()
+        elif quest.is_active and quest.current_count >= quest.target_count:
+            # ตรวจสอบความสำเร็จเควส
+            if not getattr(self.game, 'quest_item_fail', False):
+                self.game.quest_success_count += 1
+            
+            quest.is_active = False
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
+            self.game.quest_manager.update_quest_list_ui()
+            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
 
     def _handle_sad_soul_logic(self):
         quest = self.game.quest_manager.active_quests.get("doll_parts")
@@ -208,4 +232,18 @@ class StoryManager:
             quest.is_active = False
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
+            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
+
+    def _handle_soul_logic(self):
+        quest = self.game.quest_manager.active_quests.get("soul_fragments")
+        if not quest:
+            # เริ่มเควส "Find Soul Fragments" (เก็บ 5 ชิ้น)
+            self.game.quest_manager.start_quest("soul_fragments", "Find Soul Fragments", target=5)
+        elif quest.is_active and quest.current_count >= quest.target_count:
+            # สำเร็จเควส
+            self.game.quest_success_count += 1
+            quest.is_active = False
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
+            self.game.quest_manager.update_quest_list_ui()
+            # เข้าสู่ฉากจบของเควส
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)

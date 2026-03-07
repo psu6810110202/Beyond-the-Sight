@@ -148,8 +148,6 @@ DIALOGUE_CONFIG = {
 CANDLE_LIGHT_DIALOGUE = "The candle is unlit. Which color should I light it with?"
 CANDLE_LIGHT_CHOICES = ["RED", "YELLOW", "BLUE"]
 CANDLE_SUCCESS_DIALOGUE = "All the candles are lit now. I should go back and tell the old soul."
-
-
 OLD_SOUL_SUCCESS = "The light... it's back. I remember the way home now. Thank you, child. I don't think I'll get lost again."
 OLD_SOUL_FAIL = "No... that's not it. Everything is getting blurry again."
 
@@ -165,3 +163,88 @@ ANGEL_DAY3_FAIL = [
     "I wish I could help you more, but this is all we can do today.",
     "Go back and hide in your safe corner for now."
 ]
+
+
+# --- ฉกาจบวัน (End of Day Dialogues) ---
+DAY_END_DIALOGUES = {
+    1: {
+        "success": [
+            "You still hold the light in your hands, little one...",
+            "Though this place is shrouded in darkness, your kindness has saved that soul.",
+            "Go and rest now. You will need your strength for tomorrow."
+        ],
+        "fail": [
+            "Your hands are trembling... It’s alright.",
+            "Sometimes, destiny is too heavy for a child to carry alone.",
+            "Let’s go home for now. We can always start again tomorrow."
+        ]
+    },
+    2: {
+        "success": [
+            "Heh... keep playing the hero, kid.",
+            "You can save a ghost, but the humans lurking behind you? They haven't changed a bit.",
+            "But fine, I'll give it to you—you did well today.",
+            "Now, get back home before those people start getting suspicious."
+        ],
+        "fail": [
+            "See that? In the end, you can't save anyone—not even yourself.",
+            "But don't you go crying now; this wretched world has always been this way.",
+            "Come here, let me escort you back to that hell you call 'home' yourself."
+        ]
+    },
+    4: {
+        "success": [
+            "Heh... You're one stubborn brat. Being called a jinx like that and you still go around helping others?",
+            "Fine, fine... I'll stop scolding you. Get inside already.",
+            "Those humans seem to be in a foul mood today. I'll shroud your shadow for you."
+        ],
+        "fail": [
+            "Good grief! Stop looking like it's the end of the world. You're no god, kid—you can't save everyone.",
+            "A mistake is just a mistake. Go back to sleep.",
+            "We'll try again tomorrow... if you even wake up, that is."
+        ]
+    },
+    5: {
+        "perfect": {
+            "char": ["Angel", "Devil"],
+            "text": [
+                "The breeze is lovely today... It’s time for you to head back there, little one.",
+                "Well... what are you staring at me for? Go on, get back. I’ll be in the same spot tomorrow... assuming you still want to see me, that is."
+            ]
+        },
+        "middle": {
+            "char": ["Devil", "Angel"],
+            "text": [
+                "Your shadow stretches all the way to the main road out there, kid... Do you think a place like that has any room for someone like you?",
+                "Sometimes getting lost is the first step toward finding your true home... May your heart lead you to a place where no one can ever hurt you again."
+            ]
+        },
+        "failure": {
+            "char": ["Devil", "Angel"],
+            "text": [
+                "Look at you, kid... you’re stumbling so much you’re practically walking into walls. Just go back and get some rest tonight. Keep the lights off, and don't you dare turn them back on.",
+                "Don’t be afraid, little one... the darkness isn’t always something to be feared. Sometimes, it’s the only shield left to protect you from the pain of everything you see."
+            ]
+        }
+    }
+}
+
+# --- บทสนทนาพ่อแม่ทะเลาะกัน Day 2 ---
+PARENT_FIGHT_DIALOGUE = [
+    {"char": "Father", "text": "Still... you're still glaring at me with those eyes?! I told you—if you're stepping foot into this house, don't you ever dare look at me with that curse!"},
+    {"char": "Mother", "text": "Stop it, husband... don't touch him too much. I don't want whatever 'curse' he sees in those eyes rubbing off on your hands. Just living under the same roof as this demon is enough to drive me insane!"},
+    {"char": "Father", "text": "What are you looking at?! Is there some spirit standing behind me now? You're nothing but my own flesh and blood that I regret ever fathering—a total jinx! Talking to the air like a madman! You’ve become a blight, dragging our family down for the whole neighborhood to mock!"},
+    {"char": "Mother", "text": "I'm dying of shame... Our lives were finally turning around, but then we ended up with a freak like you who does nothing but see ghosts! I truly wish I could announce to everyone that I have no such disgusting child!"},
+    {"char": "Father", "text": "You're getting nothing to eat today! Since you love those spirits so much, go beg them for scraps yourself! I don't care if you starve or rot, just don't you dare bring more shame to my name with your wretched behavior!"},
+    {"char": "Mother", "text": "Go rot in your dark corner! If I see you whispering to yourself or staring at anyone with those creepy eyes again... I'll be the one to gouge them out of your head myself, forever!"}
+]
+
+# --- ข้อความในแมพใต้ดิน ---
+UNDERGROUND_STRINGS = {
+    "found_soul": "I found a fragment of the soul!",
+    "found_dust": "Nothing here but dust...",
+    "ghost_scare": "LEAVE THIS PLACE...",
+    "interact_prompt": "I found one of those objects... should I search inside?"
+}
+
+NPC5_SUCCESS = "I can feel it... my soul is whole again. The cold is finally fading away. Thank you, little one. You have a kindness that this world has forgotten."

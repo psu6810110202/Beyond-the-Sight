@@ -129,6 +129,7 @@ class GameWidget(Widget):
         self.choice_layout = None
         self.choice_buttons = []
         self.choice_index = 0
+        self.pending_post_discovery_dialogue = None # เก็บแชทที่ต้องขึ้นต่อจากตอนหยิบของเสร็จ
         
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
         self.stars = []             # เก็บวัตถุดาว (Day 1)
@@ -256,13 +257,23 @@ class GameWidget(Widget):
                 self.delivered_house_indices = []
                 if "deliver_letters" in self.quest_manager.active_quests:
                     del self.quest_manager.active_quests["deliver_letters"]
+            
+            if self.current_day > 3:
+                # ล้างเควส Old Soul (light_candles) เมื่อจบ Day 3
+                if "light_candles" in self.quest_manager.active_quests:
+                    del self.quest_manager.active_quests["light_candles"]
                 
             self.quest_manager.update_quest_list_ui(animate=False)
             
-            # ถ้าโหลดมาระหว่างทำเควสดวงดาว ให้สร้างดาวขึ้นมา
+            # ถ้าโหลดมาระหว่างทำเควสดวงดาว (Day 1 หรือ Day 4) ให้สร้างดาวขึ้นมา
             if "doll_parts" in self.quest_manager.active_quests:
                 quest = self.quest_manager.active_quests["doll_parts"]
                 if quest.is_active:
+                    self.create_stars()
+            elif "find_key" in self.quest_manager.active_quests:
+                quest = self.quest_manager.active_quests["find_key"]
+                # สำหรับ Day 4 ถ้าเก็บไปแล้ว (count=1) ไม่ต้องสร้างดาวแล้ว
+                if quest.is_active and quest.current_count == 0:
                     self.create_stars()
         
         # 1.2 เลือกและโหลดแผนที่ (ดึงจากเซฟถ้ามี ไม่เช่นนั้นใช้แผนที่หลัก)
@@ -346,8 +357,15 @@ class GameWidget(Widget):
         # Manually force the first UI positioning update
         self.update_ui_positions()
 
-        # สร้างหมอกครั้งแรกตามสถานะปัจจุบัน
-        self.refresh_darkness()
+        # อัปเดตความมืด (Fog of War)
+        # ถ้าอยู่ในแมพ Underground ให้ปิดหมอก (User Request: เอาหมอกออก)
+        is_underground = 'underground.tmj' in self.game_map.filename.lower()
+        if is_underground:
+            if hasattr(self, 'darkness_instr') and self.darkness_instr:
+                self.canvas.after.remove(self.darkness_instr)
+                self.darkness_instr = None
+        else:
+            self.refresh_darkness()
 
         # ตรวจสอบว่าต้องขึ้นบทนำ (คุยกับ Reaper ทันที) หรือไม่
         if initial_data is None:
@@ -418,8 +436,14 @@ class GameWidget(Widget):
             # 1. ถ้ามีแจ้งเตือนไอเทมอยู่ ให้ปิดแจ้งเตือนก่อน
             if self.dialogue_manager.is_item_notif_active:
                 self.dialogue_manager.close_item_discovery()
-                # ถ้ากำลังคุยค้างอยู่ (กรณีได้รับไอเทมกลางบทสนทนา) ให้แสดงบทสนทนาต่อทันที
-                if self.is_dialogue_active:
+                
+                # ถ้ามีแชทที่รอขึ้นต่อ (เช่น หลังเก็บของ Day 4)
+                if self.pending_post_discovery_dialogue:
+                    d = self.pending_post_discovery_dialogue
+                    self.pending_post_discovery_dialogue = None
+                    self.show_vn_dialogue(d['name'], d['text'], portrait=d.get('portrait'))
+                # ถ้าไม่มีแชทต่อ แต่กำลังคุยค้างอยู่ (กรณีได้รับไอเทมกลางบทสนทนา) 
+                elif self.is_dialogue_active:
                     self.next_dialogue()
                 return True
         
@@ -551,14 +575,25 @@ class GameWidget(Widget):
             self.player.move(self.pressed_keys, self.npcs, all_reapers, self.game_map.solid_rects, getattr(self, 'candles', []))
             self.heart_ui.update_stamina(self.player.get_stamina_ratio())
             
-            # อัปเดต NPCs / Reaper / Enemies
+            # อัปเดต NPCs / Reaper / Enemies (Culling - อัปเดตเฉพาะที่อยู่ใกล้)
+            px, py = self.player.logic_pos
             for npc in self.npcs:
-                npc.update(dt)
-            self.reaper.update(dt, self.player.logic_pos)
+                # Cull distance: 600px
+                if abs(npc.x - px) + abs(npc.y - py) < 600:
+                    npc.update(dt)
+            
+            if abs(self.reaper.x - px) + abs(self.reaper.y - py) < 600:
+                self.reaper.update(dt, self.player.logic_pos)
+            
             for er in getattr(self, 'extra_reapers', []):
-                er.update(dt, self.player.logic_pos)
+                if abs(er.x - px) + abs(er.y - py) < 600:
+                    er.update(dt, self.player.logic_pos)
             
             for enemy in self.enemies[:]:
+                # Cull far enemies
+                if abs(enemy.logic_pos[0] - px) + abs(enemy.logic_pos[1] - py) > 600:
+                    enemy.is_chasing = False # หยุดไล่ถ้าไกลเกินไป
+                    continue
                 # ส่งรายการตำแหน่ง reaper ทั้งหมด (หลัก + extra) ไปให้ศัตรูตรวจสอบ Safe Zone
                 reaper_positions = [(self.reaper.x, self.reaper.y)]
                 for er in getattr(self, 'extra_reapers', []):
@@ -599,15 +634,17 @@ class GameWidget(Widget):
                         self.respawn_at_reaper()
                 
                 # ตรวจสอบว่าศัตรูเข้าใกล้ Reaper หรือยัง (Safe Zone)
+                # Optimization: ใช้ Squared Distance เพื่อเลี่ยง sqrt
                 enemy_center_x = enemy.logic_pos[0] + TILE_SIZE / 2
                 enemy_center_y = enemy.logic_pos[1] + TILE_SIZE / 2
                 
+                safe_radius_sq = SAFE_ZONE_RADIUS ** 2
                 for r_obj in [self.reaper] + getattr(self, 'extra_reapers', []):
                     r_cx = r_obj.x + TILE_SIZE / 2
                     r_cy = r_obj.y + TILE_SIZE / 2
-                    dist = ((enemy_center_x - r_cx)**2 + (enemy_center_y - r_cy)**2)**0.5
+                    dist_sq = (enemy_center_x - r_cx)**2 + (enemy_center_y - r_cy)**2
                     
-                    if dist < SAFE_ZONE_RADIUS:
+                    if dist_sq < safe_radius_sq:
                         # ตรวจสอบว่ามีกำแพงกั้นระหว่างศัตรูกับ Reaper หรือไม่
                         if enemy.has_line_of_sight((r_obj.x, r_obj.y), self.game_map.solid_rects):
                             print(f"Enemy {enemy.id} entered safe zone and starting fade!")
@@ -648,10 +685,25 @@ class GameWidget(Widget):
         # 2. กราฟิกที่ต้องอัปเดตเสมอทุกลูกเฟรม
         px, py = self.player.logic_pos
         self.update_camera()
-        self.game_map.update_chunks(px, py)
         
-        # อัปเดต Debug Label
-        self._update_debug_text(px, py)
+        # Optimization: อัปเดต Chunk เฉพาะตอนขยับเกิน 2px เพื่อลดภาระ Grid search
+        if not hasattr(self, '_last_chunk_px'): self._last_chunk_px, self._last_chunk_py = -999, -999
+        if abs(px - self._last_chunk_px) > 2 or abs(py - self._last_chunk_py) > 2:
+            self.game_map.update_chunks(px, py)
+            self._last_chunk_px, self._last_chunk_py = px, py
+        
+        # อัปเดต Debug Label (อัปเดตแค่บางเฟรมเพื่อลดภาระ CPU ในการจัดการ String)
+        if not hasattr(self, '_debug_frame_count'): self._debug_frame_count = 0
+        self._debug_frame_count += 1
+        if self._debug_frame_count % 60 == 0:
+            map_name = os.path.basename(self.game_map.filename)
+            self.debug_label.text = (
+                f"FPS: {int(Clock.get_fps())}\n"
+                f"Map: {map_name}\n"
+                f"Pos: ({int(px)}, {int(py)})\n"
+                f"Grid: ({int(px/16)}, {int(py/16)})\n"
+                f"Chunk: ({int(px/16/16)}, {int(py/16/16)})"
+            )
         
         # จัดเลเยอร์การวาดตัวละคร (Y-Sorting)
         self.y_sorting()
@@ -714,6 +766,11 @@ class GameWidget(Widget):
 
     def y_sorting(self):
         """จัดลำดับการวาดตัวละครตามค่า Y (Y-Sorting)"""
+        # Optimization: ถ้าไม่มีอะไรขยับ ไม่ต้องเสียเวลาจัดเลเยอร์ใหม่
+        is_anything_moving = self.player.is_moving or any(e.is_chasing for e in self.enemies)
+        if not is_anything_moving and hasattr(self, '_y_sorted_done') and self._y_sorted_done:
+            return
+            
         if self.is_dialogue_active and not self.player.is_moving:
             return
 
@@ -733,6 +790,7 @@ class GameWidget(Widget):
         for char in sortable_chars:
             if hasattr(char, 'group'):
                 self.sorting_layer.add(char.group)
+        self._y_sorted_done = True
 
     def update_camera(self):
         """อัปเดตตำแหน่งกล้องตามผู้เล่น"""
@@ -895,6 +953,33 @@ class GameWidget(Widget):
             self.interaction_hints.append(hint)
             return
 
+        # เช็ค Underground Portal
+        from settings import UNDERGROUND_PORTAL_POS
+        px, py = self.player.logic_pos
+        ux, uy = UNDERGROUND_PORTAL_POS
+        dist = ((px - ux)**2 + (py - uy)**2)**0.5
+        # DEBUG print to help user see their current pos vs portal pos
+        # print(f"DEBUG: Pos ({px}, {py}), Portal ({ux}, {uy}), Dist: {dist:.1f}, Day: {self.current_day}")
+        
+        if dist <= 32 and self.current_day == 5: # Increased range slightly for easier hit
+            hint = Label(
+                text="E", font_name=GAME_FONT, font_size='12sp',
+                color=(1, 1, 1, 1), size_hint=(None, None), size=(25, 25),
+                halign='center', valign='middle', bold=True
+            )
+            hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
+            with hint.canvas.before:
+                Color(0, 0, 0, 0.8)
+                hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
+            hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
+            hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
+            
+            spos = self.camera.world_to_screen(ux + TILE_SIZE/2, uy + 45)
+            hint.pos = (spos[0] - 12.5, spos[1])
+            if self.dialogue_root: self.dialogue_root.add_widget(hint)
+            self.interaction_hints.append(hint)
+            return
+
         # เช็คจุดวางจดหมาย (Day 2) - ไม่แสดงปุ่ม E และ Marker ตามคำขอ
         if self.current_day == 2 and self.letters_held > 0:
             for i, spot in enumerate(HOUSE_DOOR_SPOTS):
@@ -915,7 +1000,58 @@ class GameWidget(Widget):
         """จัดการการกดปุ่ม [E] เพื่อคุยหรือสำรวจ"""
         self.clear_interaction_hints()
         
-        # 0. เช็คการวางจดหมาย (Day 2 Priority)
+        # 0. เช็ค Underground Portal (Priority First on Day 5)
+        from settings import UNDERGROUND_PORTAL_POS, PLAYER_START_X, PLAYER_START_Y
+        px, py = self.player.logic_pos
+        ux, uy = UNDERGROUND_PORTAL_POS
+        dist = ((px - ux)**2 + (py - uy)**2)**0.5
+        
+        print(f"DEBUG: Interact pressed at ({px}, {py}). Portal dist: {dist:.1f}, Day: {self.current_day}")
+        
+        if dist <= 32 and self.current_day == 5:
+            print("DEBUG: UNDERGROUND PORTAL TRIGGERED!")
+            # ล้างทุกอย่างให้เกลี้ยงที่สุด (เหมือนตอนเข้าบ้าน แต่เน้นทำลายวัตถุด้วย)
+            for npc in self.npcs: npc.destroy()
+            for enemy in self.enemies: enemy.destroy()
+            for er in getattr(self, 'extra_reapers', []): er.destroy()
+            
+            self.sorting_layer.clear()
+            self.npcs, self.enemies, self.stars = [], [], []
+            self.extra_reapers = []
+
+            # ซ่อน Reaper หลักและย้ายไปไกลๆ (เฉพาะแมพนี้)
+            if hasattr(self, 'reaper') and self.reaper:
+                self.reaper.x, self.reaper.y = -5000, -5000 # ย้ายไปพิกัดที่ไม่มีใครเห็น
+                self.reaper.logic_pos = [-5000, -5000]
+                if hasattr(self.reaper, 'sprite_color'):
+                    self.reaper.sprite_color.a = 0 # ซ่อน
+                if hasattr(self.reaper, 'aura_color'):
+                    self.reaper.aura_color.a = 0 # ซ่อนออร่า
+                self.reaper.update_visual_positions()
+
+            # 1. เปลี่ยนแมพ
+            self.change_map('assets/Tiles/underground.tmj')
+            
+            # 2. วางตำแหน่งตัวละครในแมพใหม่
+            # ตั้งพิกัดเกิดในแมพ underground (1088,16) ตามคำขอล่าสุด
+            self.player.logic_pos = [1088, 16] 
+            self.player.target_pos = [1088, 16]
+            self.player.direction = 'up'
+            self.player.update_frame()
+            self.player.sync_graphics_pos()
+            
+            # 3. ใส่ตัวละครคืนเข้าไปใน Sorting Layer
+            self.sorting_layer.add(self.player.group)
+            
+            # 4. สร้าง Entity ใหม่
+            self.create_npcs()
+            self.create_enemies()
+            self.world_manager.create_reapers() 
+            
+            self.show_vn_dialogue("Little girl", "It's cold and damp down here... I should be careful.")
+            return
+
+        # 1. เช็คการวางจดหมาย (Day 2 Priority)
         if self.current_day == 2 and hasattr(self, 'pending_drop_spot') and self.pending_drop_spot:
             from settings import HOUSE_MARKS_MAPPING
             spot, spot_index = self.pending_drop_spot
@@ -937,8 +1073,18 @@ class GameWidget(Widget):
                 self.curious_sound.play()
                 
             star_pos = (self.current_star_target.x, self.current_star_target.y)
-            portrait = STAR_ITEM_MAPPING.get(star_pos, {}).get("portrait")
-            self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
+            # เช็คข้อมูลไอเทมตามวัน
+            if 'underground.tmj' in self.game_map.filename.lower():
+                # แมพใต้ดินใช้ช้อย SEARCH
+                self.show_vn_dialogue("Little girl", "I found one of those objects... should I search inside?", choices=["SEARCH", "LEAVE IT"])
+            elif self.current_day == 4:
+                from settings import DAY4_KEY_MAPPING
+                portrait = DAY4_KEY_MAPPING.get(star_pos, {}).get("portrait")
+                self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
+            else:
+                from settings import STAR_ITEM_MAPPING
+                portrait = STAR_ITEM_MAPPING.get(star_pos, {}).get("portrait")
+                self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
             return
 
         # 1. เช็คจุดไฟเทียน (Day 3)
@@ -956,9 +1102,26 @@ class GameWidget(Widget):
             self.process_interaction(target, npc_index, dx, dy)
             return
 
-        # 3. เช็คจุดค้นหา
+            self.show_vn_dialogue("Little girl", "It's cold and damp down here... I should be careful.")
+            return
+
+        # 3. เช็คจุดค้นหา (ทั่วไป และ Object ใน Underground)
         if self.current_search_target:
             self.process_search_spot(self.current_search_target)
+            return
+
+        # 4. เช็ค Object ใน Underground (Interaction with layers)
+        if 'underground.tmj' in self.game_map.filename.lower():
+            # ดึง Object จากเลเยอร์ "ของ" มาเช็ค Interaction
+            objects_layer = next((l for l in self.game_map.tmx_data.layers if l.name == "ของ"), None)
+            if objects_layer:
+                px, py = self.player.logic_pos
+                for obj in objects_layer:
+                    dist = ((px - obj.x)**2 + (py - (self.game_map.height * 16 - obj.y))**2)**0.5
+                    if dist <= 32:
+                        print(f"DEBUG: Interacting with object {obj.id}")
+                        self.process_search_spot(obj)
+                        return
 
     def use_stun_item(self):
         """ใช้ Blue Stone เพื่อสตันผีรอบๆ ตัว"""
@@ -1002,8 +1165,27 @@ class GameWidget(Widget):
             self.show_vn_dialogue("Little girl", "Found it. This will keep me going tonight.")
             # ตั้งสถานะรอเควสสำเร็จ (จะถูกเรียกใน story_manager.handle_dialogue_end)
             self._pending_food_success = True
-        else:
-            self.show_vn_dialogue("Little girl", "Just dust and old rags. There’s nothing to eat here.")
+            return
+
+        # 1. การค้นหาใน Underground (ดาว/Spark)
+        if 'underground.tmj' in self.game_map.filename.lower():
+            # ต้องคุยกับ The Soul ก่อนถึงจะหาเจอ (เช็คว่าเควส active หรือยัง)
+            quest = self.quest_manager.active_quests.get("soul_fragments")
+            if not quest or not quest.is_active:
+                self.show_vn_dialogue("Little girl", "I don't know what I'm looking for... I should talk to the soul first.")
+                return
+            
+            # สุ่มเจอ Spark (เลียนแบบระบบ Day 1)
+            import random
+            if random.random() < 0.4: # โอกาส 40%
+                self.quest_manager.update_quest_progress("soul_fragments", 1)
+                self.show_item_discovery("SOUL FRAGMENT", "assets/Items/star/doll1.png") # ใช้รูปชั่วคราว
+                self.show_vn_dialogue("Little girl", "I found a soul fragment!")
+            else:
+                self.show_vn_dialogue("Little girl", "Nothing here but damp earth.")
+            return
+
+        self.show_vn_dialogue("Little girl", "Just dust and old rags. There’s nothing to eat here.")
 
         
     def process_interaction(self, target, index, dx, dy):
@@ -1115,8 +1297,10 @@ class GameWidget(Widget):
         self.current_character_name = character_name
         if choices:
             self.current_choices = choices
-        if portrait:
+        if portrait is not None:
             self.current_portrait = portrait
+        else:
+            self.current_portrait = None # รีเซ็ตเป็น None ถ้าฝั่งเรียกไม่ได้ส่งมา (ให้ใช้ Default)
             
         self.dialogue_manager.show_vn_dialogue(
             character_name, dialogue, 
@@ -1233,6 +1417,15 @@ class GameWidget(Widget):
 
     def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
         """คืนค่าลิสต์ข้อความคุยตามระยะห่างของ NPC"""
+        if npc_name == "The Soul":
+            quest = self.quest_manager.active_quests.get("soul_fragments")
+            if quest:
+                if quest.current_count >= quest.target_count:
+                    from storygame.chat import NPC5_SUCCESS
+                    return [NPC5_SUCCESS]
+                elif quest.is_active:
+                    return ["Were you able to find the fragments? I can almost feel myself becoming whole again..."]
+
         if npc_name == "The Sad Soul":
             quest = self.quest_manager.active_quests.get("doll_parts")
             if quest:

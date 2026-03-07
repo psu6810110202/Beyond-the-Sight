@@ -111,13 +111,15 @@ class NPC:
         # Animation properties
         # NPC5 มี animation ตลอดเวลา ส่วนอื่นๆ นิ่ง
         if 'NPC5' in self.image_path:
-            self.current_fps = 8  # FPS สูงสำหรับ animation ตลอดเวลา
+            self.current_fps = 15  
             self.is_animated = True
+            self.direction_change_interval = 0.3  # วิญญาณขยับรัวๆ (0.1 วินาทีเปลี่ยนที)
         else:
-            self.current_fps = 1  # ลด FPS เหลือ 1 เพื่อไม่ให้กระพริบ
+            self.current_fps = 1  
             self.is_animated = False
+            self.direction_change_interval = 3.0  # NPC ปกติรอนานหน่อย (3 วินาทีเปลี่ยนที)
+        
         self.direction_change_timer = 0
-        self.direction_change_interval = 3.0  # เปลี่ยนทิศทางทุก 3 วินาที (ช้าขึ้น)
         self.directions = ['down', 'left', 'right', 'up']
         
         # Create visual elements in an InstructionGroup for sorting

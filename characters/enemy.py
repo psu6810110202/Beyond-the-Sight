@@ -201,25 +201,26 @@ class Enemy:
                     self.color_instr.rgb = (1, 1, 1) # Reset color
                 return # Don't move or chase while stunned
 
-            # Decide whether to chase the player
-            dist = self.calculate_distance(player_pos)
-            if dist <= self.detection_radius and self.has_line_of_sight(player_pos, map_rects):
+            # Decide whether to chase the player (Optimization: Squared Distance)
+            dist_sq = (player_pos[0] - self.logic_pos[0])**2 + (player_pos[1] - self.logic_pos[1])**2
+            if dist_sq <= (self.detection_radius ** 2) and self.has_line_of_sight(player_pos, map_rects):
                 self.is_chasing = True
                 self.chase_player_grid(player_pos, reaper_pos, map_rects, enemies)
             else:
                 self.is_chasing = False
         else:
             # ขณะเดินไปเป้าหมาย (is_moving) ถ้ายังอยู่ในรัศมีและมองเห็น ก็ถือว่ายังไล่อยู่
-            dist = self.calculate_distance(player_pos)
-            self.is_chasing = dist <= self.detection_radius and self.has_line_of_sight(player_pos, map_rects)
+            dist_sq = (player_pos[0] - self.logic_pos[0])**2 + (player_pos[1] - self.logic_pos[1])**2
+            self.is_chasing = dist_sq <= (self.detection_radius ** 2) and self.has_line_of_sight(player_pos, map_rects)
         
     def calculate_distance(self, target_pos):
-        """Calculates distance between enemy and target (เหมือน player)."""
-        return math.sqrt((target_pos[0] - self.logic_pos[0])**2 + (target_pos[1] - self.logic_pos[1])**2)
+        """Calculates squared distance between enemy and target."""
+        # Note: Returned value is squared distance to avoid sqrt
+        return (target_pos[0] - self.logic_pos[0])**2 + (target_pos[1] - self.logic_pos[1])**2
         
     def chase_player_grid(self, player_pos, reaper_pos=None, map_rects=None, enemies=None):
         """Implements grid-based chasing logic with safe zone detection."""
-        # เมื่อไล่ล่า เราจะยกเลิกการหน่วงเวลาเพื่อให้เข้าหาผู้เล่นได้ทันที
+        # ... (rest of the logic remains same but uses logic_pos)
         self.turn_delay = 0
 
         dx = player_pos[0] - self.logic_pos[0]
@@ -271,9 +272,6 @@ class Enemy:
         if not (0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE):
             return False
             
-        # 2. เช็ค Safe Zone (Reaper) - ลบออกเพื่อให้ศัตรูเดินเข้าไปชนวงและหายไปได้
-        # (เราปล่อยให้ main.py จัดการลบศัตรูเมื่อเข้าใกล้วงแทน)
-                
         # 3. เช็คกำแพง
         if map_rects and self.check_map_collision(new_x, new_y, map_rects):
             return False
@@ -309,7 +307,9 @@ class Enemy:
         enemy_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
         
         for r in map_rects:
-            # ใช้ Logic กล่องแบบห้ามซ้อนทับกันเต็มขนาด (ถ้ามากกว่าคือทับ)
+            # เพิ่ม Optimized check: เช็คเฉพาะกล่องที่อยู่ใกล้
+            if abs(r[0] - new_x) > 64 or abs(r[1] - new_y) > 64:
+                continue
             if (enemy_rect[0] < r[0] + r[2] and
                 enemy_rect[0] + enemy_rect[2] > r[0] and
                 enemy_rect[1] < r[1] + r[3] and
@@ -322,20 +322,15 @@ class Enemy:
         enemy_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
         
         for other_enemy in enemies:
-            # ข้ามตัวเอง
-            if other_enemy.id == self.id:
-                continue
-            # ข้ามศัตรูที่กำลังจางหาย
-            if other_enemy.is_fading:
-                continue
-                
-            other_rect = [other_enemy.logic_pos[0], other_enemy.logic_pos[1], TILE_SIZE, TILE_SIZE]
+            if other_enemy.id == self.id or other_enemy.is_fading: continue
             
-            # ใช้ Logic กล่องแบบห้ามซ้อนทับกันเต็มขนาด
-            if (enemy_rect[0] < other_rect[0] + other_rect[2] and
-                enemy_rect[0] + enemy_rect[2] > other_rect[0] and
-                enemy_rect[1] < other_rect[1] + other_rect[3] and
-                enemy_rect[1] + enemy_rect[3] > other_rect[1]):
+            other_pos = other_enemy.logic_pos
+            if abs(other_pos[0] - new_x) > 32 or abs(other_pos[1] - new_y) > 32: continue
+            
+            if (enemy_rect[0] < other_pos[0] + TILE_SIZE and
+                enemy_rect[0] + TILE_SIZE > other_pos[0] and
+                enemy_rect[1] < other_pos[1] + TILE_SIZE and
+                enemy_rect[1] + TILE_SIZE > other_pos[1]):
                 return True
         return False
 
@@ -348,53 +343,33 @@ class Enemy:
                 self.logic_pos[1] + TILE_SIZE + buffer > player_pos[1])
             
     def has_line_of_sight(self, target_pos, map_rects):
-        """ตรวจสอบว่ามีกำแพงกั้นระหว่างศัตรูกับผู้เล่นหรือไม่ (เช็คหลายจุดเพื่อให้เห็นตามหัวมุมได้ดีขึ้น)"""
-        if not map_rects:
+        """ตรวจสอบว่ามีกำแพงกั้นระหว่างศัตรูกับผู้เล่นหรือไม่ (Optimization: ลด Ray count)"""
+        if not map_rects: return True
+            
+        ex, ey = self.logic_pos[0] + TILE_SIZE/2, self.logic_pos[1] + TILE_SIZE/2
+        px, py = target_pos[0] + TILE_SIZE/2, target_pos[1] + TILE_SIZE/2
+        
+        # 1. เช็คเส้นกลางก่อน (Center to Center)
+        if self._check_ray(ex, ey, px, py, map_rects):
             return True
             
-        # จุดเช็คของศัตรู (กลาง + 4 มุมหดเข้ามา 2 พิกเซลเพื่อไม่ให้ติดขอบกำแพงตัวเอง)
-        ex, ey = self.logic_pos
-        e_pts = [
-            (ex + TILE_SIZE / 2, ey + TILE_SIZE / 2),
-            (ex + 2, ey + 2),
-            (ex + TILE_SIZE - 2, ey + 2),
-            (ex + 2, ey + TILE_SIZE - 2),
-            (ex + TILE_SIZE - 2, ey + TILE_SIZE - 2)
-        ]
-        
-        # จุดเช็คของผู้เล่น (กลาง + 4 มุมหดเข้ามา 2 พิกเซล)
-        px, py = target_pos
-        p_pts = [
-            (px + TILE_SIZE / 2, py + TILE_SIZE / 2),
-            (px + 2, py + 2),
-            (px + TILE_SIZE - 2, py + 2),
-            (px + 2, py + TILE_SIZE - 2),
-            (px + TILE_SIZE - 2, py + TILE_SIZE - 2)
-        ]
-        
-        # ตรวจสอบทุกลำแสงที่เป็นไปได้ (ถ้ามีสักเส้นที่ผ่านได้ ถือว่าเห็นกัน)
-        for e_pt in e_pts:
-            for p_pt in p_pts:
-                x1, y1 = e_pt
-                x2, y2 = p_pt
-                
-                blocked = False
-                min_x, max_x = min(x1, x2), max(x1, x2)
-                min_y, max_y = min(y1, y2), max(y1, y2)
-                
-                for r in map_rects:
-                    rx, ry, rw, rh = r
-                    if rx + rw < min_x or rx > max_x or ry + rh < min_y or ry > max_y:
-                        continue
-                        
-                    if self.line_intersects_rect(x1, y1, x2, y2, r):
-                        blocked = True
-                        break
-                
-                if not blocked:
-                    return True # เห็นแล้วจากมุมนี้!
-                    
-        return False # บล็อกมิดทุกทิศทาง
+        # 2. เช็คจากมุมที่หดเข้ามานิดหน่อย (Edge peek)
+        # ถ้ากลางไม่ผ่าน ลองเช็คอีก 2 จุดเพื่อความฉลาดในการเลี้ยว
+        pts = [(self.logic_pos[0]+2, self.logic_pos[1]+2), (self.logic_pos[0]+TILE_SIZE-2, self.logic_pos[1]+TILE_SIZE-2)]
+        for pt in pts:
+            if self._check_ray(pt[0], pt[1], px, py, map_rects):
+                return True
+        return False
+
+    def _check_ray(self, x1, y1, x2, y2, map_rects):
+        min_x, max_x = min(x1, x2), max(x1, x2)
+        min_y, max_y = min(y1, y2), max(y1, y2)
+        for r in map_rects:
+            rx, ry, rw, rh = r
+            if rx + rw < min_x or rx > max_x or ry + rh < min_y or ry > max_y: continue
+            if self.line_intersects_rect(x1, y1, x2, y2, r):
+                return False
+        return True
 
     def line_intersects_rect(self, x1, y1, x2, y2, rect):
         """ตรวจสอบว่าเส้นตรงตัดกับสี่เหลี่ยมหรือไม่"""

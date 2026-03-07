@@ -82,7 +82,7 @@ class CutsceneManager:
                 right_edge = cam_x + (visible_w / 2) + 64
                 bottom_edge = cam_y - (visible_h / 2) - 64
                 
-                direction = 'down' if self.game.current_day == 2 else 'right'
+                direction = 'down' if self.game.current_day in [2, 4] else 'right'
                 
                 reached_edge = False
                 px, py = self.game.player.logic_pos
@@ -221,15 +221,9 @@ class CutsceneManager:
                         if self.day2_black_bg.parent:
                             self.day2_black_bg.parent.remove_widget(self.day2_black_bg)
                             
-                        # เริ่มบทสนทนาหลังจอสว่างแล้ว
-                        data = [
-                            {"char": "Father", "text": "Still... you're still glaring at me with those eyes?! I told you—if you're stepping foot into this house, don't you ever dare look at me with that curse!"},
-                            {"char": "Mother", "text": "Stop it, husband... don't touch him too much. I don't want whatever 'curse' he sees in those eyes rubbing off on your hands. Just living under the same roof as this demon is enough to drive me insane!"},
-                            {"char": "Father", "text": "What are you looking at?! Is there some spirit standing behind me now? You're nothing but my own flesh and blood that I regret ever fathering—a total jinx! Talking to the air like a madman! You’ve become a blight, dragging our family down for the whole neighborhood to mock!"},
-                            {"char": "Mother", "text": "I'm dying of shame... Our lives were finally turning around, but then we ended up with a freak like you who does nothing but see ghosts! I truly wish I could announce to everyone that I have no such disgusting child!"},
-                            {"char": "Father", "text": "You're getting nothing to eat today! Since you love those spirits so much, go beg them for scraps yourself! I don't care if you starve or rot, just don't you dare bring more shame to my name with your wretched behavior!"},
-                            {"char": "Mother", "text": "Go rot in your dark corner! If I see you whispering to yourself or staring at anyone with those creepy eyes again... I'll be the one to gouge them out of your head myself, forever!"}
-                        ]
+                        # เริ่มบทสนทนาหลังจากจอสว่างแล้ว โดยดึงจาก chat.py
+                        from storygame.chat import PARENT_FIGHT_DIALOGUE
+                        data = PARENT_FIGHT_DIALOGUE
                         
                         self.game.current_dialogue_queue = [d["text"] for d in data]
                         self.game.temp_dialogue_chars = [d["char"] for d in data]
@@ -468,46 +462,40 @@ class CutsceneManager:
         
         # ตัดสินใจเนื่อเรื่อง (สั่งทอดๆ)
         success = not getattr(self.game, 'quest_item_fail', False)
+        from storygame.chat import DAY_END_DIALOGUES
         
-        if self.game.current_day == 1:
-            character_name = "Angel"
-            if self.game.quest_success_count >= 3 or success:
-                texts = [
-                    "You still hold the light in your hands, little one...",
-                    "Though this place is shrouded in darkness, your kindness has saved that soul.",
-                    "Go and rest now. You will need your strength for tomorrow."
-                ]
+        day = self.game.current_day
+        cfg = DAY_END_DIALOGUES.get(day, DAY_END_DIALOGUES[1])
+        character_name = "Angel" if day in [1, 3] else "Devil"
+
+        if day == 5:
+            current_total_success = self.game.quest_success_count
+            if success: current_total_success += 1
+            
+            if current_total_success >= 5:
+                # Perfect
+                data = cfg["perfect"]
+                texts = data["text"]
+                self.game.temp_dialogue_chars = data["char"]
+                character_name = self.game.temp_dialogue_chars[0]
+            elif current_total_success > 0:
+                # 1-4
+                data = cfg["middle"]
+                texts = data["text"]
+                self.game.temp_dialogue_chars = data["char"]
+                character_name = self.game.temp_dialogue_chars[0]
             else:
-                texts = [
-                    "Your hands are trembling... It’s alright.",
-                    "Sometimes, destiny is too heavy for a child to carry alone.",
-                    "Let’s go home for now. We can always start again tomorrow."
-                ]
-        elif self.game.current_day == 2:
-            character_name = "Devil"
-            if success:
-                texts = [
-                    "Heh... keep playing the hero, kid.",
-                    "You can save a ghost, but the humans lurking behind you? They haven't changed a bit.",
-                    "But fine, I'll give it to you—you did well today.",
-                    "Now, get back home before those people start getting suspicious."
-                ]
-            else:
-                texts = [
-                    "See that? In the end, you can't save anyone—not even yourself.",
-                    "But don't you go crying now; this wretched world has always been this way.",
-                    "Come here, let me escort you back to that hell you call 'home' yourself."
-                ]
-        elif self.game.current_day == 3:
+                # 0
+                data = cfg["failure"]
+                texts = data["text"]
+                self.game.temp_dialogue_chars = data["char"]
+                character_name = self.game.temp_dialogue_chars[0]
+        elif day == 3:
             from storygame.chat import ANGEL_DAY3_SUCCESS, ANGEL_DAY3_FAIL
+            texts = ANGEL_DAY3_SUCCESS if success else ANGEL_DAY3_FAIL
             character_name = "Angel"
-            if success:
-                texts = ANGEL_DAY3_SUCCESS
-            else:
-                texts = ANGEL_DAY3_FAIL
         else:
-            character_name = "Angel"
-            texts = ["The night continues..."]
+            texts = cfg["success"] if success else cfg["fail"]
         
         self.game.current_dialogue_queue = texts
         self.game.current_dialogue_index = 0

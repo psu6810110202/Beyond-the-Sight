@@ -148,8 +148,19 @@ ENEMY_SPAWN_DATA = {
         {'pos': (416, 1120), 'type': 3},
         {'pos': (528, 720), 'type': 1},
         {'pos': (432, 1456), 'type': 2}
+    ],
+    4: [
+        {'pos': (1232, 1248), 'type': 3},
+        {'pos': (1120, 704), 'type': 3},
+        {'pos': (1008, 1296), 'type': 1},
+        {'pos': (1552, 608), 'type': 2}
     ]
 }
+
+# ตำแหน่งยมทูตในแมพ Underground (Day 5)
+REAPER_SPAWN_DATA_UNDERGROUND = [
+    (1024, 160), (240, 464), (784, 656), (480, 992), (256, 656)
+]
 
 # ตำแหน่งจุดค้นหาในบ้าน (Home Map)
 SEARCHABLE_SPOTS_HOME = [
@@ -157,6 +168,10 @@ SEARCHABLE_SPOTS_HOME = [
     (256, 176), (272, 176), (288, 160), (304, 128)
 ]
 EMPTY_SPOT_HOME = (240, 112)
+
+# ตำแหน่งจุดค้นหาใน Underground (จะถูกสร้างดวงดาวตามเลเยอร์ 'ของ')
+SEARCHABLE_SPOTS_UNDERGROUND = []
+UNDERGROUND_TRUE_POSITIONS = [(928, 48), (288, 112), (736, 1264)]
 HOME_EAT_POS = (16, 176)
 
 # ตำแหน่งเทียนใน Day 3
@@ -170,4 +185,21 @@ CANDLE_COLOR_MAPPING = {
     (688, 1312): "RED",
     (528, 960):  "BLUE",
     (462, 560):  "YELLOW"
+}
+
+# Underground Portal
+UNDERGROUND_PORTAL_POS = (1488, 16)
+
+# ข้อมูลเควส Day 4: ตามหากุญแจ
+DAY4_STAR_LOCATIONS = [
+    (1536, 1184), (1232, 1072), (912, 1376), (880, 928), (1248, 752)
+]
+
+# เฉพาะจุด (1536, 1184) ที่เป็นกุญแจจริง นอกนั้นเป็นขยะ/ของเสีย (fail=True)
+DAY4_KEY_MAPPING = {
+    (1536, 1184): {"img": "assets/Items/key.png",      "portrait": PLAYER_PORTRAIT_IMG,   "fail": False, "is_key": True},
+    (1232, 1072): {"img": "assets/Items/key_w.png", "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (912, 1376):  {"img": "assets/Items/key_w.png", "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (880, 928):   {"img": "assets/Items/key_w.png", "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (1248, 752):  {"img": "assets/Items/key_w.png", "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
 }

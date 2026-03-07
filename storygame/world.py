@@ -17,23 +17,38 @@ class WorldManager:
         """จัดการการสร้าง Reaper หลักและ Extra Reapers ตามความก้าวหน้าของวัน"""
         from characters.reaper import Reaper, REAPER_START_POS
         
-        # 1. จัดการ Reaper หลัก (ถ้ายังไม่มี)
+        # 1. จัดการ Reaper หลัก (เฉพาะในแมพหลัก beyond.tmj)
+        map_file = getattr(self.game.game_map, 'filename', '')
+        is_village = 'beyond.tmj' in map_file.lower()
+        print(f"DEBUG: create_reapers on map: {map_file}, is_village: {is_village}")
+
         if not hasattr(self.game, 'reaper') or self.game.reaper is None:
             self.game.reaper = Reaper(self.game.sorting_layer)
-        else:
-            # ถ้ามีอยู่แล้ว ให้รีเซ็ตตำแหน่ง (กรณีข้ามวัน)
+        
+        if is_village:
+            # เพิ่มคืนเข้า Sorting Layer หากถูกล้าง
             if self.game.reaper.group not in self.game.sorting_layer.children:
                 self.game.sorting_layer.add(self.game.reaper.group)
             
+            # ตั้งค่าเริ่มต้นสำหรับหมู่บ้าน
             self.game.reaper.x, self.game.reaper.y = REAPER_START_POS
             self.game.reaper.logic_pos = list(REAPER_START_POS)
             self.game.reaper.target_pos = list(REAPER_START_POS)
-            self.game.reaper.update_visual_positions()
             self.game.reaper.alpha = 1.0
             self.game.reaper.is_fading = False
             self.game.reaper.fading_done = False
-            if hasattr(self.game.reaper, 'sprite_color'):
-                self.game.reaper.sprite_color.a = 1.0
+            if hasattr(self.game.reaper, 'sprite_color'): self.game.reaper.sprite_color.a = 1.0
+            if hasattr(self.game.reaper, 'aura_color'): self.game.reaper.aura_color.a = 0.1
+        else:
+            # ย้ายไปไกลๆ และซ่อนหากไม่ใช่แมพหมู่บ้าน
+            self.game.reaper.x, self.game.reaper.y = -5000, -5000
+            self.game.reaper.logic_pos = [-5000, -5000]
+            self.game.reaper.is_fading = False
+            self.game.reaper.fading_done = False
+            if hasattr(self.game.reaper, 'sprite_color'): self.game.reaper.sprite_color.a = 0.0
+            if hasattr(self.game.reaper, 'aura_color'): self.game.reaper.aura_color.a = 0.0
+            
+        self.game.reaper.update_visual_positions()
 
         # 2. จัดการ Extra Reapers (ล้างของเก่าก่อน)
         if not hasattr(self.game, 'extra_reapers'):
@@ -43,28 +58,60 @@ class WorldManager:
             er.destroy() # เรียกใช้ method ใหม่ที่สร้างไว้
         self.game.extra_reapers = []
 
-        # 3. สร้าง Extra Reapers ตามวัน (ใช้ >= เพื่อให้คงอยู่จนจบเกม)
-        day = getattr(self.game, 'current_day', 1)
-        if day >= 2:
-            # จุดสำหรับ Day 2 (กลาง-ล่างซ้าย)
-            extra_reap = Reaper(self.game.sorting_layer, x=304, y=288)
-            extra_reap.direction = 'right'
-            extra_reap.update_frame()
-            extra_reap.update_visual_positions()
-            self.game.extra_reapers.append(extra_reap)
-            
-        if day >= 3:
-            # จุดสำหรับ Day 3 (ตามที่ User กำหนด: 480, 1312)
-            extra_reap2 = Reaper(self.game.sorting_layer, x=480, y=1312)
-            extra_reap2.direction = 'down'
-            extra_reap2.update_frame()
-            extra_reap2.update_visual_positions()
-            self.game.extra_reapers.append(extra_reap2)
+        # 3. สร้าง Extra Reapers ตามวัน (เฉพาะในแมพหลัก beyond.tmj)
+        if is_village:
+            day = getattr(self.game, 'current_day', 1)
+            if day >= 2:
+                # จุดสำหรับ Day 2 (กลาง-ล่างซ้าย)
+                extra_reap = Reaper(self.game.sorting_layer, x=304, y=288)
+                extra_reap.direction = 'right'
+                extra_reap.update_frame()
+                extra_reap.update_visual_positions()
+                self.game.extra_reapers.append(extra_reap)
+                
+            if day >= 3:
+                # จุดสำหรับ Day 3 (ตามที่ User กำหนด: 480, 1312)
+                extra_reap2 = Reaper(self.game.sorting_layer, x=480, y=1312)
+                extra_reap2.direction = 'down'
+                extra_reap2.update_frame()
+                extra_reap2.update_visual_positions()
+                self.game.extra_reapers.append(extra_reap2)
+
+            if day >= 4:
+                # จุดสำหรับ Day 4 (1344, 944) ตามที่ User กำหนด
+                extra_reap3 = Reaper(self.game.sorting_layer, x=1344, y=944)
+                extra_reap3.direction = 'down' # หรือทิศทางที่เหมาะสม
+                extra_reap3.update_frame()
+                extra_reap3.update_visual_positions()
+                self.game.extra_reapers.append(extra_reap3)
+        elif 'underground.tmj' in map_file.lower():
+            # สร้าง Reapers ใน Underground ตามที่ระบุ
+            from settings import REAPER_SPAWN_DATA_UNDERGROUND
+            for pos in REAPER_SPAWN_DATA_UNDERGROUND:
+                er = Reaper(self.game.sorting_layer, x=pos[0], y=pos[1])
+                er.direction = 'down'
+                er.update_frame()
+                er.update_visual_positions()
+                self.game.extra_reapers.append(er)
 
     def create_npcs(self):
-        """สร้างพิกัดและรูปภาพจากข้อมูลเริ่มต้นใน settings.py"""
+        # ตรรกะการแสดง NPC ตามวัน (เฉพาะในแมพหลัก beyond.tmj หรือตามเงื่อนไขเนื้อเรื่อง)
+        map_file = getattr(self.game.game_map, 'filename', '')
+        
+        if 'underground.tmj' in map_file.lower():
+            # สร้าง The Soul (800, 320) ใน Underground
+            the_soul = NPC(self.game.sorting_layer, 800, 320, 'characters/assets/NPC/NPC5.png')
+            the_soul.npc_index = 5 # หรือ index ที่เหมาะสม
+            the_soul.name = "The Soul"
+            the_soul.direction = 'up'
+            the_soul.update_frame()
+            self.game.npcs.append(the_soul)
+            return
+
+        if 'beyond.tmj' not in map_file.lower():
+            return
+
         for i in range(min(NPC_COUNT, len(NPC_IMAGE_LIST))):
-            # ตรรกะการแสดง NPC ตามวัน (ดึงมาจาก Story Manager)
             if not self.game.story_manager.is_npc_visible(i):
                 continue
                 
@@ -73,7 +120,11 @@ class WorldManager:
             self.game.npcs.append(npc)
 
     def create_enemies(self):
-        """สร้างพิกัดและชนิดของศัตรู โดยลำดับความสำคัญคือ: ข้อมูลจากเซฟ > ข้อมูลเริ่มต้น"""
+        """สร้างพิกัดและชนิดของศัตรู (เฉพาะในแมพหลัก beyond.tmj)"""
+        map_file = getattr(self.game.game_map, 'filename', '')
+        if 'beyond.tmj' not in map_file.lower():
+            return
+
         # 1. ตรวจสอบว่ามีข้อมูลศัตรูจากเซฟล่าสุดหรือไม่
         has_saved_enemies = False
         initial_data = getattr(self.game, 'initial_data', None)
@@ -207,19 +258,66 @@ class WorldManager:
             spawned += 1
             
     def create_stars(self):
-        """สร้างดาวตามพิกัดที่กำหนดใน Day 1"""
-        if self.game.current_day != 1:
-            return
-            
-        for i, (x, y) in enumerate(STAR_SPAWN_LOCATIONS):
-            # ตรวจสอบว่าดาวจุดนี้ถูกเก็บไปแล้วหรือยัง
-            if [x, y] in self.game.collected_stars or (x, y) in self.game.collected_stars:
-                continue
-            
-            # 3 ดวงแรกเป็นของจริง ดวงที่เหลือเป็นของหลอก (ตาม Logic เดิม)
-            is_true = (i < 3)
-            star = Star(self.game.sorting_layer, x, y, is_true=is_true)
-            self.game.stars.append(star)
+        """สร้างดาวตามพิกัดที่กำหนด (Day 1 และ Day 4)"""
+        if self.game.current_day == 1:
+            locations = STAR_SPAWN_LOCATIONS
+            # 3 ดวงแรกเป็นของจริง ดวงที่เหลือเป็นของหลอก (Day 1 Logic)
+            for i, (x, y) in enumerate(locations):
+                if (x, y) in self.game.collected_stars: continue
+                is_true = (i < 3)
+                star = Star(self.game.sorting_layer, x, y, is_true=is_true)
+                self.game.stars.append(star)
+        elif self.game.current_day == 4:
+            from settings import DAY4_STAR_LOCATIONS
+            locations = DAY4_STAR_LOCATIONS
+            for (x, y) in locations:
+                if (x, y) in self.game.collected_stars: continue
+                # สำหรับ Day 4, ดาวไหนที่เป็นกุญแจจริงจะถูกเช็คที่ interaction
+                star = Star(self.game.sorting_layer, x, y, is_true=True) # ให้เก็บได้ทุกลูก
+                self.game.stars.append(star)
+        elif 'underground.tmj' in getattr(self.game.game_map, 'filename', '').lower():
+            # สำหรับแมพใต้ดิน: ระบบเดียวกับ Day 1/4 (สุ่ม 3 จุดจริง, 5 จุดผีหลอก)
+            objects_layer = next((l for l in self.game.game_map.tmx_data.layers if l.name == "ของ"), None)
+            if objects_layer:
+                # รวบรวมตำแหน่งทั้งหมดที่มี "ของ"
+                all_positions = []
+                for obj in objects_layer:
+                    obj_y_render = self.game.game_map.height * 16 - obj.y
+                    all_positions.append((obj.x, obj_y_render))
+                
+                # ถ้ายังไม่มีการทำ mapping (กันพิกัดเปลี่ยนตอนโหลด)
+                if not hasattr(self.game, 'underground_fragments_mapping'):
+                    import random
+                    r = random.Random(777)
+                    
+                    self.game.underground_fragments_mapping = {}
+                    
+                    # 1. กำหนดตำแหน่งจริง 3 จุด (กระจายกัน) จาก settings
+                    from settings import UNDERGROUND_TRUE_POSITIONS
+                    true_positions = UNDERGROUND_TRUE_POSITIONS
+                    available_spots = [s for s in all_positions if s not in true_positions]
+                    for pos in true_positions:
+                        self.game.underground_fragments_mapping[pos] = {"type": "true"}
+                    
+                    # 2. สุ่มตำแหน่งอื่นๆ ที่เหลือ (ไม่ทับจุดจริง)
+                    remaining_pos = [p for p in all_positions if p not in true_positions]
+                    r.shuffle(remaining_pos)
+                    
+                    # เลือก 3 จุดเป็นของปลอม (ไม่เจออะไร)
+                    for i in range(min(3, len(remaining_pos))):
+                        self.game.underground_fragments_mapping[remaining_pos[i]] = {"type": "fake"}
+                    
+                    # เลือกอีก 3 จุดเป็นผี (Ghost Scare)
+                    for i in range(3, min(6, len(remaining_pos))):
+                        self.game.underground_fragments_mapping[remaining_pos[i]] = {"type": "ghost"}
+
+                # สร้างดาวเฉพาะจุดที่มีความสำคัญ (ใน mapping)
+                for pos, data in self.game.underground_fragments_mapping.items():
+                    if pos in self.game.collected_stars: continue
+                    
+                    # สร้างดาว ( Sparks)
+                    star = Star(self.game.sorting_layer, pos[0], pos[1], is_true=(data["type"] == "true"))
+                    self.game.stars.append(star)
 
     def create_candles(self):
         """สร้างเทียนที่พิกัดต่างๆ สำหรับเควส Day 3"""
@@ -403,8 +501,8 @@ class WorldManager:
                     pos=(880, 464 + (i * step_size)), 
                     size=(MAP_WIDTH - 880, step_size + 0.5)
                 ))
-        elif self.game.current_day in (2, 5):
-            # สำหรับ Day 2, 5: ใช้เฉพาะพิกัด Y (Safe area คือแถบล่างทั้งหมด)
+        elif self.game.current_day == 2:
+            # สำหรับ Day 2: ใช้เฉพาะพิกัด Y (Safe area คือแถบล่างทั้งหมด)
             dark_y_start = 464 + fade_range
             
             # ส่วนทึบ (ครอบคลุมพื้นที่ด้านบนทั้งหมด)

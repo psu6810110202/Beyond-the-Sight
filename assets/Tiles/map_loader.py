@@ -453,10 +453,11 @@ class KivyTiledMap:
 
     def update_chunks(self, cam_x, cam_y):
         ws = TILE_SIZE * 16
-        # Expand bounds to handle widescreen/zoom
+        # Optimization: ลดรัศมีการค้นหาจาก 1000px เหลือ 450px (เหมาะสมกับกล้อง 320x240)
+        radius = 450
         nx = set()
-        for cx in range(int((cam_x-1000)//ws), int((cam_x+1000)//ws)+1):
-            for cy in range(int((cam_y-1000)//ws), int((cam_y+1000)//ws)+1):
+        for cx in range(int((cam_x-radius)//ws), int((cam_x+radius)//ws)+1):
+            for cy in range(int((cam_y-radius)//ws), int((cam_y+radius)//ws)+1):
                 nx.add((cx, cy))
                 
         # Detach

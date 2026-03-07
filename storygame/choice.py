@@ -2,7 +2,7 @@
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, RoundedRectangle, Line
-from settings import GAME_FONT, TILE_SIZE, STAR_ITEM_MAPPING
+from settings import GAME_FONT, TILE_SIZE, STAR_ITEM_MAPPING, PLAYER_PORTRAIT_IMG, PLAYER_S_PORTRAIT_IMG
 from storygame.chat import DIALOGUE_CONFIG
 
 def handle_choice_selection(game, choice):
@@ -28,6 +28,67 @@ def handle_choice_selection(game, choice):
         dx, dy = dir_map.get(game.player.direction, (0, 0))
         game.player.start_move(dx, dy)
 
+    elif choice == "SEARCH":
+        # พิเศษสำหรับแมพใต้ดิน (Soul Fragments) 
+        if hasattr(game, 'current_star_target') and game.current_star_target:
+            star_pos = (game.current_star_target.x, game.current_star_target.y)
+            if not hasattr(game, 'collected_stars'):
+                game.collected_stars = []
+            game.collected_stars.append(star_pos)
+            
+            # ลบดาวทิ้งเพื่อให้รู้ว่าจุดนี้รื้อไปแล้ว
+            if game.current_star_target in game.stars:
+                game.stars.remove(game.current_star_target)
+            game.current_star_target.destroy()
+            
+            # เช็คผลลัพธ์จาก Mapping
+            mapping = getattr(game, 'underground_fragments_mapping', {})
+            result = mapping.get(star_pos, {"type": "ghost"}) # Default เป็นผีถ้าไม่อยู่ในแมพ
+            
+            from storygame.chat import UNDERGROUND_STRINGS
+            if result["type"] == "true":
+                # เคส: เจอของจริง
+                game.quest_manager.update_quest_progress("soul_fragments", 1)
+                game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_soul"], portrait=PLAYER_PORTRAIT_IMG)
+            elif result["type"] == "fake":
+                # เคส: ของปลอม (ใช้หน้าเศร้า)
+                game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_dust"], portrait=PLAYER_S_PORTRAIT_IMG)
+            else:
+                # เคส: เจอผีหลอก (Ghost Scare)
+                if game.scare_sound: game.scare_sound.play()
+                
+                # 1. สปาวน์ผีชั่วคราวทิ้งไว้ที่จุดที่รื้อ และให้ "นิ่ง 2 วิ" 
+                from characters.enemy import Enemy
+                ghost = Enemy(game.sorting_layer, star_pos[0], star_pos[1], enemy_id=999, enemy_type=1)
+                ghost.is_stunned = True
+                ghost.stun_timer = 2.0 # นิ่ง 2 วินาทีเพื่อให้โอกาสวิ่ง
+                game.enemies.append(ghost)
+                
+                # ให้หายไปหลังจาก 2 วิ
+                from kivy.clock import Clock
+                def remove_ghost(dt):
+                    if ghost in game.enemies:
+                        game.enemies.remove(ghost)
+                    ghost.destroy()
+                Clock.schedule_once(remove_ghost, 2.0)
+
+                # 2. ตัวละครถอยหลัง 3 ก้าว (3 * 32 = 96px)
+                back_map = {'up': (0, -96), 'down': (0, 96), 'left': (96, 0), 'right': (-96, 0)}
+                dx, dy = back_map.get(game.player.direction, (0, 0))
+                
+                new_x = game.player.logic_pos[0] + dx
+                new_y = game.player.logic_pos[1] + dy
+                
+                if not game.game_map.is_solid(new_x, new_y):
+                    game.player.logic_pos = [new_x, new_y]
+                    game.player.target_pos = [new_x, new_y]
+                    game.player.sync_graphics_pos()
+                
+                # แสดงหน้าปกติ (player_n) สำหรับเคสศัตรู/ผี
+                game.show_vn_dialogue("Ghost", UNDERGROUND_STRINGS["ghost_scare"], choices=["..."], portrait=PLAYER_PORTRAIT_IMG)
+            
+            game.current_star_target = None
+
     elif choice == "PICK UP":
         # ตรวจสอบว่ามีดาวที่กำลัง interact อยู่หรือไม่
         if hasattr(game, 'current_star_target') and game.current_star_target:
@@ -43,7 +104,13 @@ def handle_choice_selection(game, choice):
             game.current_star_target.destroy()
             
             # ตรวจสอบผลลัพธ์จากข้อมูลส่วนกลางใน settings.py
-            curr_map = STAR_ITEM_MAPPING if game.current_day == 1 else LETTER_ITEM_MAPPING
+            if game.current_day == 1:
+                curr_map = STAR_ITEM_MAPPING
+            elif game.current_day == 4:
+                from settings import DAY4_KEY_MAPPING
+                curr_map = DAY4_KEY_MAPPING
+            else:
+                curr_map = LETTER_ITEM_MAPPING
             
             if star_pos in curr_map:
                 if not curr_map[star_pos].get("fail", False):
@@ -56,6 +123,33 @@ def handle_choice_selection(game, choice):
                 game.quest_manager.update_quest_progress("doll_parts", 1)
             elif game.current_day == 2:
                 game.letters_held += 1
+            elif game.current_day == 4:
+                # หยิบอันไหนก็ได้ (กุญแจจริงหรือหลอก) เควสนับว่าสำรวจแล้ว เพื่อให้กลับไปคุยได้
+                if star_pos in curr_map:
+                    game.quest_manager.update_quest_progress("find_key", 1)
+                    
+                    # ตรวจสอบความถูกต้อง (เก็บไว้เช็คตอนคุยจบ)
+                    if not curr_map[star_pos].get("is_key"):
+                        game.quest_item_fail = True
+                    
+                    # อัปเดตชื่อเควสให้รู้ว่าต้องกลับไปส่ง
+                    quest = game.quest_manager.active_quests.get("find_key")
+                    if quest:
+                        quest.name = "Return to The Lady at the Window"
+                        game.quest_manager.update_quest_list_ui()
+                    
+                    # ลบดาวที่เหลือทั้งหมดออกจากแมพทันทีที่หยิบชิ้นแรก (เพราะบังคับสำรวจแค่รอบเดียวตามเงื่อนไขคุณ)
+                    for remain_star in game.stars[:]:
+                        remain_star.destroy()
+                    game.stars.clear()
+                    
+                    # ตั้งค่าแชทที่จะขึ้นต่อหลังจากผู้เล่นกดปิด "Banner ไอเทม" (เพื่อไม่ให้ซ้อนทับกัน)
+                    from settings import PLAYER_PORTRAIT_IMG
+                    game.pending_post_discovery_dialogue = {
+                        "name": "Little girl",
+                        "text": "I found a key. I should return it to the lady at the window.",
+                        "portrait": PLAYER_PORTRAIT_IMG
+                    }
             
             # ใช้ข้อมูลไอเทมและรูปหน้าตัวละครจาก settings.py เพื่อบอกว่าเป็นของจริงหรือปลอม
             found_special = False
@@ -64,7 +158,13 @@ def handle_choice_selection(game, choice):
                 found_special = True
                 
                 # เปลี่ยนมาโชว์แบบ Discovery แทน Chat ตามที่ USER ขอ
-                discovery_text = "FOUND A PIECE" if game.current_day == 1 else "FOUND A LETTER"
+                if game.current_day == 1: discovery_text = "FOUND A PIECE"
+                elif game.current_day == 2: discovery_text = "FOUND A LETTER"
+                elif game.current_day == 4: 
+                    # ถ้าเป็นกุญแจจริง (fail=False) ให้โชว์ชื่อไอเทมกุญแจ
+                    discovery_text = "KEY" if not item_info.get("fail") else "FOUND SOMETHING"
+                else: discovery_text = "FOUND SOMETHING"
+                
                 game.show_item_discovery(discovery_text, item_info["img"])
 
             else:
@@ -90,6 +190,7 @@ def handle_choice_selection(game, choice):
                             game.collected_stars.append(remain_pos)
                         remain_star.destroy()
                     game.stars.clear()
+
             elif game.current_day == 2:
                 # แจ้งเตือนเมื่อเก็บจดหมายได้
                 if game.letters_held == 1:
