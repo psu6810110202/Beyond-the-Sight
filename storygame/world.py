@@ -24,21 +24,41 @@ class WorldManager:
             self.game.npcs.append(npc)
 
     def create_enemies(self):
-        """สร้างพิกัดและชนิดของศัตรูตามที่กำหนดใน settings.py"""
-        for i, data in enumerate(ENEMY_SPAWN_DATA):
-            x, y = data['pos']
-            etype = data.get('type', 1)
-            
-            # ถ้าศัตรูตัวนี้ถูกกำจัดไปแล้วในเซฟนี้ ไม่ต้องสร้างใหม่
-            if i in self.game.destroyed_enemies:
-                continue
+        """สร้างพิกัดและชนิดของศัตรู โดยลำดับความสำคัญคือ: ข้อมูลจากเซฟ > ข้อมูลเริ่มต้น"""
+        # 1. ตรวจสอบว่ามีข้อมูลศัตรูจากเซฟล่าสุดหรือไม่
+        has_saved_enemies = False
+        initial_data = getattr(self.game, 'initial_data', None)
+        
+        if initial_data and 'enemies_data' in initial_data:
+            # ใช้พิกัดล่าสุดที่เซฟไว้
+            for edata in initial_data['enemies_data']:
+                eid = edata['id']
+                x, y = edata['pos']
+                etype = edata['type']
                 
-            enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=i, enemy_type=etype)
-            self.game.enemies.append(enemy)
+                if eid not in self.game.destroyed_enemies:
+                    enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=eid, enemy_type=etype)
+                    self.game.enemies.append(enemy)
+            
+            has_saved_enemies = True
+            # ล้างข้อมูลออกหลังจากโหลดครั้งแรกเพื่อไม่ให้ค้างตอนเปลี่ยนแมพ/รีเซ็ตโลก
+            initial_data.pop('enemies_data', None)
 
-        # หากพิกัดอันตรายถูกเปิดแล้ว ให้สุ่มศัตรูเพิ่มเติม (จะถูกเรียกตอนโหลดเซฟด้วย)
-        if self.game.warning_dismissed and self.game.game_map.filename == MAP_FILE:
-            self.spawn_random_enemies()
+        # 2. หากไม่มีข้อมูลในเซฟ (เริ่มวันใหม่หรือเปลี่ยนแมพ) ให้ใช้ตรรกะปกติ
+        if not has_saved_enemies:
+            for i, data in enumerate(ENEMY_SPAWN_DATA):
+                x, y = data['pos']
+                etype = data.get('type', 1)
+                
+                if i in self.game.destroyed_enemies:
+                    continue
+                    
+                enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=i, enemy_type=etype)
+                self.game.enemies.append(enemy)
+
+            # หากพิกัดอันตรายถูกเปิดแล้ว ให้สุ่มศัตรูเพิ่มเติม
+            if self.game.warning_dismissed and self.game.game_map.filename == MAP_FILE:
+                self.spawn_random_enemies()
 
     def spawn_random_enemies(self):
         """สุ่มเกิดศัตรูเพิ่มเติมเมื่อผู้เล่นเปิดพิกัดอันตรายแล้ว (ใช้ Seed คงที่เพื่อให้กลับมายังจุดเดิมเมื่อโหลดเซฟ)"""
@@ -110,6 +130,20 @@ class WorldManager:
             is_true = (i < 3)
             star = Star(self.game.sorting_layer, x, y, is_true=is_true)
             self.game.stars.append(star)
+
+    def create_letters(self):
+        """สร้างจดหมายตามพิกัดที่กำหนดใน Day 2"""
+        if self.game.current_day != 2:
+            return
+            
+        for i, (x, y) in enumerate(LETTER_SPAWN_LOCATIONS):
+            # ตรวจสอบว่าจดหมายจุดนี้ถูกเก็บไปแล้วหรือยัง
+            if [x, y] in self.game.collected_stars or (x, y) in self.game.collected_stars:
+                continue
+            
+            # ใน Day 2 จดหมายทุกฉบับเป็นของจริง (is_true=True)
+            letter = Star(self.game.sorting_layer, x, y, is_true=True)
+            self.game.stars.append(letter)
 
     def change_map(self, map_file):
         """โหลดแมพใหม่และรีเซ็ตกราฟิกแมพ (รับประกันความสะอาด 100%)"""
@@ -204,11 +238,20 @@ class WorldManager:
         self.game.player.logic_pos = [start_x, start_y]
         self.game.player.target_pos = [start_x, start_y]
         self.game.player.direction = 'up'
+        self.game.player.is_in_home = False
+        self.game.player.stamina = MAX_STAMINA
+        self.game.player.is_moving = False
+        self.game.player.state = 'idle'
         self.game.player.sync_graphics_pos()
+        self.game.player.update_animation_speed()
         self.game.player.update_frame()
         
         # 4. Respawn Entities
         if hasattr(self.game, 'reaper') and self.game.reaper:
+            # Re-add to sorting layer if it was cleared during cutscene transition
+            if self.game.reaper.group not in self.game.sorting_layer.children:
+                self.game.sorting_layer.add(self.game.reaper.group)
+                
             self.game.reaper.x, self.game.reaper.y = REAPER_START_POS
             self.game.reaper.logic_pos = list(REAPER_START_POS)
             self.game.reaper.target_pos = list(REAPER_START_POS)
@@ -217,5 +260,6 @@ class WorldManager:
         self.create_npcs()
         self.create_enemies()
         self.create_stars()
+        self.create_letters()
         self.refresh_darkness()
         self.game.request_keyboard_back()

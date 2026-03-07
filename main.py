@@ -41,7 +41,7 @@ from menu.camera import Camera
 from menu.pause import PauseMenu
 
 from storygame.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
-from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUE, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
+from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUES, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG # นำเข้าข้อความและค่าตั้งค่า
 from storygame.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
 from storygame.story import StoryManager # นำเข้า Story Manager
 from storygame.quest import QuestManager # นำเข้าหน้าจอกองเควส
@@ -58,14 +58,21 @@ class GameWidget(Widget):
         # จัดการข้อมูลศัตรูที่ถูกกำจัดไปแล้ว (ไม่เกิดใหม่)
         self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
         self.collected_stars = initial_data.get('collected_stars', []) if initial_data else []
+        
+        # คลีนข้อมูล Day 1 ถ้าโหลดมาเป็นวันอื่น (User Request)
+        if initial_data and initial_data.get('day', 1) > 1:
+            self.collected_stars = []
+            
         self.has_received_blue_stone = initial_data.get('has_received_blue_stone', False) if initial_data else False
         
         # สถานะวันปัจจุบัน (ค่าเริ่มต้นคือ Day 1)
-        self.current_day = initial_data.get('current_day', 1) if initial_data else 1
+        self.current_day = initial_data.get('day', 1) if initial_data else 1
         self.warning_triggered = False # ป้องกันแจ้งเตือนรัว
         self.warning_dismissed = initial_data.get('warning_dismissed', False) if initial_data else False # โหลดสถานะการผ่านทางจากเซฟ
         self.tutorial_triggered = initial_data.get('tutorial_triggered', False) if initial_data else False
         self.tutorial_mode = False # สถานะชั่วคราวบอกว่ากำลังเล่นบทเรียนสอนใช้ของหรือไม่
+        self.letters_held = initial_data.get('letters_held', 0) if initial_data else 0
+        self.delivered_house_indices = initial_data.get('delivered_house_indices', []) if initial_data else []
         
         # ระบบเวลาเล่น (Play Time)
         self.play_time = initial_data.get('play_time', 0) if initial_data else 0
@@ -212,6 +219,22 @@ class GameWidget(Widget):
         self.quest_manager = QuestManager(self)
         if initial_data and 'quests' in initial_data:
             self.quest_manager.from_dict(initial_data['quests'])
+            
+            # คลีนเควสของวันเก่าๆ (User Request)
+            if self.current_day > 1:
+                day1_quests = ["doll_parts", "find_food"]
+                for qid in day1_quests:
+                    if qid in self.quest_manager.active_quests:
+                        del self.quest_manager.active_quests[qid]
+            
+            if self.current_day > 2:
+                self.letters_held = 0
+                self.delivered_house_indices = []
+                if "deliver_letters" in self.quest_manager.active_quests:
+                    del self.quest_manager.active_quests["deliver_letters"]
+                
+            self.quest_manager.update_quest_list_ui(animate=False)
+            
             # ถ้าโหลดมาระหว่างทำเควสดวงดาว ให้สร้างดาวขึ้นมา
             if "doll_parts" in self.quest_manager.active_quests:
                 quest = self.quest_manager.active_quests["doll_parts"]
@@ -319,7 +342,9 @@ class GameWidget(Widget):
         self.player.direction = 'right'
         self.player.update_frame()
         
-        self.show_dialogue_above_reaper(INTRO_DIALOGUE)
+        # ดึงบทสนทนาเริ่มต้นตามวัน (Safe fallback to Day 1)
+        dialogue = INTRO_DIALOGUES.get(self.current_day, INTRO_DIALOGUES[1])
+        self.show_dialogue_above_reaper(dialogue)
 
     def request_keyboard_back(self):
         """ขอคีย์บอร์ดกลับมาให้ GameWidget อีกครั้ง (ใช้หลังปิดเมนู/หน้าจอโหลด)"""
@@ -767,6 +792,41 @@ class GameWidget(Widget):
             self.interaction_hints.append(hint)
             return
 
+        # เช็คจุดวางจดหมาย (Day 2)
+        if self.current_day == 2 and self.letters_held > 0:
+            for i, spot in enumerate(HOUSE_DOOR_SPOTS):
+                # ถ้าพิกัดนี้ถูกส่งไปแล้ว ให้ข้าม
+                if i in self.delivered_house_indices:
+                    continue
+                    
+                px, py = self.player.logic_pos
+                if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
+                    hint = Label(
+                        text="[E] DROP LETTER",
+                        font_name=GAME_FONT,
+                        font_size='18sp',
+                        size_hint=(None, None),
+                        size=(120, 40),
+                        color=(1, 1, 1, 1),
+                        halign='center',
+                        valign='middle',
+                        bold=True
+                    )
+                    with hint.canvas.before:
+                        Color(0, 0, 0, 0.8)
+                        hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
+                    
+                    hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
+                    hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
+                    
+                    spos = self.camera.world_to_screen(spot[0] + TILE_SIZE/2, spot[1] + 32)
+                    hint.pos = (spos[0] - 60, spos[1])
+                    
+                    if self.dialogue_root: self.dialogue_root.add_widget(hint)
+                    self.interaction_hints.append(hint)
+                    self.current_drop_spot = (spot, i)
+                    return
+
         # เช็คจุดค้นหา (ไม่แสดงปุ่ม E ตามคำขอ)
         self.current_search_target = self._get_search_target()
 
@@ -774,6 +834,30 @@ class GameWidget(Widget):
         """จัดการการกดปุ่ม [E] เพื่อคุยหรือสำรวจ"""
         self.clear_interaction_hints()
         
+        # 0. เช็คการวางจดหมาย (Day 2 Priority)
+        if self.current_day == 2 and hasattr(self, 'current_drop_spot') and self.current_drop_spot:
+            spot, spot_index = self.current_drop_spot
+            px, py = self.player.logic_pos
+            if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
+                if self.letters_held > 0 and spot_index not in self.delivered_house_indices:
+                    self.letters_held -= 1
+                    self.delivered_house_indices.append(spot_index)
+                    self.quest_manager.update_quest_progress("deliver_letters", 1)
+                    
+                    if self.pickup_sound: # ใช้เสียง pickup แทน
+                         self.pickup_sound.play()
+                    
+                    self.show_vn_dialogue("Little girl", "There. The postman will be happy.")
+                    self.current_drop_spot = None
+                    
+                    # เช็คว่าส่งครบหรือยัง
+                    quest = self.quest_manager.active_quests.get("deliver_letters")
+                    if quest and quest.current_count >= quest.target_count:
+                        self.show_vn_dialogue("Little girl", "That was the last one. I should head back to The Postman.")
+                        quest.name = "Return to The Postman"
+                        self.quest_manager.update_quest_list_ui()
+                    return
+
         if self.current_star_target:
             # เล่นเสียงรื้อค้น (Find) และเสียงสงสัย (Curious) เพราะมีทางเลือก
             if self.find_sound:
@@ -877,7 +961,13 @@ class GameWidget(Widget):
             self.show_dialogue_above_reaper(dialogue)
         else:
             # NPC
-            npc_name = "The Sad Soul" if index == 0 else f"NPC{index + 1}"
+            if self.current_day == 1:
+                npc_name = "The Sad Soul" if index == 0 else f"NPC{index + 1}"
+            elif self.current_day == 2:
+                npc_name = "The Postman" if index == 0 else f"NPC{index + 1}"
+            else:
+                npc_name = f"NPC{index + 1}"
+                
             dialogue = self.get_proximity_dialogue(npc_name, dx, dy)
             if dialogue:
                 self.show_dialogue_above_npc(target, dialogue)
@@ -1167,13 +1257,50 @@ class GameWidget(Widget):
         
         def on_dark(*args):
             # ระหว่างที่จอมืด ให้รีเซ็ตโลกใหม่
+            self.warning_dismissed = False
+            self.warning_triggered = False
+            self.is_dialogue_active = True
+            self.is_cutscene_active = False # ปลดล็อกคัทซีนเดิม
+            self.is_ready = True            # ยืนยันว่าเกมพร้อม
+            self.player.is_in_home = False
+            
+            # ล้างข้อมูลของวันเก่าที่จบไปแล้ว (Cleanup - User Request)
+            if self.current_day > 1:
+                self.collected_stars = []
+                day1_quests = ["doll_parts", "find_food"]
+                for qid in day1_quests:
+                    if qid in self.quest_manager.active_quests:
+                        del self.quest_manager.active_quests[qid]
+            
+            if self.current_day > 2:
+                self.letters_held = 0
+                self.delivered_house_indices = []
+                if "deliver_letters" in self.quest_manager.active_quests:
+                    del self.quest_manager.active_quests["deliver_letters"]
+                    
+            self.quest_manager.update_quest_list_ui()
+
             self.recreate_world()
             
             # 4. แสดง IntroScreen (Day X) เหมือนหน้าจอแรกสุดของเกม
             def start_fading_in():
                 # เมื่อโชว์ Day X จบแล้ว ให้ค่อยๆ จางจอดำออก
                 fade_in = Animation(opacity=0, duration=1.5)
-                fade_in.bind(on_complete=lambda *a: root.remove_widget(black_overlay))
+                def on_fade_complete(*a):
+                    root.remove_widget(black_overlay)
+                    
+                    # เริ่มบทสนทนาประจำวันทันทีหลังจอจางลง (ขาสู่ Day 2, 3, 4, 5)
+                    self.is_dialogue_active = True
+                    self.is_cutscene_active = False
+                    self.is_ready = True
+                    self.player.is_in_home = False
+                    self.player.state = 'idle'
+                    self.player.is_moving = False
+                    self.request_keyboard_back()
+                    
+                    # เรียก Reaper มาคุยบทนำของวันนั้นๆ
+                    self._start_intro_dialogue(0)
+                fade_in.bind(on_complete=on_fade_complete)
                 fade_in.start(black_overlay)
 
             intro = IntroScreen(callback=start_fading_in, day=self.current_day)
@@ -1273,13 +1400,26 @@ class MyApp(App):
     def _on_window_key_down(self, window, key, scancode, codepoint, modifiers):
         # 292 คือ keycode ของ F11, 27 คือ keycode ของ Escape
         if key == 27:
-            # ตรวจสอบว่ามี GameWidget อยู่ใน root หรือไม่
-            has_game = any(isinstance(c, GameWidget) for c in self.root.children)
-            if not has_game:
-                # ถ้าอยู่หน้า SplashScreen (หน้าแรก) ให้ปิดโปรแกรมทันที
+            # ใช้ฟังก์ชันช่วยเช็คแบบเจาะลึก (Recursive) โดยใช้ชื่อคลาสเพื่อความแม่นยำสูงสุด
+            def has_active_layer(root):
+                # ตรวจสอบว่าหน้าจอนี้เป็นหน้าจอที่เราต้องการบล็อกการปิดหรือไม่
+                name = root.__class__.__name__
+                if name in ('SaveLoadScreen', 'GameWidget', 'PauseMenu', 'IntroScreen'):
+                    return True
+                # ค้นหาในลูกหลาน
+                for child in root.children:
+                    if has_active_layer(child):
+                        return True
+                return False
+
+            # ตรวจสอบว่ามีหน้าจอสำคัญเปิดอยู่หรือไม่
+            if not has_active_layer(self.root):
+                # ถ้าอยู่หน้า SplashScreen เปล่าๆ จริงๆ (ไม่มี Overlay ใดๆ) ค่อยปิดโปรแกรม
+                print("Global Escape: Closing App (No active layers found)")
                 Window.close()
                 return True
-            # ถ้าอยู่ในเกม ให้ส่งต่อ (Return False) เพื่อให้ GameWidget หรือหน้าจออื่นจัดการเปิด Pause Menu
+                
+            # ถ้ามีหน้าจออื่นเปิดอยู่ ให้ส่งต่อ (Return False) เพื่อให้ Widget นั้นๆ จัดการ ESC เอง
             return False
         
         if key == 292:

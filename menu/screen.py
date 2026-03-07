@@ -173,9 +173,9 @@ class SplashScreen(FloatLayout):
         # Draw background cover
         Clock.schedule_once(self.load_cover_image, 0)
         
-        # Keyboard binding - สำคัญมากสำหรับการเลื่อนเมนู
-        self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
-        self._keyboard.bind(on_key_down=self._on_key_down)
+        # Keyboard handling
+        self._keyboard = None
+        self.request_keyboard_back()
 
         # Title Group
         self.title_beyond = Label(
@@ -348,5 +348,12 @@ class SplashScreen(FloatLayout):
         elif key in ('enter', 'space'):
             self.menu.select_current()
     
+    def request_keyboard_back(self):
+        """ขอสิทธิ์การใช้ Keyboard คืนมาที่หน้าจอหลัก"""
+        if self._keyboard:
+            self._keyboard.unbind(on_key_down=self._on_key_down)
+        self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
+        self._keyboard.bind(on_key_down=self._on_key_down)
+
     def _on_keyboard_closed(self):
-        pass
+        self._keyboard = None

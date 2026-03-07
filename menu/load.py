@@ -235,9 +235,10 @@ class SaveLoadScreen(FloatLayout):
             
         self.update_selection()
         
-        # Keyboard handling
+        # Keyboard handling - ขอสิทธิ์ Keyboard ทันทีและทำให้เป็น Focus หลัก
         self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self)
         self._keyboard.bind(on_key_down=self._on_key_down)
+        self.focus = True # บังคับ focus ให้แม่นยำขึ้น
 
     def on_size(self, *args):
         """จัดการ Resize หน้าจอ"""
@@ -281,7 +282,20 @@ class SaveLoadScreen(FloatLayout):
         if self.index not in valid_indices:
             self.index = valid_indices[0]
 
+        # หากมี Popup แจ้งยืนยันอยู่ บล็อกการเลื่อน Slot ข้างหลัง
+        is_popup_open = hasattr(self, 'confirm_popup') and self.confirm_popup
+        if is_popup_open:
+            if key == 'up' or key == 'down':
+                return True # กิน Event ทิ้ง ไม่ให้เลื่อน Slot
+
         if key == 'up':
+            if is_popup_open:
+                # ถ้ามีป๊อปอัพ ให้ UP/DOWN เลื่อน YES/NO ได้ด้วยเพื่อความสะดวก
+                self.confirm_index = 1 - self.confirm_index
+                self.update_popup_selection()
+                if self.click_sound: self.click_sound.play()
+                return True
+
             # หาค่าที่น้อยกว่าปัจจุบันในลิสต์ valid
             prev_indices = [i for i in valid_indices if i < self.index]
             if prev_indices:
@@ -295,6 +309,12 @@ class SaveLoadScreen(FloatLayout):
                 
             self.update_selection()
         elif key == 'down':
+            if is_popup_open:
+                self.confirm_index = 1 - self.confirm_index
+                self.update_popup_selection()
+                if self.click_sound: self.click_sound.play()
+                return True
+
             # หาค่าที่มากกว่าปัจจุบันในลิสต์ valid
             next_indices = [i for i in valid_indices if i > self.index]
             if next_indices:
@@ -339,8 +359,13 @@ class SaveLoadScreen(FloatLayout):
             if hasattr(self, 'confirm_popup') and self.confirm_popup:
                 self.close_popup()
                 return True
-            if self.mode == "LOAD":
-                self.close()
+            
+            # บล็อกไม่ให้กด ESC ออกในโหมด SAVE (ต้องเซฟเท่านั้น)
+            if self.mode == "SAVE":
+                return True
+                
+            # กด ESC ออกจากหน้าจอโหลดได้ปกติ
+            self.close()
             return True
         elif key == 'left' or key == 'right':
             if hasattr(self, 'confirm_popup') and self.confirm_popup:
@@ -357,7 +382,15 @@ class SaveLoadScreen(FloatLayout):
         self.confirm_index = 1 # เริ่มที่ NO เผื่อกดพลาด
         
         self.confirm_popup = FloatLayout(size_hint=(1, 1))
+        # บล็อก Touch ไม่ให้ทะลุลงไปข้างล่าง
+        self.confirm_popup.bind(on_touch_down=lambda inst, touch: True)
+        self.confirm_popup.bind(on_touch_move=lambda inst, touch: True)
+        self.confirm_popup.bind(on_touch_up=lambda inst, touch: True)
         
+        # หยุดการทำงานของ ScrollView ทั่วไป
+        self.scroll_view.do_scroll_y = False
+        self.scroll_view.do_scroll_x = False
+
         # พื้นหลังดำจางๆ
         with self.confirm_popup.canvas.before:
             Color(0, 0, 0, 0.85)
@@ -424,6 +457,8 @@ class SaveLoadScreen(FloatLayout):
         if self.confirm_popup and self.confirm_popup.parent:
             self.confirm_popup.parent.remove_widget(self.confirm_popup)
         self.confirm_popup = None
+        # กลับมาเลื่อน Scroll ได้ปกติ
+        self.scroll_view.do_scroll_y = True
 
     def close(self):
         if hasattr(self, 'confirm_popup') and self.confirm_popup:
@@ -431,8 +466,26 @@ class SaveLoadScreen(FloatLayout):
         if self._keyboard:
             self._keyboard.unbind(on_key_down=self._on_key_down)
             self._keyboard = None
-        if self.parent:
-            self.parent.remove_widget(self)
+        
+        # คืนค่า Keyboard ให้ GameWidget หรือตัวรับอื่นๆ
+        Window.release_all_keyboards()
+        
+        parent = self.parent
+        if parent:
+            # คืนสถานะเดินได้ให้เกมถ้ามี
+            if hasattr(parent, 'is_dialogue_active'):
+                parent.is_dialogue_active = False
+            elif hasattr(self.callback, '__self__') and hasattr(self.callback.__self__, 'game'):
+                self.callback.__self__.game.is_dialogue_active = False
+            
+            # ลบตัวเองออก
+            parent.remove_widget(self)
+            
+            # คืน Focus ให้หน้าจอหลัก (Title หรือ Game)
+            if hasattr(parent, 'request_keyboard_back'):
+                parent.request_keyboard_back()
+            elif hasattr(self.callback, '__self__') and hasattr(self.callback.__self__, 'request_keyboard_back'):
+                self.callback.__self__.request_keyboard_back()
 
     def _on_keyboard_closed(self):
         pass

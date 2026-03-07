@@ -103,7 +103,11 @@ class StoryManager:
         if last_character == "The Sad Soul":
             self._handle_sad_soul_logic()
             
-        # 4. Little girl (Quest Search Food)
+        # 4. The Postman (Quest Day 2)
+        if last_character == "The Postman":
+            self._handle_postman_logic()
+            
+        # 5. Little girl (Quest Search Food)
         if last_character == "Little girl" and getattr(self.game, '_pending_food_success', False):
             self.game._pending_food_success = False
             # อัปเดตเควส
@@ -121,7 +125,25 @@ class StoryManager:
             self.game.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
             self.game.create_stars()
         elif quest.is_active and quest.current_count >= quest.target_count:
+            # ตรวจสอบความสำเร็จเควส
+            if not getattr(self.game, 'quest_item_fail', False):
+                self.game.quest_success_count += 1
+            
             quest.is_active = False
             self.game.quest_manager.show_quest_notification("COMPLETED: FIND DOLL PARTS")
+            self.game.quest_manager.update_quest_list_ui()
+            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
+
+    def _handle_postman_logic(self):
+        quest = self.game.quest_manager.active_quests.get("deliver_letters")
+        if not quest:
+            self.game.quest_manager.start_quest("deliver_letters", "Deliver Letters", target=3)
+            self.game.world_manager.create_letters()
+        elif quest.is_active and quest.current_count >= quest.target_count:
+            # ตรวจสอบความสำเร็จเควส (ใน Day 2 จดหมายทุพฉบับจริงหมด)
+            self.game.quest_success_count += 1
+            
+            quest.is_active = False
+            self.game.quest_manager.show_quest_notification("COMPLETED: DELIVER LETTERS")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
