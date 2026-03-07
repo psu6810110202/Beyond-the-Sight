@@ -243,8 +243,9 @@ class WorldManager:
             base_alpha = 0.4
             fade_range = 160
             
-            if self.game.current_day == 1:
-                dark_x_start = 656 - fade_range
+            if self.game.current_day == 1 or self.game.current_day == 3:
+                # Day 1: x=656, Day 3: x=480 (Safe area is bottom-right)
+                dark_x_start = (656 if self.game.current_day == 1 else 480) - fade_range
                 dark_y_start = 464 + fade_range
                 
                 # ส่วนทึบ
@@ -254,7 +255,7 @@ class WorldManager:
                 # แถบบน (ในส่วนที่เหลือทางขวา)
                 self.game.darkness_group.add(Rectangle(pos=(dark_x_start, dark_y_start), size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)))
                 
-                # ส่วนไล่สี (Gradient) - ปรับให้เนียนขึ้นเป็น 40 ขั้น
+                # ส่วนไล่สี (Gradient)
                 fade_steps = 40
                 step_size = fade_range / fade_steps
                 for i in range(fade_steps):
@@ -273,7 +274,7 @@ class WorldManager:
                         size=(MAP_WIDTH - dark_x_start, step_size + 0.5)
                     ))
             else:
-                # สำหรับ Day 2+: ใช้เฉพาะพิกัด Y
+                # สำหรับ Day 2, 4, 5: ใช้เฉพาะพิกัด Y (Safe area คือแถบล่างทั้งหมด)
                 dark_y_start = 464 + fade_range
                 
                 # ส่วนทึบ (ครอบคลุมพื้นที่ด้านบนทั้งหมด)

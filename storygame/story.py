@@ -20,7 +20,14 @@ STORY_CONFIG = {
             {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
         ]
     },
-    3: {"name": "Day 3", "visible_npcs": [2], "warning_triggers": []},
+    3: {
+        "name": "Day 3", 
+        "visible_npcs": [2], 
+        "warning_triggers": [
+            {"type": "coordinate", "x": 480, "y": None, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES},
+            {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
+        ]
+    },
     4: {"name": "Day 4", "visible_npcs": [3], "warning_triggers": []},
     5: {"name": "Day 5", "visible_npcs": [4], "warning_triggers": []}
 }
