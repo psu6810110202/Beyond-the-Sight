@@ -1,7 +1,7 @@
 from kivy.graphics import Rectangle, Color, RoundedRectangle
 from kivy.clock import Clock
 from kivy.core.image import Image as CoreImage
-from settings import WINDOW_HEIGHT
+from data.settings import WINDOW_HEIGHT
 
 class HeartUI:
     def __init__(self, canvas, initial_health=3):

@@ -1,7 +1,7 @@
 from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
-from settings import TILE_SIZE, STAR_IMG
+from data.settings import TILE_SIZE, STAR_IMG
 
 class Star:
     def __init__(self, canvas, x, y, is_true=True, hidden=False):

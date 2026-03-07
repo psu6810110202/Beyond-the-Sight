@@ -1,7 +1,7 @@
 from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
 from kivy.clock import Clock
-from settings import *
+from data.settings import *
 import random
 
 NPC_START_POSITIONS = {

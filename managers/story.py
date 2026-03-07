@@ -1,6 +1,6 @@
 # storygame/story.py
-from storygame.chat import WARNING_DIALOGUE, WARNING_CHOICES, TUTORIAL_DIALOGUE
-from settings import ENEMY_DETECTION_RADIUS, TILE_SIZE, MAP_FILE, HOME_EAT_POS
+from data.chat import WARNING_DIALOGUE, WARNING_CHOICES, TUTORIAL_DIALOGUE
+from data.settings import ENEMY_DETECTION_RADIUS, TILE_SIZE, MAP_FILE, HOME_EAT_POS
 from kivy.clock import Clock
 
 # ข้อมูลการตั้งค่าของแต่ละวัน
@@ -117,7 +117,12 @@ class StoryManager:
         """จัดการ Event หลังบทสนทนาจบลง (Logic Story ทอดๆ มาที่นี่)"""
         # 1. Reaper: เปิดหน้าจอเซฟ (ทำเฉพาะเมื่อกดคุยเอง และไม่มีทางเลือก/ไม่ได้อยู่ในโหมดสอน)
         if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode and getattr(self.game, 'is_reaper_save_prompt', False):
-            self.game.show_save_screen()
+            # ตรวจสอบว่ากำลังแสดงหน้าจอ "ไอเทม" อยู่หรือไม่ (เช่น เพิ่งได้รับ Blue Stone)
+            if self.game.dialogue_manager.is_item_notif_active:
+                # ตั้งธงให้ขึ้นเซฟหลังจากผู้เล่นกดปิด Banner ไอเทม
+                self.game.pending_save_prompt = True
+            else:
+                self.game.show_save_screen()
         
         # 2. Angel/Devil: จบคัทซีนเข้าบ้าน (ทำเฉพาะเมื่ออยู่ในโหมด Cutscene จริงๆ เช่น ท้ายวัน)
         if last_character in ["Angel", "Devil"] and getattr(self.game, 'is_cutscene_active', False):
@@ -170,12 +175,20 @@ class StoryManager:
             # เริ่มเควส "Find Key" (ไม่ต้องโชว์ตัวเลขจำนวน)
             self.game.quest_manager.start_quest("find_key", "Find Key", target=1)
             self.game.create_stars()
+        elif quest.is_active and quest.current_count < quest.target_count:
+            # ถ้าเควสยังไม่เสร็จแต่เคยโหลดมาแล้วดาวหาย ให้สร้างคืน
+            if not self.game.stars:
+                self.game.create_stars()
         elif quest.is_active and quest.current_count >= quest.target_count:
             # ตรวจสอบความสำเร็จเควส
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
             
             quest.is_active = False
+            # ลบดาวทิ้งทันทีเมื่อจบเควสที่ NPC
+            for s in self.game.stars[:]: s.destroy()
+            self.game.stars.clear()
+
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
@@ -185,12 +198,20 @@ class StoryManager:
         if not quest:
             self.game.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
             self.game.create_stars()
+        elif quest.is_active and quest.current_count < quest.target_count:
+            # ถ้าเควสยังไม่เสร็จแต่เคยโหลดมาแล้วดาวหาย ให้สร้างคืน
+            if not self.game.stars:
+                self.game.create_stars()
         elif quest.is_active and quest.current_count >= quest.target_count:
             # ตรวจสอบความสำเร็จเควส
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
             
             quest.is_active = False
+            # ลบดาวทิ้งทันทีเมื่อจบเควสที่ NPC
+            for s in self.game.stars[:]: s.destroy()
+            self.game.stars.clear()
+
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
@@ -237,12 +258,21 @@ class StoryManager:
     def _handle_soul_logic(self):
         quest = self.game.quest_manager.active_quests.get("soul_fragments")
         if not quest:
-            # เริ่มเควส "Find Soul Fragments" (เก็บ 5 ชิ้น)
-            self.game.quest_manager.start_quest("soul_fragments", "Find Soul Fragments", target=5)
+            # เริ่มเควส "Find Soul Fragments" (เก็บ 3 ชิ้น)
+            self.game.quest_manager.start_quest("soul_fragments", "Find Soul Fragments", target=3)
+            self.game.create_stars()
+        elif quest.is_active and quest.current_count < quest.target_count:
+            # ถ้าเควสยังไม่เสร็จแต่เคยโหลดมาแล้วดาวหาย ให้สร้างคืน
+            if not self.game.stars:
+                self.game.create_stars()
         elif quest.is_active and quest.current_count >= quest.target_count:
             # สำเร็จเควส
             self.game.quest_success_count += 1
             quest.is_active = False
+            # ลบดาวทิ้งทันทีเมื่อจบเควสที่ NPC
+            for s in self.game.stars[:]: s.destroy()
+            self.game.stars.clear()
+
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             # เข้าสู่ฉากจบของเควส

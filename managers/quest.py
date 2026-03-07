@@ -4,7 +4,7 @@ from kivy.graphics import Color, RoundedRectangle
 from kivy.clock import Clock
 from kivy.animation import Animation
 from kivy.core.window import Window
-from settings import GAME_FONT
+from data.settings import GAME_FONT
 
 class QuestData:
     def __init__(self, name, target_count=3):

@@ -1,7 +1,7 @@
 # storygame/save.py
 import os
 import json
-from menu.load import SaveLoadScreen
+from ui.load import SaveLoadScreen
 
 class SaveManager:
     def __init__(self, game):
@@ -26,20 +26,18 @@ class SaveManager:
             self.game.dialogue_root.add_widget(save_screen)
 
     def on_save_confirmed(self, slot_id, save_screen=None):
-        """บันทึกข้อมูลทอดๆ เก็บไว้ในไฟล์ JSON โดยตรง"""
+        """บันทึกข้อมูลแบบแยกส่วนตามวัน (Day-specific save) เพื่อลดขนาดไฟล์และล้างข้อมูลเก่าที่ไม่จำเป็น"""
         if not os.path.exists('saves'):
             os.makedirs('saves')
             
+        day = self.game.current_day
+        
+        # 1. ข้อมูลหลักที่ต้องสืบทอดไปทุกวัน (Core Data)
         save_data = {
-            "day": self.game.current_day, 
+            "day": day, 
             "current_map": self.game.game_map.filename,
             "player_pos": list(self.game.player.logic_pos),
             "heart": self.game.heart_ui.current_health,
-            "destroyed_enemies": self.game.destroyed_enemies,
-            "collected_stars": self.game.collected_stars,
-            "letters_held": getattr(self.game, 'letters_held', 0),
-            "delivered_house_indices": getattr(self.game, 'delivered_house_indices', []),
-            "quests": self.game.quest_manager.to_dict(),
             "play_time": self.game.play_time,
             "quest_success_count": self.game.quest_success_count,
             "quest_item_fail": self.game.quest_item_fail,
@@ -48,11 +46,9 @@ class SaveManager:
             "has_received_blue_stone": self.game.has_received_blue_stone,
             "has_received_lantern": self.game.has_received_lantern,
             "tutorial_triggered": self.game.tutorial_triggered,
-            "current_candle_lit_count": getattr(self.game, 'current_candle_lit_count', 0),
-            "lit_candle_positions": [
-                {"pos": list(c.logic_pos), "color": getattr(c, 'current_color', None)} 
-                for c in getattr(self.game, 'candles', []) if c.is_lit
-            ],
+            
+            # สถานะของมอนสเตอร์และสภาพแวดล้อมในแมพปัจจุบัน
+            "destroyed_enemies": self.game.destroyed_enemies,
             "enemies_data": [
                 {
                     "id": enemy.id,
@@ -63,22 +59,39 @@ class SaveManager:
             ]
         }
         
-        # คลีนข้อมูลเก่าที่ไม่จำเป็น (User Request: เซฟเฉพาะข้อมูลวันปัจจุบัน)
-        # 1. ถ้าพ้น Day 1 มาแล้ว -> ล้างข้อมูลเฉพาะของ Day 1
-        if self.game.current_day > 1:
-            save_data["collected_stars"] = []
-            for qid in ["doll_parts", "find_food"]:
-                if qid in save_data["quests"]:
-                    del save_data["quests"][qid]
+        # 2. กรองข้อมูลเฉพาะวัน (Day-Specific Logic)
+        all_quests = self.game.quest_manager.to_dict()
+        filtered_quests = {}
         
-        # 2. ถ้าพ้น Day 2 มาแล้ว -> ล้างข้อมูลเฉพาะของ Day 2
-        if self.game.current_day > 2:
-            save_data["letters_held"] = 0
-            save_data["delivered_house_indices"] = []
-            if "deliver_letters" in save_data["quests"]:
-                del save_data["quests"]["deliver_letters"]
+        # ค้นหาเควสที่เกี่ยวข้องกับวันนั้นๆ และเควส "หากิน" (ค้นหาเสบียงท้ายวัน)
+        target_quests = {
+            1: ["doll_parts"],
+            2: ["deliver_letters"],
+            3: ["light_candles"],
+            4: ["find_key"],
+            5: ["soul_fragments"]
+        }.get(day, [])
+        target_quests.append("find_food")
+        
+        for qid in target_quests:
+            if qid in all_quests:
+                filtered_quests[qid] = all_quests[qid]
+        save_data["quests"] = filtered_quests
 
-        # 3. เตรียมพร้อมสำหรับวันอื่นๆ ในอนาคต (Day 3+) สามารถเพิ่มเงื่อนไขต่อได้ที่นี่
+        # 3. ข้อมูลสิ่งของวางกระจายตามแมพ (Stars / Candles / Letters)
+        if day in [1, 4, 5]:
+            save_data["collected_stars"] = self.game.collected_stars
+            
+        if day == 2:
+            save_data["letters_held"] = getattr(self.game, 'letters_held', 0)
+            save_data["delivered_house_indices"] = getattr(self.game, 'delivered_house_indices', [])
+            
+        elif day == 3:
+            save_data["current_candle_lit_count"] = getattr(self.game, 'current_candle_lit_count', 0)
+            save_data["lit_candle_positions"] = [
+                {"pos": list(c.logic_pos), "color": getattr(c, 'current_color', None)} 
+                for c in getattr(self.game, 'candles', []) if c.is_lit
+            ]
         
         file_path = f'saves/slot_{slot_id}.json'
         with open(file_path, 'w') as f:

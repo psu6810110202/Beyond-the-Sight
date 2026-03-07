@@ -3,7 +3,7 @@ from kivy.clock import Clock
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle
 from kivy.core.audio import SoundLoader
-from settings import *
+from data.settings import *
 
 class CutsceneManager:
     def __init__(self, game):
@@ -222,7 +222,7 @@ class CutsceneManager:
                             self.day2_black_bg.parent.remove_widget(self.day2_black_bg)
                             
                         # เริ่มบทสนทนาหลังจากจอสว่างแล้ว โดยดึงจาก chat.py
-                        from storygame.chat import PARENT_FIGHT_DIALOGUE
+                        from data.chat import PARENT_FIGHT_DIALOGUE
                         data = PARENT_FIGHT_DIALOGUE
                         
                         self.game.current_dialogue_queue = [d["text"] for d in data]
@@ -462,7 +462,7 @@ class CutsceneManager:
         
         # ตัดสินใจเนื่อเรื่อง (สั่งทอดๆ)
         success = not getattr(self.game, 'quest_item_fail', False)
-        from storygame.chat import DAY_END_DIALOGUES
+        from data.chat import DAY_END_DIALOGUES
         
         day = self.game.current_day
         cfg = DAY_END_DIALOGUES.get(day, DAY_END_DIALOGUES[1])
@@ -491,7 +491,7 @@ class CutsceneManager:
                 self.game.temp_dialogue_chars = data["char"]
                 character_name = self.game.temp_dialogue_chars[0]
         elif day == 3:
-            from storygame.chat import ANGEL_DAY3_SUCCESS, ANGEL_DAY3_FAIL
+            from data.chat import ANGEL_DAY3_SUCCESS, ANGEL_DAY3_FAIL
             texts = ANGEL_DAY3_SUCCESS if success else ANGEL_DAY3_FAIL
             character_name = "Angel"
         else:
@@ -576,7 +576,7 @@ class CutsceneManager:
                 self.game.canvas.remove(self.blue_tint_instr)
         
         from kivy.graphics import InstructionGroup, Color, Rectangle
-        from settings import TILE_SIZE
+        from data.settings import TILE_SIZE
         
         self.blue_tint_instr = InstructionGroup()
         # สีฟ้า Alpha 0.15 

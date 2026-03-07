@@ -4,7 +4,7 @@ from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
 from kivy.core.audio import SoundLoader
 import os
-from settings import GAME_FONT, WINDOW_HEIGHT
+from data.settings import GAME_FONT, WINDOW_HEIGHT
 
 class IntroScreen(FloatLayout):
     """

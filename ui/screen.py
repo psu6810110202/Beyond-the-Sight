@@ -12,8 +12,8 @@ from kivy.core.audio import SoundLoader
 from kivy.animation import Animation
 import os
 
-from menu.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
-from settings import GAME_FONT
+from ui.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
+from data.settings import GAME_FONT
 
 class MenuButton(ButtonBehavior, FloatLayout):
     """Custom button used within GameMenu."""

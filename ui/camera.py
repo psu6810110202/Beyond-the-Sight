@@ -1,5 +1,5 @@
 from kivy.graphics import Translate, Scale, PushMatrix, PopMatrix
-from settings import WINDOW_WIDTH, WINDOW_HEIGHT, CAMERA_WIDTH, CAMERA_HEIGHT, TILE_SIZE
+from data.settings import WINDOW_WIDTH, WINDOW_HEIGHT, CAMERA_WIDTH, CAMERA_HEIGHT, TILE_SIZE
 
 class Camera:
     def __init__(self, canvas_before):

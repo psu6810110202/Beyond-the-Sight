@@ -2,8 +2,8 @@
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, RoundedRectangle, Line
-from settings import GAME_FONT, TILE_SIZE, STAR_ITEM_MAPPING, PLAYER_PORTRAIT_IMG, PLAYER_S_PORTRAIT_IMG
-from storygame.chat import DIALOGUE_CONFIG
+from data.settings import GAME_FONT, TILE_SIZE, STAR_ITEM_MAPPING, PLAYER_PORTRAIT_IMG, PLAYER_S_PORTRAIT_IMG
+from data.chat import DIALOGUE_CONFIG
 
 def handle_choice_selection(game, choice):
     """จัดการเมื่อผู้เล่นเลือก Choice"""
@@ -45,7 +45,7 @@ def handle_choice_selection(game, choice):
             mapping = getattr(game, 'underground_fragments_mapping', {})
             result = mapping.get(star_pos, {"type": "ghost"}) # Default เป็นผีถ้าไม่อยู่ในแมพ
             
-            from storygame.chat import UNDERGROUND_STRINGS
+            from data.chat import UNDERGROUND_STRINGS
             if result["type"] == "true":
                 # เคส: เจอของจริง
                 game.quest_manager.update_quest_progress("soul_fragments", 1)
@@ -58,7 +58,7 @@ def handle_choice_selection(game, choice):
                 if game.scare_sound: game.scare_sound.play()
                 
                 # 1. สปาวน์ผีชั่วคราวทิ้งไว้ที่จุดที่รื้อ และให้ "นิ่ง 2 วิ" 
-                from characters.enemy import Enemy
+                from entities.characters.enemy import Enemy
                 ghost = Enemy(game.sorting_layer, star_pos[0], star_pos[1], enemy_id=999, enemy_type=1)
                 ghost.is_stunned = True
                 ghost.stun_timer = 2.0 # นิ่ง 2 วินาทีเพื่อให้โอกาสวิ่ง
@@ -107,7 +107,7 @@ def handle_choice_selection(game, choice):
             if game.current_day == 1:
                 curr_map = STAR_ITEM_MAPPING
             elif game.current_day == 4:
-                from settings import DAY4_KEY_MAPPING
+                from data.settings import DAY4_KEY_MAPPING
                 curr_map = DAY4_KEY_MAPPING
             else:
                 curr_map = LETTER_ITEM_MAPPING
@@ -144,7 +144,7 @@ def handle_choice_selection(game, choice):
                     game.stars.clear()
                     
                     # ตั้งค่าแชทที่จะขึ้นต่อหลังจากผู้เล่นกดปิด "Banner ไอเทม" (เพื่อไม่ให้ซ้อนทับกัน)
-                    from settings import PLAYER_PORTRAIT_IMG
+                    from data.settings import PLAYER_PORTRAIT_IMG
                     game.pending_post_discovery_dialogue = {
                         "name": "Little girl",
                         "text": "I found a key. I should return it to the lady at the window.",
@@ -233,7 +233,7 @@ def handle_choice_selection(game, choice):
                     already_done = True; break
             
             if game.letters_held > 0 and not already_done:
-                from settings import HOUSE_MARKS_MAPPING
+                from data.settings import HOUSE_MARKS_MAPPING
                 # ตรวจสอบความถูกต้องโดยการจับคู่ "ชื่อรูป Mark" กับ "ชื่อ Note" (ไม่ใช้พิกัด)
                 mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
                 if mark_path:

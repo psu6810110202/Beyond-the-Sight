@@ -6,7 +6,7 @@ import os
 import xml.etree.ElementTree as ET
 from kivy.graphics import Color, Rectangle, InstructionGroup, Mesh
 from kivy.core.image import Image as CoreImage
-from settings import TILE_SIZE, CAMERA_WIDTH, CAMERA_HEIGHT
+from data.settings import TILE_SIZE, CAMERA_WIDTH, CAMERA_HEIGHT
 
 # Tiled Flip Flags
 FLIPPED_HORIZONTALLY_FLAG = 0x80000000

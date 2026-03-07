@@ -42,17 +42,17 @@ STAR_SPAWN_LOCATIONS = [
 PLAYER_WIDTH = 32
 PLAYER_HEIGHT = 32
 
-PLAYER_IDLE_IMG = 'characters/assets/player/player_idle.png'
-PLAYER_WALK_IMG = 'characters/assets/player/player_walk.png'
-PLAYER_PORTRAIT_IMG = 'characters/assets/player/player_n.png'
-PLAYER_S_PORTRAIT_IMG = 'characters/assets/player/player_s.png'
-ANGEL_PORTRAIT_IMG = 'characters/assets/pic/Angle_n.png'
-DEVIL_PORTRAIT_IMG = 'characters/assets/pic/Devil_n.png'
-FATHER_PORTRAIT_IMG = 'characters/assets/pic/Father_n.png'
-FATHER_S_PORTRAIT_IMG = 'characters/assets/pic/Father_s.png'
-MOTHER_PORTRAIT_IMG = 'characters/assets/pic/Mother_n.png'
-MOTHER_S_PORTRAIT_IMG = 'characters/assets/pic/Mother_s.png'
-REAPER_PORTRAIT_IMG = 'characters/assets/Reaper/Reaper_n.png'
+PLAYER_IDLE_IMG = 'assets/characters/player/player_idle.png'
+PLAYER_WALK_IMG = 'assets/characters/player/player_walk.png'
+PLAYER_PORTRAIT_IMG = 'assets/characters/player/player_n.png'
+PLAYER_S_PORTRAIT_IMG = 'assets/characters/player/player_s.png'
+ANGEL_PORTRAIT_IMG = 'assets/characters/pic/Angle_n.png'
+DEVIL_PORTRAIT_IMG = 'assets/characters/pic/Devil_n.png'
+FATHER_PORTRAIT_IMG = 'assets/characters/pic/Father_n.png'
+FATHER_S_PORTRAIT_IMG = 'assets/characters/pic/Father_s.png'
+MOTHER_PORTRAIT_IMG = 'assets/characters/pic/Mother_n.png'
+MOTHER_S_PORTRAIT_IMG = 'assets/characters/pic/Mother_s.png'
+REAPER_PORTRAIT_IMG = 'assets/characters/Reaper/Reaper_n.png'
 
 # แผนที่ไอเทมและรูปหน้าตัวละครตามพิกัดดาวใน Day 1
 STAR_ITEM_MAPPING = {
@@ -90,11 +90,11 @@ NPC_SPRITE_HEIGHT = 48
 NPC_ANIMATION_SPEED = 0.2
 
 NPC_IMAGE_LIST = [
-    'characters/assets/NPC/NPC1.png',
-    'characters/assets/NPC/NPC2.png',
-    'characters/assets/NPC/NPC3.png',
-    'characters/assets/NPC/NPC4.png',
-    'characters/assets/NPC/NPC5.png'
+    'assets/characters/NPC/NPC1.png',
+    'assets/characters/NPC/NPC2.png',
+    'assets/characters/NPC/NPC3.png',
+    'assets/characters/NPC/NPC4.png',
+    'assets/characters/NPC/NPC5.png'
 ]
 NPC_COUNT = len(NPC_IMAGE_LIST)
 
@@ -105,7 +105,7 @@ REAPER_VISUAL_WIDTH = 64  # Visual sprite size
 REAPER_VISUAL_HEIGHT = 64  # Visual sprite size
 REAPER_SPEED = 1.5
 
-REAPER_IMG = 'characters/assets/Reaper/Reaper.png'
+REAPER_IMG = 'assets/characters/Reaper/Reaper.png'
 
 # Enemy Settings
 ENEMY_WIDTH = 32
@@ -116,16 +116,16 @@ ENEMY_DETECTION_RADIUS = 200
 # ข้อมูลศัตรูแต่ละประเภท (ระบุภาพและขนาด spritesheet)
 ENEMY_TYPES = {
     1: {
-        'idle': {'path': 'characters/assets/Enemy/Enemy1_idle.png', 'cols': 1, 'rows': 4},
-        'walk': {'path': 'characters/assets/Enemy/Enemy1_walk.png', 'cols': 3, 'rows': 4}
+        'idle': {'path': 'assets/characters/Enemy/Enemy1_idle.png', 'cols': 1, 'rows': 4},
+        'walk': {'path': 'assets/characters/Enemy/Enemy1_walk.png', 'cols': 3, 'rows': 4}
     },
     2: {
-        'idle': {'path': 'characters/assets/Enemy/Enemy2_idle.png', 'cols': 1, 'rows': 4},
-        'walk': {'path': 'characters/assets/Enemy/Enemy2_walk.png', 'cols': 8, 'rows': 4}
+        'idle': {'path': 'assets/characters/Enemy/Enemy2_idle.png', 'cols': 1, 'rows': 4},
+        'walk': {'path': 'assets/characters/Enemy/Enemy2_walk.png', 'cols': 8, 'rows': 4}
     },
     3: {
-        'idle': {'path': 'characters/assets/Enemy/Enemy3_idle.png', 'cols': 1, 'rows': 4},
-        'walk': {'path': 'characters/assets/Enemy/Enemy3_walk.png', 'cols': 8, 'rows': 4}
+        'idle': {'path': 'assets/characters/Enemy/Enemy3_idle.png', 'cols': 1, 'rows': 4},
+        'walk': {'path': 'assets/characters/Enemy/Enemy3_walk.png', 'cols': 8, 'rows': 4}
     }
 }
 

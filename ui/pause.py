@@ -5,8 +5,8 @@ from kivy.graphics import Color, Rectangle, Line
 from kivy.core.window import Window
 from kivy.core.audio import SoundLoader
 import os
-from settings import GAME_FONT
-from menu.screen import GameMenu
+from data.settings import GAME_FONT
+from ui.screen import GameMenu
 
 class PauseMenu(FloatLayout):
     """

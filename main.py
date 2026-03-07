@@ -1,5 +1,5 @@
 from kivy.config import Config
-from settings import *
+from data.settings import *
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -27,30 +27,33 @@ import os
 import json
 import random
 
-from characters.player import Player
-from characters.npc import NPC
-from characters.reaper import Reaper
-from items.candle import Candle
-from characters.enemy import Enemy
+from entities.characters.player import Player
+from entities.characters.npc import NPC
+from entities.characters.reaper import Reaper
+from entities.items.candle import Candle
+from entities.characters.enemy import Enemy
 
-from assets.Heart.heart import HeartUI
+from ui.heart import HeartUI
 from assets.Tiles.map_loader import KivyTiledMap
 
-from menu.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
-from menu.screen import SplashScreen
-from menu.camera import Camera
-from menu.pause import PauseMenu
+from ui.load import SaveLoadScreen # นำเข้าหน้าจอเซฟ
+from ui.screen import SplashScreen
+from ui.camera import Camera
+from ui.pause import PauseMenu
 
-from storygame.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
-from storygame.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUES, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG, CANDLE_LIGHT_DIALOGUE, CANDLE_LIGHT_CHOICES # นำเข้าข้อความและค่าตั้งค่า
-from storygame.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
-from storygame.story import StoryManager # นำเข้า Story Manager
-from storygame.quest import QuestManager # นำเข้าหน้าจอกองเควส
-from storygame.dialogue_manager import DialogueManager # นำเข้า Dialogue Manager มารวมศูนย์ UI
-from items.star import Star # นำเข้า Star
-from storygame.world import WorldManager
-from storygame.save import SaveManager
-from storygame.cutscene import CutsceneManager
+from ui.intro import IntroScreen # นำเข้าหน้าจอ Intro (Day 1)
+from data.chat import NPC_DIALOGUES, REAPER_DIALOGUES, REAPER_DEATH_QUOTES, INTRO_DIALOGUES, WARNING_DIALOGUE, WARNING_CHOICES, DIALOGUE_CONFIG, CANDLE_LIGHT_DIALOGUE, CANDLE_LIGHT_CHOICES # นำเข้าข้อความและค่าตั้งค่า
+from ui.choice import handle_choice_selection, draw_choice_buttons, clear_choices, update_choice_visuals # นำเข้าการจัดการ Choice
+from managers.story import StoryManager # นำเข้า Story Manager
+from managers.quest import QuestManager # นำเข้าหน้าจอกองเควส
+from ui.dialogue_manager import DialogueManager # นำเข้า Dialogue Manager มารวมศูนย์ UI
+from entities.items.star import Star # นำเข้า Star
+from managers.world import WorldManager
+from managers.save import SaveManager
+from managers.cutscene import CutsceneManager
+from managers.input_handler import InputHandler
+from managers.interaction import InteractionManager
+from managers.game_logic import GameplayManager
 class GameWidget(Widget): 
     def __init__(self, initial_data=None, **kwargs): 
         super().__init__(**kwargs) 
@@ -119,6 +122,9 @@ class GameWidget(Widget):
         self.world_manager = WorldManager(self)
         self.save_manager = SaveManager(self)
         self.cutscene_manager = CutsceneManager(self)
+        self.interaction_manager = InteractionManager(self)
+        self.gameplay_manager = GameplayManager(self)
+        self.input_handler = InputHandler(self)
         self.dialogue_timer = 0
         self.is_dialogue_active = False # คืนสถานะการคุย
         self.current_dialogue_queue = []
@@ -297,11 +303,8 @@ class GameWidget(Widget):
         self.game_map.draw_ground(self.map_before_group)
         self.game_map.draw_background(self.map_before_group)
         self.game_map.draw_foreground(self.map_before_group)
-        self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
-        self._keyboard.bind(on_key_down=self._on_key_down) 
-        self._keyboard.bind(on_key_up=self._on_key_up) 
-
-        self.pressed_keys = set() 
+        # self.input_handler is initialized above and handles keyboard binding
+        self.pressed_keys = self.input_handler.pressed_keys 
         
         # 2. สร้าง NPCs
         self.npcs = []
@@ -320,6 +323,14 @@ class GameWidget(Widget):
         # 4.6. สร้างเทียน (กรณีโหลดเซฟแล้วมีเควสค้างอยู่)
         if "light_candles" in self.quest_manager.active_quests:
             self.create_candles()
+            
+        # 4.7. สร้างดวงดาว (กรณีโหลดเซฟแล้วมีเควสค้างอยู่)
+        active_q = self.quest_manager.active_quests
+        if ("doll_parts" in active_q and active_q["doll_parts"].is_active) or \
+           ("find_key" in active_q and active_q["find_key"].is_active) or \
+           ("soul_fragments" in active_q and active_q["soul_fragments"].is_active):
+            self.create_stars()
+            
         self.world_manager.restore_delivered_marks()
         
         # 5. Stars จะถูกสร้างหลังคุยกับ NPC1
@@ -401,14 +412,7 @@ class GameWidget(Widget):
 
     def request_keyboard_back(self):
         """ขอคีย์บอร์ดกลับมาให้ GameWidget อีกครั้ง (ใช้หลังปิดเมนู/หน้าจอโหลด)"""
-        if self._keyboard:
-            self._on_keyboard_closed()
-            
-        self._keyboard = Window.request_keyboard(self._on_keyboard_closed, self) 
-        self._keyboard.bind(on_key_down=self._on_key_down) 
-        self._keyboard.bind(on_key_up=self._on_key_up) 
-        # เคลียร์ปุ่มที่ค้างอยู่ป้องกันตัวละครเดินค้าง
-        self.pressed_keys.clear()
+        self.input_handler.request_keyboard()
 
 
 
@@ -422,92 +426,18 @@ class GameWidget(Widget):
             self.dialogue_manager.update_ui_scaling()
 
     def _on_keyboard_closed(self): 
-        if self._keyboard:
-            self._keyboard.unbind(on_key_down=self._on_key_down)  
-            self._keyboard.unbind(on_key_up=self._on_key_up) 
-            self._keyboard = None 
+        self.input_handler.on_keyboard_closed()
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):
-        key_name = keycode[1]
-        key_code = keycode[0]
-        print(f"Key pressed: {key_name} (code: {key_code})")  # Debug: แสดงปุ่มที่กด
-        
-        if key_name == 'e' or key_name == 'enter':
-            # 1. ถ้ามีแจ้งเตือนไอเทมอยู่ ให้ปิดแจ้งเตือนก่อน
-            if self.dialogue_manager.is_item_notif_active:
-                self.dialogue_manager.close_item_discovery()
-                
-                # ถ้ามีแชทที่รอขึ้นต่อ (เช่น หลังเก็บของ Day 4)
-                if self.pending_post_discovery_dialogue:
-                    d = self.pending_post_discovery_dialogue
-                    self.pending_post_discovery_dialogue = None
-                    self.show_vn_dialogue(d['name'], d['text'], portrait=d.get('portrait'))
-                # ถ้าไม่มีแชทต่อ แต่กำลังคุยค้างอยู่ (กรณีได้รับไอเทมกลางบทสนทนา) 
-                elif self.is_dialogue_active:
-                    self.next_dialogue()
-                return True
-        
-        # คีย์ Q สำหรับกดใช้ไอเทม Blue Stone (แยกจากปุ่มคุยเพื่อไม่ให้สับสน)
-        if key_name == 'q':
-            if self.has_received_blue_stone:
-                if self.stun_cooldown <= 0:
-                    self.use_stun_item()
-                else:
-                    print(f"Stun on cooldown: {self.stun_cooldown:.1f}s")
-            return True
-
-        if key_name == 'e':
-            # ถ้ากำลังคุยอยู่ ให้ปุ่ม E ทำหน้าที่เดียวกับ Enter คือไปประโยคถัดไป (ไม่ interact ซ้อน)
-            if self.is_dialogue_active:
-                if not self.choice_buttons: # ถ้าไม่มี choice ให้กด E ไปต่อได้
-                    self.next_dialogue()
-                return True
-                
-            print("E key detected - checking interaction")
-            self.interact()
-        elif key_name == 'enter':
-            print("Enter key detected - next dialogue")
-            
-            # 2. ถ้ากำลังคุยอยู่
-            if self.is_dialogue_active:
-                # ถ้ามี Choice ให้เลือกตัวเลือกที่ไฮไลท์อยู่
-                if self.choice_buttons:
-                    # ตรวจสอบว่าดัชนีอยู่ในขอบเขตของ current_choices หรือไม่
-                    if self.choice_index < len(self.current_choices):
-                        self.on_choice_selected(self.current_choices[self.choice_index])
-                    else:
-                        print(f"Warning: choice_index {self.choice_index} out of range for current_choices")
-                        self.close_dialogue()
-                else:
-                    self.next_dialogue()
-        
-        # จัดการการเลื่อน Choice ด้วยลูกศร ขึ้น/ลง
-        elif self.is_dialogue_active and self.choice_buttons:
-            if key_name == 'up':
-                self.choice_index = (self.choice_index - 1) % len(self.choice_buttons)
-                update_choice_visuals(self)
-                return True
-            elif key_name == 'down':
-                self.choice_index = (self.choice_index + 1) % len(self.choice_buttons)
-                update_choice_visuals(self)
-                return True
-        
-        elif key_name == 'escape':
-            self.toggle_pause()
-            return True
-
-        self.pressed_keys.add(key_name)
-        return True
+        return self.input_handler.on_key_down(keyboard, keycode, text, modifiers)
         
     def _on_key_up(self, keyboard, keycode): 
-        key_name = keycode[1] 
-        if key_name in self.pressed_keys:
-            self.pressed_keys.remove(key_name)
+        return self.input_handler.on_key_up(keyboard, keycode)
 
     def set_candle_color(self, color_name):
         """เปลี่ยนสีเทียนตามที่เลือกและอัปเดตสถานะ"""
-        from settings import CANDLE_COLOR_MAPPING
-        from storygame.chat import CANDLE_SUCCESS_DIALOGUE
+        from data.settings import CANDLE_COLOR_MAPPING
+        from data.chat import CANDLE_SUCCESS_DIALOGUE
         if self.current_candle_target and not self.current_candle_target.is_lit:
             candle = self.current_candle_target
             candle.set_color(color_name)
@@ -708,49 +638,6 @@ class GameWidget(Widget):
         # จัดเลเยอร์การวาดตัวละคร (Y-Sorting)
         self.y_sorting()
 
-    def respawn_at_reaper(self):
-        """เมื่อหัวใจหมด วาปผู้เล่นกลับไปยังจุดเริ่มต้นและรีเซ็ตหัวใจ"""
-        self.death_count += 1
-        print(f"Player died. Total deaths: {self.death_count}")
-        
-        # รีเซ็ตสถานะการเคลื่อนไหว
-        self.pressed_keys.clear()
-        self.player.is_moving = False
-        self.player.state = 'idle'
-        
-        # วาร์ปผู้เล่นไปยังจุดที่เซฟไว้ล่าสุด (ถ้ามี) ไม่เช่นนั้นใช้จุดเริ่มต้นดั้งเดิม
-        start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
-        start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
-        target_map = MAP_FILE
-        
-        if getattr(self, 'save_manager', None):
-            latest_save = self.save_manager.get_latest_save_data()
-            if latest_save and 'player_pos' in latest_save:
-                saved_x, saved_y = latest_save['player_pos']
-                start_x = (saved_x // TILE_SIZE) * TILE_SIZE
-                start_y = (saved_y // TILE_SIZE) * TILE_SIZE
-                target_map = latest_save.get('current_map', MAP_FILE)
-                
-        # ถ้าพิกัดที่เซฟไว้ไม่ได้อยู่ในแมพปัจจุบัน ให้ทำการเปลี่ยนแมพก่อน
-        if self.game_map.filename != target_map:
-            self.world_manager.change_map(target_map)
-
-        self.player.logic_pos = [start_x, start_y]
-        self.player.target_pos = [start_x, start_y]
-        self.player.sync_graphics_pos()
-        self.player.direction = 'up'
-        self.player.update_animation_speed()
-        self.player.update_frame()
-        
-        # รีเซ็ตเลือด
-        self.heart_ui.reset_health()
-            
-        # สุ่มคำพูดโดยไม่ให้ซ้ำกับรอบล่าสุด
-        available_indices = [i for i in range(len(REAPER_DEATH_QUOTES)) if i != self.last_death_quote_index]
-        q_idx = random.choice(available_indices)
-        self.last_death_quote_index = q_idx
-        
-        self.dialogue_manager.show_vn_dialogue("Reaper", REAPER_DEATH_QUOTES[q_idx])
 
     def _update_debug_text(self, px, py):
         """อัปเดตข้อมูล Debug ที่มุมจอ"""
@@ -812,13 +699,6 @@ class GameWidget(Widget):
     # ---------------------------------------------------------
     # Interaction & Triggers
     # ---------------------------------------------------------
-    def clear_interaction_hints(self):
-        """ล้างปุ่มและ Hints การโต้ตอบทั้งหมดออกจากจอ"""
-        if hasattr(self, 'interaction_hints'):
-            for hint in self.interaction_hints:
-                if hint.parent:
-                    hint.parent.remove_widget(hint)
-            self.interaction_hints = []
 
     def cleanup(self):
         """ล้างทรัพยากรทั้งหมดก่อนทำลาย Widget เพื่อป้องกันลูปค้าง"""
@@ -854,634 +734,65 @@ class GameWidget(Widget):
         Clock.unschedule(self._start_intro_dialogue)
 
     def _get_interaction_target(self, targets, limit=32):
-        """ค้นหาเป้าหมายที่อยู่ใกล้และผู้เล่นหันหน้าเข้าหา"""
-        px, py = self.player.logic_pos
-        p_dir = self.player.direction
-        
-        for tar in targets:
-            tx, ty = tar.logic_pos
-            dx, dy = tx - px, ty - py
-            dist = (dx**2 + dy**2)**0.5
-            
-            if dist >= limit:
-                continue
-                
-            # ตรรกะการหันหน้าเข้าหาเป้าหมาย
-            facing = False
-            if p_dir == 'up' and dy > 0 and abs(dy) >= abs(dx): facing = True
-            elif p_dir == 'down' and dy < 0 and abs(dy) >= abs(dx): facing = True
-            elif p_dir == 'left' and dx < 0 and abs(dx) >= abs(dy): facing = True
-            elif p_dir == 'right' and dx > 0 and abs(dx) >= abs(dy): facing = True
-            
-            if facing:
-                return tar, dx, dy
-        return None, 0, 0
+        return self.interaction_manager.get_interaction_target(targets, limit)
 
     def _get_search_target(self, limit=20):
-        """ค้นหาจุดที่สามารถค้นหาได้ในแมพบ้าน (ต้องหันหน้าเข้าหาและห่าง 1 บล็อก)"""
-        if "home.tmj" not in self.game_map.filename.lower():
-            return None
-        
-        px, py = self.player.logic_pos
-        p_dir = self.player.direction
-        all_spots = SEARCHABLE_SPOTS_HOME + [EMPTY_SPOT_HOME]
-        
-        for spot in all_spots:
-            sx, sy = spot
-            dx, dy = sx - px, sy - py
-            
-            # ต้องห่างกันไม่เกิน 1 บล็อก (16 pixels) และต้องไม่อยู่แนวทแยง (ตัวหนึ่งต้องเป็น 0)
-            is_close = (abs(dx) <= TILE_SIZE and abs(dy) <= TILE_SIZE)
-            is_orthogonal = (dx == 0 or dy == 0)
-            
-            if is_close and is_orthogonal:
-                # ตรวจสอบการหันหน้าเข้าหา
-                facing = False
-                if p_dir == 'up' and dy > 0: facing = True
-                elif p_dir == 'down' and dy < 0: facing = True
-                elif p_dir == 'left' and dx < 0: facing = True
-                elif p_dir == 'right' and dx > 0: facing = True
-                
-                if facing:
-                    return spot
-        return None
+        return self.interaction_manager.get_search_target(limit)
 
     def update_interaction_hints(self):
-        """จัดการแสดงผลปุ่ม [E] ขึ้นเหนือหัว NPC หรือไอเทม เมื่อเดินไปใกล้"""
-        self.clear_interaction_hints()
-        
-        if self.is_dialogue_active or self.is_paused or self.is_cutscene_active:
-            return
-            
-        root_to_check = self.dialogue_root.children if self.dialogue_root else self.children
-        if any(isinstance(child, SaveLoadScreen) for child in root_to_check):
-            return
-            
-        # เช็คไอเทมดวงดาวก่อน (ระยะ 20)
-        star_target, _, _ = self._get_interaction_target(self.stars, limit=20)
-        self.current_star_target = star_target
-        if star_target: return 
-        
-        # เช็คไอเทมเทียน (Day 3)
-        candle_target, _, _ = self._get_interaction_target(self.candles, limit=20)
-        self.current_candle_target = candle_target
-        if candle_target: return
-
-        # เช็ค NPC / Reaper (ระยะ 32)
-        target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper] + getattr(self, 'extra_reapers', []), limit=32)
-        if target:
-            hint_text = "E"
-            box_width = 25
-            hint = Label(
-                text=hint_text, font_name=GAME_FONT, font_size='12sp',
-                color=(1, 1, 1, 1), size_hint=(None, None), size=(box_width, 25),
-                halign='center', valign='middle', bold=True
-            )
-            hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
-            
-            with hint.canvas.before:
-                Color(0, 0, 0, 0.8)
-                hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
-            
-            hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
-            hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
-            
-            spos = self.camera.world_to_screen(target.logic_pos[0] + TILE_SIZE/2, target.logic_pos[1] + 45)
-            hint.pos = (spos[0] - (box_width / 2), spos[1])
-            
-            if self.dialogue_root: self.dialogue_root.add_widget(hint)
-            self.interaction_hints.append(hint)
-            return
-
-        # เช็ค Underground Portal
-        from settings import UNDERGROUND_PORTAL_POS
-        px, py = self.player.logic_pos
-        ux, uy = UNDERGROUND_PORTAL_POS
-        dist = ((px - ux)**2 + (py - uy)**2)**0.5
-        # DEBUG print to help user see their current pos vs portal pos
-        # print(f"DEBUG: Pos ({px}, {py}), Portal ({ux}, {uy}), Dist: {dist:.1f}, Day: {self.current_day}")
-        
-        if dist <= 32 and self.current_day == 5: # Increased range slightly for easier hit
-            hint = Label(
-                text="E", font_name=GAME_FONT, font_size='12sp',
-                color=(1, 1, 1, 1), size_hint=(None, None), size=(25, 25),
-                halign='center', valign='middle', bold=True
-            )
-            hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
-            with hint.canvas.before:
-                Color(0, 0, 0, 0.8)
-                hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
-            hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
-            hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
-            
-            spos = self.camera.world_to_screen(ux + TILE_SIZE/2, uy + 45)
-            hint.pos = (spos[0] - 12.5, spos[1])
-            if self.dialogue_root: self.dialogue_root.add_widget(hint)
-            self.interaction_hints.append(hint)
-            return
-
-        # เช็คจุดวางจดหมาย (Day 2) - ไม่แสดงปุ่ม E และ Marker ตามคำขอ
-        if self.current_day == 2 and self.letters_held > 0:
-            for i, spot in enumerate(HOUSE_DOOR_SPOTS):
-                # ถ้าพิกัดนี้ถูกส่งไปแล้ว ให้ข้าม
-                if i in self.delivered_house_indices:
-                    continue
-                    
-                px, py = self.player.logic_pos
-                if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
-                    # ไม่สร้าง Hint Label แล้ว แต่เก็บค่าเป้าหมายไว้ให้ interact() ทำงานได้เมื่อกด E
-                    self.pending_drop_spot = (spot, i)
-                    return
-
-        # เช็คจุดค้นหา (ไม่แสดงปุ่ม E ตามคำขอ)
-        self.current_search_target = self._get_search_target()
+        self.interaction_manager.update_interaction_hints()
 
     def interact(self):
-        """จัดการการกดปุ่ม [E] เพื่อคุยหรือสำรวจ"""
-        self.clear_interaction_hints()
-        
-        # 0. เช็ค Underground Portal (Priority First on Day 5)
-        from settings import UNDERGROUND_PORTAL_POS, PLAYER_START_X, PLAYER_START_Y
-        px, py = self.player.logic_pos
-        ux, uy = UNDERGROUND_PORTAL_POS
-        dist = ((px - ux)**2 + (py - uy)**2)**0.5
-        
-        print(f"DEBUG: Interact pressed at ({px}, {py}). Portal dist: {dist:.1f}, Day: {self.current_day}")
-        
-        if dist <= 32 and self.current_day == 5:
-            print("DEBUG: UNDERGROUND PORTAL TRIGGERED!")
-            # ล้างทุกอย่างให้เกลี้ยงที่สุด (เหมือนตอนเข้าบ้าน แต่เน้นทำลายวัตถุด้วย)
-            for npc in self.npcs: npc.destroy()
-            for enemy in self.enemies: enemy.destroy()
-            for er in getattr(self, 'extra_reapers', []): er.destroy()
-            
-            self.sorting_layer.clear()
-            self.npcs, self.enemies, self.stars = [], [], []
-            self.extra_reapers = []
+        self.interaction_manager.interact()
 
-            # ซ่อน Reaper หลักและย้ายไปไกลๆ (เฉพาะแมพนี้)
-            if hasattr(self, 'reaper') and self.reaper:
-                self.reaper.x, self.reaper.y = -5000, -5000 # ย้ายไปพิกัดที่ไม่มีใครเห็น
-                self.reaper.logic_pos = [-5000, -5000]
-                if hasattr(self.reaper, 'sprite_color'):
-                    self.reaper.sprite_color.a = 0 # ซ่อน
-                if hasattr(self.reaper, 'aura_color'):
-                    self.reaper.aura_color.a = 0 # ซ่อนออร่า
-                self.reaper.update_visual_positions()
+    def clear_interaction_hints(self):
+        self.interaction_manager.clear_interaction_hints()
 
-            # 1. เปลี่ยนแมพ
-            self.change_map('assets/Tiles/underground.tmj')
-            
-            # 2. วางตำแหน่งตัวละครในแมพใหม่
-            # ตั้งพิกัดเกิดในแมพ underground (1088,16) ตามคำขอล่าสุด
-            self.player.logic_pos = [1088, 16] 
-            self.player.target_pos = [1088, 16]
-            self.player.direction = 'up'
-            self.player.update_frame()
-            self.player.sync_graphics_pos()
-            
-            # 3. ใส่ตัวละครคืนเข้าไปใน Sorting Layer
-            self.sorting_layer.add(self.player.group)
-            
-            # 4. สร้าง Entity ใหม่
-            self.create_npcs()
-            self.create_enemies()
-            self.world_manager.create_reapers() 
-            
-            self.show_vn_dialogue("Little girl", "It's cold and damp down here... I should be careful.")
-            return
-
-        # 1. เช็คการวางจดหมาย (Day 2 Priority)
-        if self.current_day == 2 and hasattr(self, 'pending_drop_spot') and self.pending_drop_spot:
-            from settings import HOUSE_MARKS_MAPPING
-            spot, spot_index = self.pending_drop_spot
-            px, py = self.player.logic_pos
-            if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
-                if self.letters_held > 0 and spot_index not in self.delivered_house_indices:
-                    # ขั้นตอนที่ 0: โชว์รูปสัญลักษณ์และสำรวจก่อน (ยังไม่มีช้อย)
-                    mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
-                    self.pending_drop_spot = (spot, spot_index)
-                    self.house_inspection_step = True # Flag เพื่อให้ก้าวต่อไปโชว์ Choice
-                    self.show_vn_dialogue("Little girl", "I found a mark on this house door...", portrait=mark_path)
-                    return
-
-        if self.current_star_target:
-            # เล่นเสียงรื้อค้น (Find) และเสียงสงสัย (Curious) เพราะมีทางเลือก
-            if self.find_sound:
-                self.find_sound.play()
-            if self.curious_sound:
-                self.curious_sound.play()
-                
-            star_pos = (self.current_star_target.x, self.current_star_target.y)
-            # เช็คข้อมูลไอเทมตามวัน
-            if 'underground.tmj' in self.game_map.filename.lower():
-                # แมพใต้ดินใช้ช้อย SEARCH
-                self.show_vn_dialogue("Little girl", "I found one of those objects... should I search inside?", choices=["SEARCH", "LEAVE IT"])
-            elif self.current_day == 4:
-                from settings import DAY4_KEY_MAPPING
-                portrait = DAY4_KEY_MAPPING.get(star_pos, {}).get("portrait")
-                self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
-            else:
-                from settings import STAR_ITEM_MAPPING
-                portrait = STAR_ITEM_MAPPING.get(star_pos, {}).get("portrait")
-                self.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
-            return
-
-        # 1. เช็คจุดไฟเทียน (Day 3)
-        if self.current_candle_target:
-            if self.current_candle_target.is_lit:
-                self.show_vn_dialogue("Little girl", "This candle is already burning brightly.")
-                return
-                
-            self.show_vn_dialogue("Little girl", CANDLE_LIGHT_DIALOGUE, choices=CANDLE_LIGHT_CHOICES)
-            return
-
-        target, dx, dy = self._get_interaction_target(self.npcs + [self.reaper] + getattr(self, 'extra_reapers', []), limit=32)
-        if target:
-            npc_index = self.npcs.index(target) if target in self.npcs else -1
-            self.process_interaction(target, npc_index, dx, dy)
-            return
-
-            self.show_vn_dialogue("Little girl", "It's cold and damp down here... I should be careful.")
-            return
-
-        # 3. เช็คจุดค้นหา (ทั่วไป และ Object ใน Underground)
-        if self.current_search_target:
-            self.process_search_spot(self.current_search_target)
-            return
-
-        # 4. เช็ค Object ใน Underground (Interaction with layers)
-        if 'underground.tmj' in self.game_map.filename.lower():
-            # ดึง Object จากเลเยอร์ "ของ" มาเช็ค Interaction
-            objects_layer = next((l for l in self.game_map.tmx_data.layers if l.name == "ของ"), None)
-            if objects_layer:
-                px, py = self.player.logic_pos
-                for obj in objects_layer:
-                    dist = ((px - obj.x)**2 + (py - (self.game_map.height * 16 - obj.y))**2)**0.5
-                    if dist <= 32:
-                        print(f"DEBUG: Interacting with object {obj.id}")
-                        self.process_search_spot(obj)
-                        return
+    def respawn_at_reaper(self):
+        self.gameplay_manager.respawn_at_reaper()
 
     def use_stun_item(self):
-        """ใช้ Blue Stone เพื่อสตันผีรอบๆ ตัว"""
-        # เอฟเฟกต์การส่องแสง Blue Stone
-        stun_range = 100 # ระยะสตัน
-        self.stun_cooldown = 15.0 # คูลดาวน์ 15 วินาที
-        
-        px, py = self.player.logic_pos
-        player_center_x = px + TILE_SIZE / 2
-        player_center_y = py + TILE_SIZE / 2
-        
-        stunned_any = False
-        for enemy in self.enemies:
-            ex, ey = enemy.logic_pos
-            enemy_center_x = ex + TILE_SIZE / 2
-            enemy_center_y = ey + TILE_SIZE / 2
-            
-            dist = ((player_center_x - enemy_center_x)**2 + (player_center_y - enemy_center_y)**2)**0.5
-            if dist <= stun_range:
-                enemy.stun(duration=3.0)
-                stunned_any = True
-        
-        # Visual Effect (กะพริบจอสีฟ้าอ่อนๆ แป๊บนึง)
-        if stunned_any:
-            print("Stun activated!")
-            # เพิ่มการสั่นหน้าจอหรือเอฟเฟกต์แสงในอนาคตที่นี่ได้
-            
+        self.gameplay_manager.use_stun_item()
+
     def process_search_spot(self, spot):
-        """ประมวลผลการค้นหาตามจุดต่างๆ ในบ้าน"""
-        self.clear_interaction_hints()
-        
-        # เล่นเสียงรื้อของ/หาของ
-        if self.find_sound:
-            self.find_sound.play()
-        
-        if spot == EMPTY_SPOT_HOME:
-            self.show_vn_dialogue("Little girl", "Empty... they never leave anything for me anyway.")
-            return
+        self.interaction_manager.interact_with_search_spot(spot)
 
-        if spot == self.correct_food_spot:
-            self.show_vn_dialogue("Little girl", "Found it. This will keep me going tonight.")
-            # ตั้งสถานะรอเควสสำเร็จ (จะถูกเรียกใน story_manager.handle_dialogue_end)
-            self._pending_food_success = True
-            return
-
-        # 1. การค้นหาใน Underground (ดาว/Spark)
-        if 'underground.tmj' in self.game_map.filename.lower():
-            # ต้องคุยกับ The Soul ก่อนถึงจะหาเจอ (เช็คว่าเควส active หรือยัง)
-            quest = self.quest_manager.active_quests.get("soul_fragments")
-            if not quest or not quest.is_active:
-                self.show_vn_dialogue("Little girl", "I don't know what I'm looking for... I should talk to the soul first.")
-                return
-            
-            # สุ่มเจอ Spark (เลียนแบบระบบ Day 1)
-            import random
-            if random.random() < 0.4: # โอกาส 40%
-                self.quest_manager.update_quest_progress("soul_fragments", 1)
-                self.show_item_discovery("SOUL FRAGMENT", "assets/Items/star/doll1.png") # ใช้รูปชั่วคราว
-                self.show_vn_dialogue("Little girl", "I found a soul fragment!")
-            else:
-                self.show_vn_dialogue("Little girl", "Nothing here but damp earth.")
-            return
-
-        self.show_vn_dialogue("Little girl", "Just dust and old rags. There’s nothing to eat here.")
-
-        
     def process_interaction(self, target, index, dx, dy):
-        """ประมวลผลการคุยกับ NPC หรือ Reaper"""
-        # ล้าง Hint ทันทีเมื่อเริ่มการโต้ตอบ
-        self.clear_interaction_hints()
-        
-        # หยุดการเดินของ Player ทันที
-        self.pressed_keys.clear()
-        self.player.stop()
-        
-        # หันหน้าเข้าหากัน
-        if abs(dx) > abs(dy):
-            if dx > 0:
-                target.direction = 'left'
-                self.player.direction = 'right'
-            else:
-                target.direction = 'right'
-                self.player.direction = 'left'
-        else:
-            if dy > 0:
-                target.direction = 'down'
-                self.player.direction = 'up'
-            else:
-                target.direction = 'up'
-                self.player.direction = 'down'
-        
-        target.update_frame()
-        self.player.update_frame()
-        
-        if isinstance(target, Reaper):
-            self.is_reaper_save_prompt = True
-            dialogue = self.get_reaper_dialogue(dx, dy)
-            self.show_dialogue_above_reaper(dialogue)
-        else:
-            # NPC - ระบุชื่อตามไฟล์รูปภาพเพื่อความแม่นยำ (แก้ปัญหา Index เลื่อนเมื่อบางตัวไม่โผล่)
-            if hasattr(target, 'image_path'):
-                if 'NPC1' in target.image_path: 
-                    npc_name = "The Sad Soul"
-                elif 'NPC2' in target.image_path: 
-                    npc_name = "The Postman"
-                elif 'NPC3' in target.image_path: 
-                    npc_name = "The Old Soul"
-                elif 'NPC4' in target.image_path: 
-                    npc_name = "The Lady at the Window"
-                elif 'NPC5' in target.image_path: 
-                    npc_name = "The Soul"
-                else:
-                    npc_name = f"NPC{index + 1}"
-            else:
-                npc_name = f"NPC{index + 1}"
-                
-            dialogue = self.get_proximity_dialogue(npc_name, dx, dy)
-            if dialogue:
-                self.show_dialogue_above_npc(target, dialogue, npc_name=npc_name)
+        self.interaction_manager.process_interaction(target, index, dx, dy)
+
 
     # ---------------------------------------------------------
     # Dialogue & Quest Logic
     # ---------------------------------------------------------
     def show_dialogue_above_npc(self, npc, dialogue, npc_name=None):
-        """แสดงข้อความคุยของ NPC สไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        # ถ้าไม่ได้ระบุชื่อมา ให้คำนวณตาม Index (Fallback)
-        if npc_name is None:
-            npc_name = "The Sad Soul" if self.npcs.index(npc) == 0 else f"NPC{self.npcs.index(npc) + 1}"
-        
-        # ตั้งค่าคิวข้อความ
-        self.current_dialogue_queue = dialogue
-        self.current_dialogue_index = 0
-        self.current_character_name = npc_name
-        self.current_portrait = None # หรือระบุถ้ามีหน้าเฉพาะ
-        
-        # แสดงข้อความแรก
-        if self.current_dialogue_queue:
-            self.is_dialogue_active = True
-            self.player.stop()
-            first_text = self.current_dialogue_queue[0]
-            self.dialogue_manager.show_vn_dialogue(npc_name, first_text)
-            
+        self.interaction_manager.show_dialogue_above_npc(npc, dialogue, npc_name)
+
     def show_dialogue_above_reaper(self, dialogue, choices=None, portrait=None):
-        """แสดงข้อความคุยของ Reaper สไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        # ตั้งค่าคิวข้อความ
-        self.current_dialogue_queue = dialogue
-        self.current_dialogue_index = 0
-        
-        self.current_character_name = "Reaper"
-        self.current_portrait = portrait
-        
-        # เล่นเสียงพูดของ Reaper ทุกครั้งที่เริ่มบทสนทนา
-        if self.reaper_voice_sound:
-            self.reaper_voice_sound.play()
-        
-        # แสดงข้อความแรก
-        if self.current_dialogue_queue:
-            self.is_dialogue_active = True
-            self.player.stop()
-            first_text = self.current_dialogue_queue[0]
-            # แสดง Choice เฉพาะเมื่ออยู่หน้าสุดท้าย
-            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
-            self.dialogue_manager.show_vn_dialogue(
-                "Reaper", first_text, 
-                choices=(self.current_choices if is_last else None),
-                portrait=self.current_portrait
-            )
+        self.interaction_manager.show_dialogue_above_reaper(dialogue, choices, portrait)
 
     def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
-        """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
-        self.is_dialogue_active = True
-        self.player.stop()
-        self.current_character_name = character_name
-        if choices:
-            self.current_choices = choices
-        if portrait is not None:
-            self.current_portrait = portrait
-        else:
-            self.current_portrait = None # รีเซ็ตเป็น None ถ้าฝั่งเรียกไม่ได้ส่งมา (ให้ใช้ Default)
-            
-        self.dialogue_manager.show_vn_dialogue(
-            character_name, dialogue, 
-            choices=choices, 
-            portrait=self.current_portrait,
-            left_portrait=left_portrait
-        )
+        self.dialogue_manager.show_vn_dialogue(character_name, dialogue, choices, portrait, left_portrait)
 
     def show_item_discovery(self, text, image_path=None, choices=None):
-        """แสดงแจ้งเตือนการได้รับไอเทมกลางหน้าจอ (Delegated)"""
-        self.is_dialogue_active = True
-        self.pressed_keys.clear()
-        self.player.stop()
-        self.current_character_name = text # เพื่อให้ Story Manager รู้ว่าอะไรเพิ่งจบ
-        self.dialogue_manager.show_item_discovery(text, image_path, choices=choices)
-        root = self.dialogue_root if self.dialogue_root else self
-        
+        self.dialogue_manager.show_item_discovery(text, image_path, choices)
+
     def close_dialogue(self):
-        """ปิดกล่องข้อความคุยและคืนสถานะเกม"""
-        # จำสถานะก่อนรีเซ็ต (ต้องทำก่อนเรียก dialogue_manager.close_dialogue เพราะมันจะเคลียร์ current_choices)
-        last_char = getattr(self, 'current_character_name', None)
-        has_choices = len(getattr(self, 'current_choices', [])) > 0
-        
         self.dialogue_manager.close_dialogue()
 
-        # คืนสถานะการคุย
-        self.is_dialogue_active = False
-        self._on_close_dialogue_reset()
-        
-        # ปลดล็อกกล้องถ้าไม่ได้ติดคัทซีนตัวเมือง/เนื้อเรื่องหลัก
-        if not self.is_cutscene_active:
-            self.camera.locked = False
-        
-        # ตรวจสอบว่าเป็นการจบคัทซีนเนื้อเรื่องเสริมหรือไม่
-        if self.is_cutscene_active and getattr(self, 'cutscene_step', 0) == 11:
-            self.cutscene_manager.end_side_story_cutscene()
-            self.camera.locked = False
-        
-        # ส่งต่อ Logic เนื้อเรื่องให้ Story Manager จัดการทอดๆ ต่อไป
-        self.story_manager.handle_dialogue_end(last_char, has_choices)
-        self.is_reaper_save_prompt = False
-        
-        # รีเซ็ตสถานะโหมดสอนเสมอ (Story Manager จะเป็นคนคุม tutorial_mode ในอนาคต)
-        self.tutorial_mode = False
-        
     def _on_close_dialogue_reset(self):
-        """รีเซ็ตค่าพื้นฐานหลังปิดบทสนทนา"""
-        self.dialogue_timer = 0
-        self.current_dialogue_queue = []
-        self.current_dialogue_index = 0
-        self.current_character_name = ""
-        self.current_choices = []
-        if hasattr(self, 'temp_dialogue_chars'):
-            self.temp_dialogue_chars = []
+        self.dialogue_manager._on_close_dialogue_reset()
 
     def next_dialogue(self):
-        """ไปยังข้อความถัดไปในคิว"""
-        if self.current_choices and self.current_dialogue_index == len(self.current_dialogue_queue) - 1:
-            return
-
-        # 1. เช็คก่อนว่าแชทปัจจุบันคือประโยคที่ต้องให้ของหรือไม่ (ถ้าใช่ ให้โชว์แจ้งเตือนไอเทมก่อนขยับไปประโยคถัดไป)
-        if self.current_dialogue_index < len(self.current_dialogue_queue):
-            current_text = self.current_dialogue_queue[self.current_dialogue_index]
-            
-            # Event: ได้รับ Blue Stone (Day 1)
-            if "Here, take this [Blue Stone] with you" in current_text and not self.has_received_blue_stone:
-                self.preserved_character_name = self.current_character_name 
-                self.dialogue_manager.close_dialogue()
-                self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
-                self.has_received_blue_stone = True
-                return 
-                
-            # Event: ได้รับ Lantern (Day 3)
-            if "Take this lantern. You'll need it to light the candles" in current_text and not self.has_received_lantern:
-                self.preserved_character_name = self.current_character_name
-                self.dialogue_manager.close_dialogue()
-                self.show_item_discovery("Received [Lantern]", "assets/Items/Lantern.png")
-                self.has_received_lantern = True
-                return
-
-        if getattr(self, 'preserved_character_name', None) is not None:
-            self.current_character_name = self.preserved_character_name
-            self.preserved_character_name = None
-
-        # 2. ขยับไปยังข้อความถัดไป
-        self.current_dialogue_index += 1
-        
-        if self.current_dialogue_index < len(self.current_dialogue_queue):
-            next_text = self.current_dialogue_queue[self.current_dialogue_index]
-            is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
-            
-            # เช็คว่ามีลิสต์ชื่อตัวละครชั่วคราวหรือไม่ (เช่น คัทซีนสลับคุย)
-            if hasattr(self, 'temp_dialogue_chars') and self.temp_dialogue_chars:
-                if self.current_dialogue_index < len(self.temp_dialogue_chars):
-                    self.current_character_name = self.temp_dialogue_chars[self.current_dialogue_index]
-            
-            self.dialogue_manager.show_vn_dialogue(
-                self.current_character_name, next_text, 
-                choices=(self.current_choices if is_last else None),
-                portrait=self.current_portrait
-            )
-        else:
-            # ตรวจสอบลำดับการตรวจบ้าน Day 2 (ลำดับที่ 0 -> 1)
-            if getattr(self, 'house_inspection_step', False) and hasattr(self, 'pending_drop_spot'):
-                from settings import HOUSE_MARKS_MAPPING
-                self.house_inspection_step = False
-                spot = self.pending_drop_spot[0]
-                mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
-                self.show_vn_dialogue("Little girl", "Should I leave a letter?", 
-                                     choices=["Leave a letter", "Let me think"], portrait=mark_path)
-                return
-
-            self.close_dialogue()
+        self.dialogue_manager.next_dialogue()
 
     def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยตามระยะห่างของ NPC"""
-        if npc_name == "The Soul":
-            quest = self.quest_manager.active_quests.get("soul_fragments")
-            if quest:
-                if quest.current_count >= quest.target_count:
-                    from storygame.chat import NPC5_SUCCESS
-                    return [NPC5_SUCCESS]
-                elif quest.is_active:
-                    return ["Were you able to find the fragments? I can almost feel myself becoming whole again..."]
-
-        if npc_name == "The Sad Soul":
-            quest = self.quest_manager.active_quests.get("doll_parts")
-            if quest:
-                if quest.current_count >= quest.target_count:
-                    if self.quest_item_fail:
-                        return ["Oh! You found them!", "Wait... these parts... they're just old scrap metal...", "Why would you give me these? This isn't my doll..."]
-                    return ["Oh! You found them!", "My doll... it's whole again. Thank you so much!", "You really are a kind one."]
-                elif quest.is_active:
-                    return ["Were you able to find the pieces? It's still so dark..."]
-
-        if npc_name == "The Postman":
-            quest = self.quest_manager.active_quests.get("deliver_letters")
-            if quest:
-                if quest.current_count >= quest.target_count:
-                    if getattr(self, "quest_item_fail", False): # Just in case day 2 has a fail state later
-                        return ["Are you sure these went to the right houses? ...I suppose it's done anyway.", "Thank you..."]
-                    return ["Ah, you're back...", "My work here is finally done.", "Thank you, little one..."]
-                elif quest.is_active:
-                    return ["..."]
-
-        if npc_name == "The Old Soul":
-            quest = self.quest_manager.active_quests.get("light_candles")
-            if quest:
-                if quest.current_count >= quest.target_count:
-                    from storygame.chat import OLD_SOUL_SUCCESS, OLD_SOUL_FAIL
-                    if getattr(self, "quest_item_fail", False):
-                        return [OLD_SOUL_FAIL]
-                    return [OLD_SOUL_SUCCESS]
-                elif quest.is_active:
-                    return ["The red flowers in the vase...", "The blue rug in the hallway...", "The yellow sunlight on the porch...", "If only I could see those colors again..."]
-
-        if npc_name in NPC_DIALOGUES:
-            return NPC_DIALOGUES[npc_name]
-        return ["..."]
+        return self.interaction_manager.get_proximity_dialogue(npc_name, distance_x, distance_y)
 
     def get_reaper_dialogue(self, distance_x, distance_y):
-        """คืนค่าลิสต์ข้อความคุยของ Reaper ครั้งละ 1 ประโยคแบบสุ่ม หรือคำใบ้ถ้ามีเควสอยู่"""
-        quest_doll = self.quest_manager.active_quests.get("doll_parts")
-        if quest_doll and quest_doll.is_active and quest_doll.current_count < quest_doll.target_count:
-            return ["What he worries about... was thrown away with the unwanted things.", "Try searching that trash pile, you might find something."]
-            
-        quest_letters = self.quest_manager.active_quests.get("deliver_letters")
-        if quest_letters and quest_letters.is_active and quest_letters.current_count < quest_letters.target_count:
-            return ["Every silent message seeks its twin carved in wood... lead it home"]
-
-        quest_candles = self.quest_manager.active_quests.get("light_candles")
-        if quest_candles and quest_candles.is_active and quest_candles.current_count < quest_candles.target_count:
-            return ["He already told you the order. Just follow the sequence of his memories."]
-
-        return [random.choice(REAPER_DIALOGUES)]
+        return self.interaction_manager.get_reaper_dialogue(distance_x, distance_y)
 
     def on_choice_selected(self, choice):
-        """จัดการเมื่อผู้เล่นเลือก Choice (เรียกใช้ตรรกะจาก choice.py)"""
-        if self.click_sound:
-            self.click_sound.play()
-        handle_choice_selection(self, choice)
+        self.dialogue_manager.on_choice_selected(choice)
 
     # ---------------------------------------------------------
     # Game State Management (Pause, Save/Load)
@@ -1586,86 +897,7 @@ class GameWidget(Widget):
         self.world_manager.recreate_world()
 
     def handle_day_transition(self, increment=True):
-        """จัดการการตัดฉากขึ้นวันใหม่"""
-        if not self._pending_day_transition: return
-        self._pending_day_transition = False
-        
-        # 1. แสดงจอดำ (Fade Out)
-        root = self.dialogue_root if self.dialogue_root else self
-        black_overlay = Widget(size_hint=(1, 1), opacity=0)
-        with black_overlay.canvas:
-            Color(0, 0, 0, 1)
-            self.black_rect_trans = Rectangle(size=root.size, pos=(0, 0))
-            
-        def update_black_rect_trans(instance, value):
-            self.black_rect_trans.size = (instance.width * 2, instance.height * 2)
-            self.black_rect_trans.pos = (-instance.width * 0.5, -instance.height * 0.5)
-        black_overlay.bind(size=update_black_rect_trans, pos=update_black_rect_trans)
-        update_black_rect_trans(black_overlay, None)
-        root.add_widget(black_overlay)
-        
-        # 2. เพิ่ม Day Counter
-        if increment:
-            self.current_day += 1
-        
-        # 3. Animation Sequence
-        anim = Animation(opacity=1, duration=1.5) # จอค่อยๆ มืดลง
-        
-        def on_dark(*args):
-            # ระหว่างที่จอมืด ให้รีเซ็ตโลกใหม่
-            self.warning_dismissed = False
-            self.warning_triggered = False
-            self.is_dialogue_active = True
-            self.is_cutscene_active = False # ปลดล็อกคัทซีนเดิม
-            self.is_ready = True            # ยืนยันว่าเกมพร้อม
-            self.player.is_in_home = False
-            
-            # ล้างข้อมูลของวันเก่าที่จบไปแล้ว (Cleanup - User Request)
-            if self.current_day > 1:
-                self.collected_stars = []
-                self.destroyed_enemies = [] # รีศัตรูให้กลับมาเกิดใหม่ทุกวัน
-                day1_quests = ["doll_parts", "find_food"]
-                for qid in day1_quests:
-                    if qid in self.quest_manager.active_quests:
-                        del self.quest_manager.active_quests[qid]
-            
-            if self.current_day > 2:
-                self.letters_held = 0
-                self.delivered_house_indices = []
-                if "deliver_letters" in self.quest_manager.active_quests:
-                    del self.quest_manager.active_quests["deliver_letters"]
-                    
-            self.quest_manager.update_quest_list_ui()
-
-            self.recreate_world()
-            self.world_manager.create_house_marks()
-            
-            # 4. แสดง IntroScreen (Day X) เหมือนหน้าจอแรกสุดของเกม
-            def start_fading_in():
-                # เมื่อโชว์ Day X จบแล้ว ให้ค่อยๆ จางจอดำออก
-                fade_in = Animation(opacity=0, duration=1.5)
-                def on_fade_complete(*a):
-                    root.remove_widget(black_overlay)
-                    
-                    # เริ่มบทสนทนาประจำวันทันทีหลังจอจางลง (ขาสู่ Day 2, 3, 4, 5)
-                    self.is_dialogue_active = True
-                    self.is_cutscene_active = False
-                    self.is_ready = True
-                    self.player.is_in_home = False
-                    self.player.state = 'idle'
-                    self.player.is_moving = False
-                    self.request_keyboard_back()
-                    
-                    # เรียก Reaper มาคุยบทนำของวันนั้นๆ
-                    self._start_intro_dialogue(0)
-                fade_in.bind(on_complete=on_fade_complete)
-                fade_in.start(black_overlay)
-
-            intro = IntroScreen(callback=start_fading_in, day=self.current_day)
-            root.add_widget(intro)
-            
-        anim.bind(on_complete=on_dark)
-        anim.start(black_overlay)
+        self.gameplay_manager.handle_day_transition(increment)
 
     # ---------------------------------------------------------
     # Cutscenes Logic
@@ -1750,18 +982,6 @@ class MyApp(App):
         # นำ debug_label แปะที่ FloatLayout (UI หน้าจอจริงๆ) ให้พ้นจากกล้องซูม/หมุน
         game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
         self.root.add_widget(game.debug_label) 
-
-    def create_candles(self):
-        """สร้างไอเทมเทียนตามพิกัดใน settings.py"""
-        from settings import CANDLE_SPAWN_LOCATIONS
-        # ล้างของเดิมก่อน
-        for c in self.candles:
-            c.destroy()
-        self.candles = []
-        
-        for x, y in CANDLE_SPAWN_LOCATIONS:
-            candle = Candle(self.sorting_layer, x, y)
-            self.candles.append(candle)
 
     def on_start(self):
         # ผูกเหตุการณ์คีย์บอร์ดระดับ Window เพื่อให้กด F11 ได้ทุกหน้าจอ

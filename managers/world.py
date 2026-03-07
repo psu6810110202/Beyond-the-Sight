@@ -1,12 +1,12 @@
 # storygame/world.py
 from kivy.graphics import Color, Rectangle
-from characters.npc import NPC
-from characters.enemy import Enemy
-from characters.reaper import REAPER_START_POS
-from items.star import Star
+from entities.characters.npc import NPC
+from entities.characters.enemy import Enemy
+from entities.characters.reaper import REAPER_START_POS
+from entities.items.star import Star
 from assets.Tiles.map_loader import KivyTiledMap
 from kivy.core.image import Image as CoreImage
-from settings import *
+from data.settings import *
 import random
 
 class WorldManager:
@@ -15,7 +15,7 @@ class WorldManager:
         
     def create_reapers(self):
         """จัดการการสร้าง Reaper หลักและ Extra Reapers ตามความก้าวหน้าของวัน"""
-        from characters.reaper import Reaper, REAPER_START_POS
+        from entities.characters.reaper import Reaper, REAPER_START_POS
         
         # 1. จัดการ Reaper หลัก (เฉพาะในแมพหลัก beyond.tmj)
         map_file = getattr(self.game.game_map, 'filename', '')
@@ -86,7 +86,7 @@ class WorldManager:
                 self.game.extra_reapers.append(extra_reap3)
         elif 'underground.tmj' in map_file.lower():
             # สร้าง Reapers ใน Underground ตามที่ระบุ
-            from settings import REAPER_SPAWN_DATA_UNDERGROUND
+            from data.settings import REAPER_SPAWN_DATA_UNDERGROUND
             for pos in REAPER_SPAWN_DATA_UNDERGROUND:
                 er = Reaper(self.game.sorting_layer, x=pos[0], y=pos[1])
                 er.direction = 'down'
@@ -100,7 +100,7 @@ class WorldManager:
         
         if 'underground.tmj' in map_file.lower():
             # สร้าง The Soul (800, 320) ใน Underground
-            the_soul = NPC(self.game.sorting_layer, 800, 320, 'characters/assets/NPC/NPC5.png')
+            the_soul = NPC(self.game.sorting_layer, 800, 320, 'assets/characters/NPC/NPC5.png')
             the_soul.npc_index = 5 # หรือ index ที่เหมาะสม
             the_soul.name = "The Soul"
             the_soul.direction = 'up'
@@ -259,7 +259,17 @@ class WorldManager:
             
     def create_stars(self):
         """สร้างดาวตามพิกัดที่กำหนด (Day 1 และ Day 4)"""
+        # ล้างของเดิมก่อนป้องกันการสร้างซ้อน
+        for s in self.game.stars[:]:
+            s.destroy()
+        self.game.stars.clear()
+
         if self.game.current_day == 1:
+            # ถ้าเควสจบไปแล้วไม่ต้องสร้างอีก
+            quest = self.game.quest_manager.active_quests.get("doll_parts")
+            if quest and not quest.is_active:
+                return
+
             locations = STAR_SPAWN_LOCATIONS
             # 3 ดวงแรกเป็นของจริง ดวงที่เหลือเป็นของหลอก (Day 1 Logic)
             for i, (x, y) in enumerate(locations):
@@ -268,7 +278,12 @@ class WorldManager:
                 star = Star(self.game.sorting_layer, x, y, is_true=is_true)
                 self.game.stars.append(star)
         elif self.game.current_day == 4:
-            from settings import DAY4_STAR_LOCATIONS
+            # ถ้าเควสจบไปแล้วไม่ต้องสร้างอีก
+            quest = self.game.quest_manager.active_quests.get("find_key")
+            if quest and not quest.is_active:
+                return
+
+            from data.settings import DAY4_STAR_LOCATIONS
             locations = DAY4_STAR_LOCATIONS
             for (x, y) in locations:
                 if (x, y) in self.game.collected_stars: continue
@@ -276,6 +291,10 @@ class WorldManager:
                 star = Star(self.game.sorting_layer, x, y, is_true=True) # ให้เก็บได้ทุกลูก
                 self.game.stars.append(star)
         elif 'underground.tmj' in getattr(self.game.game_map, 'filename', '').lower():
+            # สำหรับแมพใต้ดิน: ถ้ามีเควสมั้ย
+            quest = self.game.quest_manager.active_quests.get("soul_fragments")
+            if quest and not quest.is_active:
+                return
             # สำหรับแมพใต้ดิน: ระบบเดียวกับ Day 1/4 (สุ่ม 3 จุดจริง, 5 จุดผีหลอก)
             objects_layer = next((l for l in self.game.game_map.tmx_data.layers if l.name == "ของ"), None)
             if objects_layer:
@@ -293,7 +312,7 @@ class WorldManager:
                     self.game.underground_fragments_mapping = {}
                     
                     # 1. กำหนดตำแหน่งจริง 3 จุด (กระจายกัน) จาก settings
-                    from settings import UNDERGROUND_TRUE_POSITIONS
+                    from data.settings import UNDERGROUND_TRUE_POSITIONS
                     true_positions = UNDERGROUND_TRUE_POSITIONS
                     available_spots = [s for s in all_positions if s not in true_positions]
                     for pos in true_positions:
@@ -321,12 +340,14 @@ class WorldManager:
 
     def create_candles(self):
         """สร้างเทียนที่พิกัดต่างๆ สำหรับเควส Day 3"""
-        from items.candle import Candle
-        from settings import CANDLE_SPAWN_LOCATIONS
+        from entities.items.candle import Candle
+        from data.settings import CANDLE_SPAWN_LOCATIONS
         
-        # ตรวจสอบว่ามีเทียนอยู่แล้วหรือไม่เพื่อไม่ให้สร้างซับซ้อน
-        if not hasattr(self.game, 'candles'):
-            self.game.candles = []
+        # ล้างของเก่าป้องกันการสร้างซ้อน
+        if hasattr(self.game, 'candles'):
+            for c in self.game.candles[:]:
+                if hasattr(c, 'destroy'): c.destroy()
+        self.game.candles = []
             
         initial_data = getattr(self.game, 'initial_data', None)
         lit_data = {}
@@ -358,7 +379,7 @@ class WorldManager:
             return
             
         from kivy.core.image import Image as CoreImage
-        from settings import HOUSE_MARKS_MAPPING
+        from data.settings import HOUSE_MARKS_MAPPING
         
         self.game.house_marks_group.add(Color(1, 1, 1, 1))
         

@@ -7,7 +7,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, Rectangle, Line
 from kivy.core.window import Window
-from settings import *
+from data.settings import *
 import os
 
 class SaveSlot(FloatLayout):

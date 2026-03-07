@@ -3,9 +3,9 @@ from kivy.uix.label import Label
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Rectangle, Line, Ellipse
 from kivy.clock import Clock
-from settings import GAME_FONT, WINDOW_HEIGHT
-from storygame.chat import DIALOGUE_CONFIG
-from storygame.choice import draw_choice_buttons, clear_choices
+from data.settings import GAME_FONT, WINDOW_HEIGHT
+from data.chat import DIALOGUE_CONFIG
+from ui.choice import draw_choice_buttons, clear_choices
 from kivy.core.image import Image as CoreImage
 import math
 
@@ -132,14 +132,14 @@ class DialogueManager:
         
         # ถ้ามีการระบุรูป Portrait มา (เช่น รูปบ้าน หรือรูปไอเทม) หรือเป็นตัวละครที่มีรูปประจำตัว
         if portrait or character_name in portrait_characters:
-            from settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG, REAPER_PORTRAIT_IMG
+            from data.settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG, REAPER_PORTRAIT_IMG
             
             # 1. แสดงรูปตามที่ส่งมาสำรองไว้ก่อน
             p_source = portrait
             
             # 2. ถ้าไม่ได้ส่งรูปมา แต่ชื่ออยู่ในลิสต์ ให้ดึงรูปประจำตัวมาใช้
             if not p_source and character_name in portrait_characters:
-                from settings import PLAYER_S_PORTRAIT_IMG as PS_IMG
+                from data.settings import PLAYER_S_PORTRAIT_IMG as PS_IMG
                 # พิเศษสำหรับฉากบ้านใน Day 3 ให้ใช้รูปหน้าเศร้าเป็นค่าเริ่มต้นเสมอตามคำขอ
                 p_default = PLAYER_PORTRAIT_IMG
                 if getattr(self.game, 'current_day', 1) == 3 and getattr(self.game.player, 'is_in_home', False):
@@ -279,6 +279,11 @@ class DialogueManager:
             self.start_portrait_animation(character_name)
 
         self.game.is_dialogue_active = True
+        
+        # ตั้งธงรอรับไอเทม ถ้าประโยคที่กำลังจะโชว์ระบุว่ามีการให้ของ
+        if ("Here, take this [Blue Stone] with you" in dialogue and not getattr(self.game, 'has_received_blue_stone', False)) or \
+           ("Take this lantern. You'll need it to light the candles" in dialogue and not getattr(self.game, 'has_received_lantern', False)):
+            self.game.awaiting_item_receipt = True
 
     def update_right_portrait(self, p_source):
         """อัปเดตหรือซ่อนภาพ Portrait ฝั่งขวากลางคันระหว่างคุย"""
@@ -344,7 +349,7 @@ class DialogueManager:
         self.stop_portrait_animation()
         self.current_anim_character = character_name
         
-        from settings import FATHER_PORTRAIT_IMG, FATHER_S_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG, MOTHER_S_PORTRAIT_IMG
+        from data.settings import FATHER_PORTRAIT_IMG, FATHER_S_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG, MOTHER_S_PORTRAIT_IMG
         
         paths = {
             "Father": [FATHER_PORTRAIT_IMG, FATHER_S_PORTRAIT_IMG],
@@ -382,6 +387,11 @@ class DialogueManager:
             self.show_item_discovery(text, img)
 
     def close_dialogue(self):
+        """ปิดกล่องข้อความคุยและคืนสถานะเกม"""
+        # จำสถานะก่อนรีเซ็ต
+        last_char = getattr(self.game, 'current_character_name', None)
+        has_choices = len(getattr(self.game, 'current_choices', [])) > 0
+        
         self.stop_portrait_animation()
         if self.chat_tri_event: Clock.unschedule(self.chat_tri_event); self.chat_tri_event = None
         if self.dialogue_bg:
@@ -397,8 +407,112 @@ class DialogueManager:
         self.name_label = None
         clear_choices(self.game)
 
+        # คืนสถานะการคุย
+        self.game.is_dialogue_active = False
+        self.game.awaiting_item_receipt = False # ล้างธงเผื่อไว้
+        self._on_close_dialogue_reset()
+        
+        # ปลดล็อกกล้องถ้าไม่ได้ติดคัทซีนตัวเมือง/เนื้อเรื่องหลัก
+        if not self.game.is_cutscene_active:
+            self.game.camera.locked = False
+        
+        # ตรวจสอบว่าเป็นการจบคัทซีนเนื้อเรื่องเสริมหรือไม่
+        if self.game.is_cutscene_active and getattr(self.game, 'cutscene_step', 0) == 11:
+            self.game.cutscene_manager.end_side_story_cutscene()
+            self.game.camera.locked = False
+        
+        # ส่งต่อ Logic เนื้อเรื่อง
+        self.game.story_manager.handle_dialogue_end(last_char, has_choices)
+        
+        # ตรวจสอบ Save Prompt ที่คิวไว้ (ถ้ามี และแชทจบจริงๆ ไม่ได้กำลังพักเพื่อโชว์ไอเทม)
+        if getattr(self.game, 'pending_save_prompt', False) and \
+           not self.is_item_notif_active and \
+           not getattr(self.game, 'preserved_dialogue_data', None):
+            self.game.pending_save_prompt = False
+            self.game.show_save_screen()
+
+        self.game.is_reaper_save_prompt = False
+        self.game.tutorial_mode = False
+
+    def _on_close_dialogue_reset(self):
+        """รีเซ็ตค่าพื้นฐานหลังปิดบทสนทนา"""
+        self.game.dialogue_timer = 0
+        self.game.current_dialogue_queue = []
+        self.game.current_dialogue_index = 0
+        self.game.current_character_name = ""
+        self.game.current_choices = []
+        if hasattr(self.game, 'temp_dialogue_chars'):
+            self.game.temp_dialogue_chars = []
+
+    def next_dialogue(self):
+        """ไปยังข้อความถัดไปในคิว"""
+        if self.game.current_choices and self.game.current_dialogue_index == len(self.game.current_dialogue_queue) - 1:
+            return
+
+        # 1. ถ้ามีธง "รอรับไอเทม" (หมายถึงผู้เล่นกดอ่านประโยคให้ของแล้ว)
+        if getattr(self.game, 'awaiting_item_receipt', False):
+            self.game.awaiting_item_receipt = False
+            current_text = self.game.current_dialogue_queue[self.game.current_dialogue_index]
+            
+            # เก็บสถานะแชทสำรองไว้เพื่อมาเปิดต่อหลังโชว์ไอเทมจบ
+            self.game.preserved_dialogue_data = {
+                "name": self.game.current_character_name,
+                "queue": list(self.game.current_dialogue_queue),
+                "index": self.game.current_dialogue_index,
+                "portrait": self.game.current_portrait,
+                "temp_chars": getattr(self.game, 'temp_dialogue_chars', [])
+            }
+            
+            # โชว์ Banner ไอเทมก่อน (เพื่อให้ story_manager รู้ว่าจะต้อง Queue save ไว้)
+            if "Blue Stone" in current_text:
+                self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
+                self.game.has_received_blue_stone = True
+            elif "Lantern" in current_text:
+                self.show_item_discovery("Received [Lantern]", "assets/Items/Lantern.png")
+                self.game.has_received_lantern = True
+                
+            # ปิดกล่องแชทตาม User Request (Chat ควรจะหายไปก่อน)
+            self.close_dialogue()
+            return
+
+        # 2. ขยับไปยังข้อความถัดไป
+        self.game.current_dialogue_index += 1
+        
+        if self.game.current_dialogue_index < len(self.game.current_dialogue_queue):
+            next_text = self.game.current_dialogue_queue[self.game.current_dialogue_index]
+            is_last = (self.game.current_dialogue_index == len(self.game.current_dialogue_queue) - 1)
+            
+            if hasattr(self.game, 'temp_dialogue_chars') and self.game.temp_dialogue_chars:
+                if self.game.current_dialogue_index < len(self.game.temp_dialogue_chars):
+                    self.game.current_character_name = self.game.temp_dialogue_chars[self.game.current_dialogue_index]
+            
+            self.show_vn_dialogue(
+                self.game.current_character_name, next_text, 
+                choices=(self.game.current_choices if is_last else None),
+                portrait=self.game.current_portrait
+            )
+        else:
+            # ตรวจสอบลำดับการตรวจบ้าน Day 2
+            if getattr(self.game, 'house_inspection_step', False) and hasattr(self.game, 'pending_drop_spot'):
+                from data.settings import HOUSE_MARKS_MAPPING
+                self.game.house_inspection_step = False
+                spot = self.game.pending_drop_spot[0]
+                mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
+                self.game.show_vn_dialogue("Little girl", "Should I leave a letter?", 
+                                     choices=["Leave a letter", "Let me think"], portrait=mark_path)
+                return
+
+            self.close_dialogue()
+
+    def on_choice_selected(self, choice):
+        """จัดการเมื่อผู้เล่นเลือก Choice"""
+        if getattr(self.game, 'click_sound', None):
+            self.game.click_sound.play()
+        from ui.choice import handle_choice_selection
+        handle_choice_selection(self.game, choice)
+
     def show_item_discovery(self, text, image_path=None, choices=None):
-        if self.item_notif_widget: # ไม่ใช้ is_item_notif_active เช็คเพื่อรองรับการ refresh
+        if self.item_notif_widget: 
              self.close_item_discovery()
              
         self.last_notif_text = text
@@ -424,7 +538,6 @@ class DialogueManager:
                           size_hint=(1, None), height=40 * scale, pos_hint={'center_x': 0.5, 'center_y': 0.8}, bold=True)
         self.item_notif_widget.add_widget(text_label)
 
-        # จัดการรูปภาพ (รองรับทั้ง path เดียว และ list ของหลาย path)
         if image_path:
             from kivy.uix.boxlayout import BoxLayout
             images = [image_path] if isinstance(image_path, str) else image_path
@@ -433,7 +546,6 @@ class DialogueManager:
             spacing = 20 * scale
             total_w = (len(images) * i_sz) + ((len(images) - 1) * spacing if len(images) > 1 else 0)
             
-            # Container สำหรับวางไอเทมหลายชิ้นเรียงกัน
             icon_layout = BoxLayout(
                 orientation='horizontal', 
                 size_hint=(None, None), 
@@ -463,7 +575,6 @@ class DialogueManager:
         if choices:
             draw_choice_buttons(self.game, choices)
         else:
-            # ปรับ pos_y_ratio ให้ต่ำลงเพื่อไม่ให้สามเหลี่ยมซ้อนภาพไอเทม
             tri = self.create_pixel_triangle(scale, pos_y_ratio=0.08)
             self.item_notif_widget.add_widget(tri)
             self.item_tri_event = self.animate_pixel_triangle(tri)
@@ -477,4 +588,26 @@ class DialogueManager:
             self.item_notif_widget.parent.remove_widget(self.item_notif_widget)
         self.item_notif_widget = None
         self.is_item_notif_active = False
-        clear_choices(self.game) # ลบปุ่ม Choice เสมอเมื่อปิด
+        clear_choices(self.game)
+        
+        # ตรวจสอบว่ามีบทสนทนาที่ถูกพักไว้ (Paused) เพื่อโชว์ไอเทมหรือไม่
+        if getattr(self.game, 'preserved_dialogue_data', None):
+            data = self.game.preserved_dialogue_data
+            del self.game.preserved_dialogue_data
+            
+            # คืนค่าสถานะแชท
+            self.game.current_character_name = data["name"]
+            self.game.current_dialogue_queue = data["queue"]
+            self.game.current_dialogue_index = data["index"]
+            self.game.current_portrait = data["portrait"]
+            self.game.temp_dialogue_chars = data["temp_chars"]
+            self.game.is_dialogue_active = True
+            
+            # ขยับไปยังประโยคถัดไปทันทีเพื่อให้คุยต่อ
+            self.next_dialogue()
+            return
+
+        # ตรวจสอบว่ามีหน้าจอเซฟที่รอคิวอยู่หรือไม่ (และต้องไม่อยู่ระหว่างคุยต่อ)
+        if getattr(self.game, 'pending_save_prompt', False) and not self.game.is_dialogue_active:
+            self.game.pending_save_prompt = False
+            self.game.show_save_screen()

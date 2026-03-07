@@ -1,6 +1,6 @@
 from kivy.graphics import Rectangle, Color, InstructionGroup
 from kivy.core.image import Image as CoreImage
-from settings import TILE_SIZE
+from data.settings import TILE_SIZE
 
 class Candle:
     def __init__(self, canvas, x, y):

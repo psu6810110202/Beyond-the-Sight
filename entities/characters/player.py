@@ -4,7 +4,7 @@ from kivy.clock import Clock
 from kivy.core.audio import SoundLoader
 import random
 import os
-from settings import *
+from data.settings import *
 
 class Player:
     def __init__(self, canvas, x=None, y=None):
