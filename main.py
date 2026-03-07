@@ -284,7 +284,7 @@ class GameWidget(Widget):
         self.reaper = Reaper(self.sorting_layer)
         self.extra_reapers = []
         if self.current_day == 2:
-            extra_reap = Reaper(self.sorting_layer, x=288, y=288)
+            extra_reap = Reaper(self.sorting_layer, x=304, y=288)
             extra_reap.direction = 'right'
             extra_reap.update_frame()
             self.extra_reapers.append(extra_reap)
@@ -609,9 +609,23 @@ class GameWidget(Widget):
         self.player.is_moving = False
         self.player.state = 'idle'
         
-        # วาร์ปผู้เล่นไปยังจุดเริ่มต้นแรกสุด
+        # วาร์ปผู้เล่นไปยังจุดที่เซฟไว้ล่าสุด (ถ้ามี) ไม่เช่นนั้นใช้จุดเริ่มต้นดั้งเดิม
         start_x = (PLAYER_START_X // TILE_SIZE) * TILE_SIZE
         start_y = (PLAYER_START_Y // TILE_SIZE) * TILE_SIZE
+        target_map = MAP_FILE
+        
+        if getattr(self, 'save_manager', None):
+            latest_save = self.save_manager.get_latest_save_data()
+            if latest_save and 'player_pos' in latest_save:
+                saved_x, saved_y = latest_save['player_pos']
+                start_x = (saved_x // TILE_SIZE) * TILE_SIZE
+                start_y = (saved_y // TILE_SIZE) * TILE_SIZE
+                target_map = latest_save.get('current_map', MAP_FILE)
+                
+        # ถ้าพิกัดที่เซฟไว้ไม่ได้อยู่ในแมพปัจจุบัน ให้ทำการเปลี่ยนแมพก่อน
+        if self.game_map.filename != target_map:
+            self.world_manager.change_map(target_map)
+
         self.player.logic_pos = [start_x, start_y]
         self.player.target_pos = [start_x, start_y]
         self.player.sync_graphics_pos()
@@ -955,11 +969,20 @@ class GameWidget(Widget):
             dialogue = self.get_reaper_dialogue(dx, dy)
             self.show_dialogue_above_reaper(dialogue)
         else:
-            # NPC
-            if self.current_day == 1:
-                npc_name = "The Sad Soul" if index == 0 else f"NPC{index + 1}"
-            elif self.current_day == 2:
-                npc_name = "The Postman" if index == 0 else f"NPC{index + 1}"
+            # NPC - ระบุชื่อตามไฟล์รูปภาพเพื่อความแม่นยำ (แก้ปัญหา Index เลื่อนเมื่อบางตัวไม่โผล่)
+            if hasattr(target, 'image_path'):
+                if 'NPC1' in target.image_path: 
+                    npc_name = "The Sad Soul"
+                elif 'NPC2' in target.image_path: 
+                    npc_name = "The Postman"
+                elif 'NPC3' in target.image_path: 
+                    npc_name = "The Old Soul"
+                elif 'NPC4' in target.image_path: 
+                    npc_name = "The Lady at the Window"
+                elif 'NPC5' in target.image_path: 
+                    npc_name = "The Soul"
+                else:
+                    npc_name = f"NPC{index + 1}"
             else:
                 npc_name = f"NPC{index + 1}"
                 
@@ -992,8 +1015,8 @@ class GameWidget(Widget):
         # ตั้งค่าคิวข้อความ
         self.current_dialogue_queue = dialogue
         self.current_dialogue_index = 0
+        
         self.current_character_name = "Reaper"
-        self.current_choices = choices if choices else []
         self.current_portrait = portrait
         
         # เล่นเสียงพูดของ Reaper ทุกครั้งที่เริ่มบทสนทนา
@@ -1011,7 +1034,7 @@ class GameWidget(Widget):
                 portrait=self.current_portrait
             )
 
-    def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None):
+    def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
         """แสดงกล่องข้อความสไตล์ Visual Novel ด้านล่างหน้าจอ"""
         self.current_character_name = character_name
         if choices:
@@ -1022,7 +1045,8 @@ class GameWidget(Widget):
         self.dialogue_manager.show_vn_dialogue(
             character_name, dialogue, 
             choices=choices, 
-            portrait=self.current_portrait
+            portrait=self.current_portrait,
+            left_portrait=left_portrait
         )
 
     def show_item_discovery(self, text, image_path=None, choices=None):
@@ -1066,6 +1090,8 @@ class GameWidget(Widget):
         self.current_dialogue_index = 0
         self.current_character_name = ""
         self.current_choices = []
+        if hasattr(self, 'temp_dialogue_chars'):
+            self.temp_dialogue_chars = []
 
     def next_dialogue(self):
         """ไปยังข้อความถัดไปในคิว"""
@@ -1077,10 +1103,15 @@ class GameWidget(Widget):
             current_text = self.current_dialogue_queue[self.current_dialogue_index]
             if "Here, take this [Blue Stone] with you" in current_text and not self.has_received_blue_stone:
                 # ซ่อนแชทก่อนโชว์ไอเทมตามคำขอ
+                self.preserved_character_name = self.current_character_name # จำชื่อไว้ก่อนโดนทับ
                 self.dialogue_manager.close_dialogue()
                 self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
                 self.has_received_blue_stone = True
                 return # กลับออกไปเพื่อให้ user กด Enter ปิดไอเทมก่อน
+
+        if getattr(self, 'preserved_character_name', None) is not None:
+            self.current_character_name = self.preserved_character_name
+            self.preserved_character_name = None
 
         # 2. ขยับไปยังข้อความถัดไป
         self.current_dialogue_index += 1
@@ -1088,6 +1119,12 @@ class GameWidget(Widget):
         if self.current_dialogue_index < len(self.current_dialogue_queue):
             next_text = self.current_dialogue_queue[self.current_dialogue_index]
             is_last = (self.current_dialogue_index == len(self.current_dialogue_queue) - 1)
+            
+            # เช็คว่ามีลิสต์ชื่อตัวละครชั่วคราวหรือไม่ (เช่น คัทซีนสลับคุย)
+            if hasattr(self, 'temp_dialogue_chars') and self.temp_dialogue_chars:
+                if self.current_dialogue_index < len(self.temp_dialogue_chars):
+                    self.current_character_name = self.temp_dialogue_chars[self.current_dialogue_index]
+            
             self.dialogue_manager.show_vn_dialogue(
                 self.current_character_name, next_text, 
                 choices=(self.current_choices if is_last else None),
@@ -1101,7 +1138,7 @@ class GameWidget(Widget):
                 spot = self.pending_drop_spot[0]
                 mark_path = HOUSE_MARKS_MAPPING.get(tuple(spot))
                 self.show_vn_dialogue("Little girl", "Should I leave a letter?", 
-                                     choices=["Leave a letter", "Leave it"], portrait=mark_path)
+                                     choices=["Leave a letter", "Let me think"], portrait=mark_path)
                 return
 
             self.close_dialogue()
@@ -1118,18 +1155,30 @@ class GameWidget(Widget):
                 elif quest.is_active:
                     return ["Were you able to find the pieces? It's still so dark..."]
 
+        if npc_name == "The Postman":
+            quest = self.quest_manager.active_quests.get("deliver_letters")
+            if quest:
+                if quest.current_count >= quest.target_count:
+                    if getattr(self, "quest_item_fail", False): # Just in case day 2 has a fail state later
+                        return ["Are you sure these went to the right houses? ...I suppose it's done anyway.", "Thank you..."]
+                    return ["Ah, you're back...", "My work here is finally done.", "Thank you, little one..."]
+                elif quest.is_active:
+                    return ["..."]
+
         if npc_name in NPC_DIALOGUES:
             return NPC_DIALOGUES[npc_name]
         return ["..."]
 
     def get_reaper_dialogue(self, distance_x, distance_y):
         """คืนค่าลิสต์ข้อความคุยของ Reaper ครั้งละ 1 ประโยคแบบสุ่ม หรือคำใบ้ถ้ามีเควสอยู่"""
-        quest = self.quest_manager.active_quests.get("doll_parts")
-        
-        # ถ้าเควสกำลังดำเนินการอยู่ (รับมาแล้วแต่ยังเก็บไม่ครบ) ให้ Reaper บอกคำใบ้
-        if quest and quest.is_active and quest.current_count < quest.target_count:
+        quest_doll = self.quest_manager.active_quests.get("doll_parts")
+        if quest_doll and quest_doll.is_active and quest_doll.current_count < quest_doll.target_count:
             return ["What he worries about... was thrown away with the unwanted things.", "Try searching that trash pile, you might find something."]
             
+        quest_letters = self.quest_manager.active_quests.get("deliver_letters")
+        if quest_letters and quest_letters.is_active and quest_letters.current_count < quest_letters.target_count:
+            return ["Every silent message seeks its twin carved in wood... lead it home"]
+
         return [random.choice(REAPER_DIALOGUES)]
 
     def on_choice_selected(self, choice):

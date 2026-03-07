@@ -105,6 +105,23 @@ class SaveManager:
         if self.game.dialogue_root:
             self.game.dialogue_root.add_widget(load_screen)
 
+    def get_latest_save_data(self):
+        """ค้นหาไฟล์เซฟล่าสุดและคืนค่าข้อมูล โดยเช็คจาก file mtime"""
+        saves_dir = 'saves'
+        if not os.path.exists(saves_dir):
+            return None
+            
+        files = [os.path.join(saves_dir, f) for f in os.listdir(saves_dir) if f.endswith('.json')]
+        if not files:
+            return None
+            
+        latest_file = max(files, key=os.path.getmtime)
+        try:
+            with open(latest_file, 'r') as f:
+                return json.load(f)
+        except:
+            return None
+
     def _on_pause_load_selected(self, slot_id, load_screen=None):
         save_path = f'saves/slot_{slot_id}.json'
         if os.path.exists(save_path):

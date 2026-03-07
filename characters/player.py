@@ -148,9 +148,8 @@ class Player:
             if not getattr(self, 'cutscene_mode', False):
                 self.frame_index = 0
         
-        # บวกเฟรมเสมอในทุกรอบที่ animate ถูกเรียก (ตราบใดที่ไม่ใช่ idle นิ่งๆ)
-        if self.state != 'idle' or self.frame_index != 0:
-            max_frames = self.anim_config[self.state]['cols']
+        max_frames = self.anim_config[self.state]['cols']
+        if max_frames > 1:
             self.frame_index = (self.frame_index + 1) % max_frames
             
             # เล่นเสียงเดิน/วิ่ง (ในจังหวะลงเท้า: เฟรม 0 และ 4 ของอนิเมชั่น 8 เฟรม)

@@ -247,3 +247,11 @@ class NPC:
                 npc_rect[0] + npc_rect[2] > player_rect_list[0] and
                 npc_rect[1] < player_rect_list[1] + player_rect_list[3] and
                 npc_rect[1] + npc_rect[3] > player_rect_list[1])
+
+    def destroy(self):
+        """ลบ NPC ออกจากจอโดยสมบูรณ์"""
+        if self.anim_event:
+            Clock.unschedule(self.anim_event)
+            self.anim_event = None
+        if self.group in self.canvas.children:
+            self.canvas.remove(self.group)

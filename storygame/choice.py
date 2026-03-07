@@ -98,11 +98,6 @@ def handle_choice_selection(game, choice):
             game.current_star_target = None
 
     elif choice == "Leave a letter":
-        from settings import HOUSE_MARKS_MAPPING
-        mark_path = None
-        if hasattr(game, 'pending_drop_spot'):
-            mark_path = HOUSE_MARKS_MAPPING.get(tuple(game.pending_drop_spot[0]))
-            
         used_letters = []
         for entry in game.delivered_house_indices:
             img = entry.get('img', '')
@@ -113,7 +108,7 @@ def handle_choice_selection(game, choice):
         available_notes = [n for n in ["Circle Note", "Cross Note", "Square Note"] if n not in used_letters]
         
         game.show_vn_dialogue("Little girl", "Which letter should I use?", 
-                             choices=available_notes + ["Let me think again"], portrait=None, left_portrait=mark_path)
+                             choices=["Let me think again"] + available_notes, portrait=None)
 
     elif choice in ["Circle Note", "Cross Note", "Square Note"]:
         game.pending_letter_type = choice
@@ -122,13 +117,9 @@ def handle_choice_selection(game, choice):
             "Cross Note":  "assets/Items/note/cross.png",
             "Square Note": "assets/Items/note/square.png"
         }
-        mark_path = None
-        if hasattr(game, 'pending_drop_spot'):
-            from settings import HOUSE_MARKS_MAPPING
-            mark_path = HOUSE_MARKS_MAPPING.get(tuple(game.pending_drop_spot[0]))
             
         game.show_vn_dialogue("Little girl", f"Are you sure you want to use the {choice}?", 
-                             choices=["Drop it", "Let me think again"], portrait=img_map[choice], left_portrait=mark_path)
+                             choices=["Drop it", "Let me think again"], portrait=img_map.get(choice))
 
     elif choice == "Drop it":
         if game.current_day == 2 and hasattr(game, 'pending_drop_spot') and game.pending_drop_spot:
@@ -210,7 +201,7 @@ def handle_choice_selection(game, choice):
                 
                 game.close_dialogue()
                 return
-    elif choice == "Leave it":
+    elif choice == "Let me think":
         if hasattr(game, 'pending_drop_spot'): del game.pending_drop_spot
         if hasattr(game, 'pending_letter_type'): del game.pending_letter_type
         game.close_dialogue()
@@ -231,12 +222,17 @@ def draw_choice_buttons(game, choices):
     game.choice_index = 0
     game.choice_buttons = []
         
+    num_choices = len(choices)
+    # คำนวณความสูงของ Layout ตามจำนวนตัวเลือก เพื่อให้ปุ่มไม่เตี้ยเกินไปเมื่อมีหลายตัวเลือก
+    # (แต่ละปุ่มควรสูงประมาณ 7% ของความสูงจอ)
+    dynamic_height = min(0.45, num_choices * 0.075) 
+    
     # ใช้ BoxLayout แนวตั้งที่ขนาดขยายตามหน้าจอ (Relative Scaling)
     game.choice_layout = BoxLayout(
         orientation='vertical',
-        size_hint=(0.5, 0.25), # กว้าง 50% สูง 25% ของหน้าจอ
+        size_hint=(0.4, dynamic_height), 
         pos_hint={'center_x': 0.5, 'center_y': 0.6}, 
-        spacing=15
+        spacing=10
     )
     
     bg_opacity = DIALOGUE_CONFIG.get("bg_opacity", 0.85)
@@ -245,7 +241,7 @@ def draw_choice_buttons(game, choices):
         btn = Button(
             text=choice_text.upper(),
             font_name=GAME_FONT,
-            font_size=28,
+            font_size=22,
             background_normal='',
             background_color=(0, 0, 0, 0),
             color=(1, 1, 1, 1),
@@ -265,8 +261,8 @@ def draw_choice_buttons(game, choices):
             instance.bg_rect.pos = instance.pos
             instance.bg_rect.size = instance.size
             instance.line_obj.rounded_rectangle = (instance.x, instance.y, instance.width, instance.height, 5)
-            # ปรับขนาดตัวอักษรตามความสูงของปุ่ม (Responsive Font)
-            instance.font_size = instance.height * 0.35
+            # ปรับขนาดตัวอักษรให้ขยายตามขนาดปุ่ม (ซึ่งขยายตามจอ) โดยไม่มีเพดานกั้น
+            instance.font_size = max(14, instance.height * 0.5)
         btn.bind(pos=update_btn_graphics, size=update_btn_graphics)
         
         btn.bind(on_release=lambda x, t=choice_text: game.on_choice_selected(t))

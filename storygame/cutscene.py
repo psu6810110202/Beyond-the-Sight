@@ -151,6 +151,38 @@ class CutsceneManager:
                 self.game.cutscene_step = 0 
                 self.game.handle_day_transition()
                     
+        elif self.game.cutscene_step == 30:
+            self._day2_wait_timer += dt
+            if self._day2_wait_timer >= 3.0:
+                self.game.cutscene_step = 31 # กำลังเข้าสู่บทสนทนา
+                if hasattr(self, 'day2_black_bg') and self.day2_black_bg.parent:
+                    from kivy.animation import Animation
+                    anim = Animation(opacity=0, duration=2.0)
+                    
+                    def start_chat(*a):
+                        if self.day2_black_bg.parent:
+                            self.day2_black_bg.parent.remove_widget(self.day2_black_bg)
+                            
+                        # เริ่มบทสนทนาหลังจอสว่างแล้ว
+                        data = [
+                            {"char": "Father", "text": "Still... you're still glaring at me with those eyes?! I told you—if you're stepping foot into this house, don't you ever dare look at me with that curse!"},
+                            {"char": "Mother", "text": "Stop it, husband... don't touch him too much. I don't want whatever 'curse' he sees in those eyes rubbing off on your hands. Just living under the same roof as this demon is enough to drive me insane!"},
+                            {"char": "Father", "text": "What are you looking at?! Is there some spirit standing behind me now? You're nothing but my own flesh and blood that I regret ever fathering—a total jinx! Talking to the air like a madman! You’ve become a blight, dragging our family down for the whole neighborhood to mock!"},
+                            {"char": "Mother", "text": "I'm dying of shame... Our lives were finally turning around, but then we ended up with a freak like you who does nothing but see ghosts! I truly wish I could announce to everyone that I have no such disgusting child!"},
+                            {"char": "Father", "text": "You're getting nothing to eat today! Since you love those spirits so much, go beg them for scraps yourself! I don't care if you starve or rot, just don't you dare bring more shame to my name with your wretched behavior!"},
+                            {"char": "Mother", "text": "Go rot in your dark corner! If I see you whispering to yourself or staring at anyone with those creepy eyes again... I'll be the one to gouge them out of your head myself, forever!"}
+                        ]
+                        
+                        self.game.current_dialogue_queue = [d["text"] for d in data]
+                        self.game.temp_dialogue_chars = [d["char"] for d in data]
+                        self.game.current_dialogue_index = 0
+                        self.game.current_character_name = self.game.temp_dialogue_chars[0]
+                        self.game.is_dialogue_active = True
+                        self.game.dialogue_manager.show_vn_dialogue(self.game.current_character_name, self.game.current_dialogue_queue[0])
+                        
+                    anim.bind(on_complete=start_chat)
+                    anim.start(self.day2_black_bg)
+                    
         elif self.game.cutscene_step == 10:
             # Side story: แพนกล้องจากด้านล่างหน้าจอ เลื่อนกลับขึ้นมาหาผู้เล่น (150 pixels in 3 seconds = 50 px/s)
             pan_speed = 50 * dt  
@@ -351,13 +383,59 @@ class CutsceneManager:
         # ตั้งแฟล็กไว้บอกว่าเล่นเสร็จแล้วค่อย เด้งเควสหิว ขึ้นมา
         self._pending_find_food_quest = True
 
-        # เริ่มเข้าสู่เนื้อเรื่องเสริมแทรกตอนเข้าบ้านทันที (เลื่อนกล้องจากล่างขึ้นบน 3 วิ)
-        dialogue_queue = ["So hungry...I need to find something to eat."]
-        
         # ปลดสถานะ cutscene เพื่อเตรียมเริ่มฉากใหม่
         self.game.is_cutscene_active = False
         self.game.cutscene_step = 0
         self.game.camera.locked = False
         self.game.request_keyboard_back()
 
-        Clock.schedule_once(lambda dt: self.start_side_story_cutscene(dialogue_queue, "Little girl"), 0.5)
+        if getattr(self.game, 'current_day', 1) == 2:
+            Clock.schedule_once(self.start_day2_parent_cutscene, 0.5)
+        else:
+            # เริ่มเข้าสู่เนื้อเรื่องเสริมแทรกตอนเข้าบ้านทันที
+            dialogue_queue = ["So hungry...I need to find something to eat."]
+            Clock.schedule_once(lambda dt: self.start_side_story_cutscene(dialogue_queue, "Little girl"), 0.5)
+
+    def start_day2_parent_cutscene(self, dt=None):
+        """เริ่มคัทซีนบังคับจอดำฟังเสียงประตูใน Day 2 ก่อนพ่อแม่ทะเลาะกัน"""
+        # ลบจอดำอันเก่า (ที่มีรูป bd_ed.png) ออกก่อน เพื่อไม่ให้มันค้างอยู่ข้างหลัง
+        if self.game.black_overlay:
+            if self.game.black_overlay.parent:
+                self.game.black_overlay.parent.remove_widget(self.game.black_overlay)
+            self.game.black_overlay = None
+            
+        self.game.is_cutscene_active = True
+        self.game.cutscene_step = 30
+        self.game.pressed_keys.clear()
+        self.game.player.state = 'idle'
+        self.game.player.update_frame()
+        self.game.camera.locked = True
+        self.game.clear_interaction_hints()
+        
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        self.day2_black_bg = Widget(size_hint=(1, 1))
+        with self.day2_black_bg.canvas:
+            Color(0, 0, 0, 1)
+            self.day2_rect = Rectangle(size=root.size, pos=(0, 0))
+            
+        def _u_dt2(instance, value):
+            self.day2_rect.size = instance.size
+            self.day2_rect.pos = instance.pos
+        self.day2_black_bg.bind(size=_u_dt2, pos=_u_dt2)
+        root.add_widget(self.day2_black_bg)
+        
+        if self.door_sound:
+            self.door_sound.play()
+            
+        self._day2_wait_timer = 0
+
+    def end_day2_parent_cutscene(self):
+        """จบฉากพ่อแม่ทะเลาะกัน และตัดเข้าสู่ Day 3 ทันที"""
+        self.game.is_cutscene_active = False
+        self.game.cutscene_step = 0
+        self.game.camera.locked = False
+        self.game.request_keyboard_back()
+        
+        self._pending_find_food_quest = False
+        self.game._pending_day_transition = True
+        self.game.handle_day_transition()
