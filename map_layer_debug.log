@@ -1,0 +1,34 @@
+Map: assets/Tiles/beyond.tmj | Layer: พื้น | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ท่อ | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: well1 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: well2 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ผนังบ้าน | wall: True | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ประตู | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ขยะ | wall: False | fg: True
+Map: assets/Tiles/beyond.tmj | Layer: หิน | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: funiture | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: funiture2 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: resoures | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: funiture3 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา2 ชั้น | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา2 ชั้น | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: พื้น | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ท่อ | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: well1 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: well2 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ผนังบ้าน | wall: True | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ประตู | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: ขยะ | wall: False | fg: True
+Map: assets/Tiles/beyond.tmj | Layer: หิน | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: funiture | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: funiture2 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: resoures | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: funiture3 | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา2 ชั้น | wall: False | fg: False
+Map: assets/Tiles/beyond.tmj | Layer: หลังคา2 ชั้น | wall: False | fg: False

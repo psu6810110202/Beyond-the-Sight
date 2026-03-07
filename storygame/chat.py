@@ -16,20 +16,21 @@ NPC_DIALOGUES = {
         "There are still letters left in this bag... Look at the covers; the symbols aren't hard to see at all.",
         "Go on, little one... I'm counting on you."
     ],
-    "NPC3": [
-        "คุณมาจากไหนกัน?",
-        "ที่นี่มีเรื่องลึกลับมากมาย",
-        "ระวังศัตรูให้ดีๆ นะ"
+    "The Old Soul": [
+        "I... I can't find my way home. Everything looks the same in this alley.",
+        "I only remember a few things from my house. The red flowers in the vase...",
+        "The old blue rug in the hallway... and the yellow sunlight that hit the porch every afternoon.",
+        "If I could see those colors again, maybe I could find the door. Can you help me?"
     ],
-    "NPC4": [
-        "ฉันกำลังมองหาทางออก...",
-        "คุณเห็นทางออกไหม?",
-        "อย่าทอดทิ้งฉัน!"
+    "The Lady at the Window": [
+        "It's so quiet... the music box stopped, and the melody went with it.",
+        "I think I dropped the key somewhere near the trash and those old rags. Everything is such a mess...",
+        "Could you find it? I just want to hear that song one more time."
     ],
-    "NPC5": [
-        "เราต้องร่วมมือกัน",
-        "มีอะไรแปลกๆ เกิดขึ้นที่นี่",
-        "เราจะผ่านไปได้แน่ๆ"
+    "The Soul": [
+        "I'm fading... I can't even feel my own shape anymore.",
+        "Could you find the sparks hidden under those piles for the lantern?",
+        "I don't want to disappear in this cold."
     ]
 }
 
@@ -58,7 +59,7 @@ INTRO_DIALOGUES = {
         "Anyway, I have a favor to ask. Deep in the alley, there's a child sitting by the trash.",
         "The poor kid's heart is broken because of a lost doll. Could you go and talk to them?",
         "Just follow the path to the left and keep going until you see them.",
-        "Here, take this [Blue Stone] with you. You're going to need it.",
+        "Here, take this [Blue Stone] with you. ",
         "The shadows in these alleys can be... unfriendly. If something tries to get too close, use the stone.",
         "The light will stun them for a moment. That's your chance to run.",
         "If you're in trouble, just run back to me. I'll take care of the rest.",
@@ -77,20 +78,19 @@ INTRO_DIALOGUES = {
         "Go on then... Do your best."
     ],
     3: [
-        "Are you awake? You look even more tired than yesterday.",
-        "The alley is as noisy as ever, but do you see those deep alleys on the far left?",
-        "There's an old soul lost inside... He looks frightened, as if he can't find his way home.",
-        "His memories have all faded, leaving only a lingering sadness behind.",
-        "Try to make your way over to him... perhaps the sound of your voice can help him remember something.",
-        "Keep a firm grip on your blue stone, just like before. Its light should make you feel a bit safer in the dark.",
-        "Remember that these alleys are a maze and can play tricks on you. Don't let the darkness lead you astray.",
-        "Be careful... the darkness in those alleys moves. Don't let it catch up to you.",
-        "I'll be waiting right here at this corner, quietly watching over you. Run back if it's too much.",
+        "Are you awake? You look even more tired than yesterday.", #
+        "The alley is as noisy as ever, but do you see those deep alleys on the far left?", #
+        "There's an old soul lost inside... He looks frightened, as if he can't find his way home.", #
+        "Try to make your way over to him... perhaps the sound of your voice can help him remember something.", #
+        "Take this lantern. You'll need it to light the candles along the way. As for your blue stone, keep it ready to stun anything that gets too close.", #
+        "Remember that these alleys are a maze and can play tricks on you. Don't let the darkness lead you astray.", #
+        "Be careful... the darkness in those alleys moves. Don't let it catch up to you.", #
+        "I'll be waiting right here at this corner, quietly watching over you. Run back if it's too much.", #
         "Go on then... I'm rooting for you."
     ],
     4: [
         "Are you awake? It looks like it was harder for you to get up today.",
-        "The alley is as noisy and crowded as ever, but there’s a strange dullness hanging over that building.",
+        "The alley is as noisy and crowded as ever, but there's a strange dullness hanging over that building.",
         "Do you see that woman sitting by the window over there? She's so still... it's as if time has stopped for her.",
         "Maybe she's just waiting for something she lost a long time ago.",
         "Why don't you go and see her? Perhaps your kindness can make her frozen time move once again.",

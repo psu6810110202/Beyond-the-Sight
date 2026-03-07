@@ -15,7 +15,7 @@ STORY_CONFIG = {
     },
     2: {
         "name": "Day 2", 
-        "visible_npcs": [1], 
+        "visible_npcs": [1], # เฉพาะ NPC2 (The Postman)
         "warning_triggers": [
             {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
         ]
@@ -101,8 +101,8 @@ class StoryManager:
         if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode:
             self.game.show_save_screen()
         
-        # 2. Angel/Devil: จบคัทซีนเข้าบ้าน
-        if last_character in ["Angel", "Devil"]:
+        # 2. Angel/Devil: จบคัทซีนเข้าบ้าน (ทำเฉพาะเมื่ออยู่ในโหมด Cutscene จริงๆ เช่น ท้ายวัน)
+        if last_character in ["Angel", "Devil"] and getattr(self.game, 'is_cutscene_active', False):
             self.game.end_cutscene()
             
         # 3. The Sad Soul (Quest Day 1)
@@ -128,6 +128,11 @@ class StoryManager:
             # เริ่มลำดับคัทซีนเดินไปกินและเปลี่ยนวัน
             if hasattr(self.game, 'cutscene_manager'):
                 self.game.cutscene_manager.start_food_transition_cutscene()
+
+        # 6. Mother (จบสุดของ Day 2 Parent Cutscene)
+        if last_character == "Mother" and self.game.current_day == 2:
+            if hasattr(self.game, 'cutscene_manager'):
+                self.game.cutscene_manager.end_day2_parent_cutscene()
 
     def _handle_sad_soul_logic(self):
         quest = self.game.quest_manager.active_quests.get("doll_parts")

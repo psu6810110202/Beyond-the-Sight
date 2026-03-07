@@ -47,7 +47,15 @@ class WorldManager:
 
         # 2. หากไม่มีข้อมูลในเซฟ (เริ่มวันใหม่หรือเปลี่ยนแมพ) ให้ใช้ตรรกะปกติ
         if not has_saved_enemies:
-            for i, data in enumerate(ENEMY_SPAWN_DATA):
+            enemy_list = []
+            
+            # ดึงศัตรูตามวันที่จาก settings (Day 1 ดึงแค่ key 1, Day 2 ดึง key 1 และ 2)
+            if self.game.current_day >= 1:
+                enemy_list.extend(ENEMY_SPAWN_DATA.get(1, []))
+            if self.game.current_day >= 2:
+                enemy_list.extend(ENEMY_SPAWN_DATA.get(2, []))
+
+            for i, data in enumerate(enemy_list):
                 x, y = data['pos']
                 etype = data.get('type', 1)
                 
@@ -65,7 +73,7 @@ class WorldManager:
         """สุ่มเกิดศัตรูเพิ่มเติมเมื่อผู้เล่นเปิดพิกัดอันตรายแล้ว (ใช้ Seed คงที่เพื่อให้กลับมายังจุดเดิมเมื่อโหลดเซฟ)"""
         r = random.Random(999)
         
-        count = 25 # ศัตรูแบบสุ่ม เยอะๆ
+        count = 60 # ศัตรูแบบสุ่ม เพิ่มความท้าทายในโซนอันตราย
         base_id = 100 
         
         spawned = 0
@@ -77,23 +85,34 @@ class WorldManager:
         
         while spawned < count and attempts < 2000:
             attempts += 1
-            x = r.randint(32, MAP_WIDTH - 64)
-            y = r.randint(32, MAP_HEIGHT - 64)
+            # 1. สุ่มโอกาสเกิดตามโซนต่างๆ ก่อน
+            if r.random() < 0.5:
+                # โซนบนขวา: x > 656 และ y > 464 (แก้ Y ให้เป็นด้านบน)
+                x = r.randint(656, MAP_WIDTH - 64)
+                y = r.randint(464, MAP_HEIGHT - 64)
+            else:
+                # โซนซ้าย: x < 656 หรือ โซนบน (y > 464)
+                if r.random() < 0.7:  # 70% โอกาสไปซ้าย
+                    x = r.randint(32, 656)
+                    y = r.randint(32, MAP_HEIGHT - 64)
+                else:  # 30% โอกาสกระจายไปด้านบนๆ ทั้งหมด
+                    x = r.randint(32, MAP_WIDTH - 64)
+                    y = r.randint(464, MAP_HEIGHT - 64)
             
-            # บังคับให้เกิดเฉพาะใน 'เขตอันตราย'
+            # 2. กรองไม่ให้เกิดใน 'เขตปลอดภัย' เด็ดขาด (เผื่อระยะ buffer 160px ตาม fade_range ของหมอก)
             if self.game.current_day == 1:
                 # สำหรับ Day 1: ห้ามเกิดในเขตปลอดภัย (ล่างขวา)
                 if x >= 656 and y <= 464:
                     continue
             else:
-                # สำหรับ Day 2+: ห้ามเกิดในเขตปลอดภัย (แถบล่างทั้งหมด)
+                # สำหรับ Day 2+: ห้ามเกิดในเขตปลอดภัย (แถบล่างทั้งหมด บ้านทุกหลัง)
                 if y <= 464:
                     continue
             
-            # ไม่ให้ศัตรูชิดกันเกินไปตามคำขอ
+            # ไม่ให้ศัตรูสุ่มเกิดใกล้กับตำแหน่งคงที่เกินไป (เพิ่มระยะห่าง)
             too_close = False
             for cx, cy in candidates_xy:
-                if ((x - cx)**2 + (y - cy)**2)**0.5 < 180:
+                if ((x - cx)**2 + (y - cy)**2)**0.5 < 250:  # เพิ่มจาก 180 เป็น 250
                     too_close = True
                     break
             if too_close:
@@ -313,6 +332,28 @@ class WorldManager:
             self.game.reaper.logic_pos = list(REAPER_START_POS)
             self.game.reaper.target_pos = list(REAPER_START_POS)
             self.game.reaper.update_visual_positions()
+            
+        # ล้าง Extra Reapers ที่ค้างอยู่ (ถ้ามี)
+        for er in getattr(self.game, 'extra_reapers', []):
+            if hasattr(er, 'destroy'):
+                er.destroy()
+        self.game.extra_reapers = []
+        
+        # เพิ่ม Extra Reaper ตามวัน
+        from characters.reaper import Reaper
+        if self.game.current_day >= 2:
+            # จุดเดิมจาก Day 2
+            extra_reap = Reaper(self.game.sorting_layer, x=304, y=288)
+            extra_reap.direction = 'right'
+            extra_reap.update_frame()
+            self.game.extra_reapers.append(extra_reap)
+            
+        if self.game.current_day >= 3:
+            # จุดใหม่สำหรับ Day 3
+            extra_reap2 = Reaper(self.game.sorting_layer, x=432, y=288)
+            extra_reap2.direction = 'left'
+            extra_reap2.update_frame()
+            self.game.extra_reapers.append(extra_reap2)
             
         self.create_npcs()
         self.create_enemies()

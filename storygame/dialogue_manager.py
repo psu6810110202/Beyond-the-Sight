@@ -6,6 +6,7 @@ from kivy.clock import Clock
 from settings import GAME_FONT, WINDOW_HEIGHT
 from storygame.chat import DIALOGUE_CONFIG
 from storygame.choice import draw_choice_buttons, clear_choices
+from kivy.core.image import Image as CoreImage
 import math
 
 class DialogueManager:
@@ -23,6 +24,8 @@ class DialogueManager:
         
         self.chat_tri_event = None
         self.item_tri_event = None
+        self.portrait_anim_event = None
+        self.current_anim_character = None
 
     def _get_scaled_font_size(self):
         """Scale font size (Single point of control)"""
@@ -74,8 +77,7 @@ class DialogueManager:
         if hasattr(self.game, 'clear_interaction_hints'):
             self.game.clear_interaction_hints()
 
-        # self.close_dialogue() # เอาออกชั่วคราวเพื่อให้ Widget เก่ายังอยู่ขณะอัปเดต
-        # เราจะจัดการเคลียร์เฉพาะส่วนที่จำเป็นแทน
+        self.stop_portrait_animation()
         if self.dialogue_bg:
             if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
@@ -125,9 +127,6 @@ class DialogueManager:
             bg_widget.add_widget(tri)
             self.chat_tri_event = self.animate_pixel_triangle(tri)
 
-        if choices:
-            draw_choice_buttons(self.game, choices)
-
         # รายชื่อตัวละครปกติที่มีรูป Portrait ประจำตัว
         portrait_characters = ["Little girl", "Angel", "Devil", "Father", "Mother"]
         
@@ -152,8 +151,8 @@ class DialogueManager:
             if p_source:
                 # ทุกรูป (ไม่ว่าจะตัวละครหรือไอเทม) ให้ใช้สเกลมาตรฐานเดียวกับ Little girl
                 char_scale_mult = 1.0
-                if "Items" in p_source or "mark" in p_source:
-                    char_scale_mult = 0.6 # ปรับให้ใหญ่ขึ้นตามคำขอ แต่ไม่ถึง 1.0 เพื่อกันภาพแตกมากเกินไป
+                if "Items" in p_source or "mark" in p_source or "note" in p_source:
+                    char_scale_mult = 0.7 # ปรับให้ใหญ่ขึ้น เพื่อความชัดเจน
             p_size = 280 * scale * char_scale_mult
             
             # ให้ขอบล่างของภาพ (Y) วางอยู่บนขอบบนของกล่องข้อความพอดี (box_h)
@@ -218,7 +217,7 @@ class DialogueManager:
         # --- Handle Left Portrait ---
         if left_portrait:
             l_char_scale_mult = 1.0
-            if "Items" in left_portrait or "mark" in left_portrait:
+            if "Items" in left_portrait or "mark" in left_portrait or "note" in left_portrait:
                 l_char_scale_mult = 0.6
             l_p_size = 280 * scale * l_char_scale_mult
             l_x_pos = 20 * scale
@@ -262,10 +261,15 @@ class DialogueManager:
                         self.left_portrait_rect.texture = tex
                     except Exception:
                         self.left_portrait_rect.source = left_portrait
-                    self.left_portrait_widget.char_scale_mult = l_char_scale_mult
-                    self.left_portrait_widget.size = (l_p_size, l_p_size)
-                    self.left_portrait_rect.size = self.left_portrait_widget.size
                     self.left_portrait_rect.pos = (l_x_pos, l_y_base)
+                    self.left_portrait_rect.size = (l_p_size, l_p_size)
+
+        if choices:
+            draw_choice_buttons(self.game, choices)
+
+        # เริ่มอนิเมชั่นถ้าเป็นตัวละครที่เหมาะสม
+        if character_name in ["Father", "Mother"]:
+            self.start_portrait_animation(character_name)
 
         self.game.is_dialogue_active = True
 
@@ -329,6 +333,35 @@ class DialogueManager:
             self.portrait_rect.size = self.portrait_widget.size
             self.portrait_rect.pos = (x_pos, y_base)
 
+    def start_portrait_animation(self, character_name):
+        self.stop_portrait_animation()
+        self.current_anim_character = character_name
+        
+        from settings import FATHER_PORTRAIT_IMG, FATHER_S_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG, MOTHER_S_PORTRAIT_IMG
+        
+        paths = {
+            "Father": [FATHER_PORTRAIT_IMG, FATHER_S_PORTRAIT_IMG],
+            "Mother": [MOTHER_PORTRAIT_IMG, MOTHER_S_PORTRAIT_IMG]
+        }
+        
+        if character_name not in paths: return
+        
+        anim_paths = paths[character_name]
+        self._anim_idx = 0
+        
+        def _swap(dt):
+            self._anim_idx = 1 - self._anim_idx # สลับ 0 กับ 1
+            self.update_right_portrait(anim_paths[self._anim_idx])
+            
+        # สลับทุกๆ 0.25 วินาที
+        self.portrait_anim_event = Clock.schedule_interval(_swap, 0.25)
+
+    def stop_portrait_animation(self):
+        if self.portrait_anim_event:
+            Clock.unschedule(self.portrait_anim_event)
+            self.portrait_anim_event = None
+        self.current_anim_character = None
+
     def update_ui_scaling(self):
         if self.game.is_dialogue_active and self.dialogue_bg:
             char_name = getattr(self.name_label, 'text', "") if self.name_label else ""
@@ -342,6 +375,7 @@ class DialogueManager:
             self.show_item_discovery(text, img)
 
     def close_dialogue(self):
+        self.stop_portrait_animation()
         if self.chat_tri_event: Clock.unschedule(self.chat_tri_event); self.chat_tri_event = None
         if self.dialogue_bg:
             if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
