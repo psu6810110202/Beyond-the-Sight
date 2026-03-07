@@ -35,6 +35,66 @@ class WorldManager:
                 
             enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=i, enemy_type=etype)
             self.game.enemies.append(enemy)
+
+        # หากพิกัดอันตรายถูกเปิดแล้ว ให้สุ่มศัตรูเพิ่มเติม (จะถูกเรียกตอนโหลดเซฟด้วย)
+        if self.game.warning_dismissed and self.game.game_map.filename == MAP_FILE:
+            self.spawn_random_enemies()
+
+    def spawn_random_enemies(self):
+        """สุ่มเกิดศัตรูเพิ่มเติมเมื่อผู้เล่นเปิดพิกัดอันตรายแล้ว (ใช้ Seed คงที่เพื่อให้กลับมายังจุดเดิมเมื่อโหลดเซฟ)"""
+        r = random.Random(999)
+        
+        count = 25 # ศัตรูแบบสุ่ม เยอะๆ
+        base_id = 100 
+        
+        spawned = 0
+        attempts = 0
+        solid_rects = self.game.game_map.solid_rects
+        
+        candidate_positions = list(ENEMY_SPAWN_DATA)
+        candidates_xy = [(d['pos'][0], d['pos'][1]) for d in candidate_positions]
+        
+        while spawned < count and attempts < 2000:
+            attempts += 1
+            x = r.randint(32, MAP_WIDTH - 64)
+            y = r.randint(32, MAP_HEIGHT - 64)
+            
+            # บังคับให้เกิดเฉพาะใน 'เขตอันตราย' (ฝั่งซ้ายหรือบน ตามที่เคยกั้นหมอก)
+            if x >= 656 and y <= 464:
+                continue
+
+            
+            # ไม่ให้ศัตรูชิดกันเกินไปตามคำขอ
+            too_close = False
+            for cx, cy in candidates_xy:
+                if ((x - cx)**2 + (y - cy)**2)**0.5 < 180:
+                    too_close = True
+                    break
+            if too_close:
+                continue
+                
+            # ไม่ทับกำแพง
+            rect = (x, y, ENEMY_WIDTH, ENEMY_HEIGHT)
+            collision = False
+            for solid in solid_rects:
+                if (rect[0] < solid[0] + solid[2] and rect[0] + rect[2] > solid[0] and
+                    rect[1] < solid[1] + solid[3] and rect[1] + rect[3] > solid[1]):
+                    collision = True
+                    break
+            if collision:
+                continue
+                
+            candidates_xy.append((x, y))
+            
+            enemy_id = base_id + spawned
+            etype = r.choice([1, 2, 3])
+            
+            # ถ้ายังไม่ถูกกำจัดในเซฟ
+            if enemy_id not in self.game.destroyed_enemies:
+                enemy = Enemy(self.game.sorting_layer, x, y, enemy_id=enemy_id, enemy_type=etype)
+                self.game.enemies.append(enemy)
+                
+            spawned += 1
             
     def create_stars(self):
         """สร้างดาวตามพิกัดที่กำหนดใน Day 1"""

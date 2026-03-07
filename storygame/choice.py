@@ -22,6 +22,7 @@ def handle_choice_selection(game, choice):
         # ขยับไปข้างหน้า 1 บล็อก โดยใช้ระบบการเดินของ Player ทอดๆ มา
         game.warning_dismissed = True
         game.refresh_darkness()
+        game.world_manager.spawn_random_enemies()
         
         dir_map = {'up': (0, TILE_SIZE), 'down': (0, -TILE_SIZE), 'left': (-TILE_SIZE, 0), 'right': (TILE_SIZE, 0)}
         dx, dy = dir_map.get(game.player.direction, (0, 0))
