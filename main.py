@@ -461,8 +461,8 @@ class GameWidget(Widget):
             
             for enemy in self.enemies[:]:
                 reaper_pos = (self.reaper.x, self.reaper.y)
-                # ส่ง solid_rects เข้าไปด้วยเพื่อให้ศัตรูไม่เดินทะลุกำแพง
-                enemy.update(dt, self.player.logic_pos, reaper_pos, self.game_map.solid_rects)
+                # ส่ง solid_rects และ enemies เข้าไปด้วยเพื่อให้ศัตรูไม่เดินทะลุกำแพงและไม่ชนกัน
+                enemy.update(dt, self.player.logic_pos, reaper_pos, self.game_map.solid_rects, self.enemies)
 
                 # บันทึกสถานะศัตรูที่กำลังจางหาย (ไม่ว่าจะจากชนหรือวง Reaper) ให้จดจำในเซฟ
                 if enemy.is_fading:
