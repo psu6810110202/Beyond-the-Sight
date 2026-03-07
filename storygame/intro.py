@@ -34,12 +34,21 @@ class IntroScreen(FloatLayout):
         self.add_widget(self.label)
         
         # เสียงประตูเปิดตอนขึ้นวันใหม่
-        door_sound_path = 'assets/sound/door/Door_squeeky_2.wav'
-        if os.path.exists(door_sound_path):
-            sound = SoundLoader.load(door_sound_path)
-            if sound:
-                sound.volume = 0.6
-                sound.play()
+        door_path = 'assets/sound/door/Door_squeeky_2.wav'
+        close_path = 'assets/sound/door/Door_close.wav'
+        
+        if os.path.exists(door_path):
+            s_open = SoundLoader.load(door_path)
+            if s_open:
+                s_open.volume = 0.6
+                s_open.play()
+                
+                # เสียงปิดประตูตามมา (ถ้ามีไฟล์)
+                if os.path.exists(close_path):
+                    s_close = SoundLoader.load(close_path)
+                    if s_close:
+                        s_close.volume = 0.6
+                        Clock.schedule_once(lambda dt: s_close.play(), 1.2)
 
         # สำคัญ: ต้องผูกเหตุการณ์ Resize เพื่อให้อัปเดต UI ตามขนาดจอ
         self.bind(pos=self._update_ui, size=self._update_ui)

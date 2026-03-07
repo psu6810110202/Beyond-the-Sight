@@ -14,8 +14,25 @@ class CutsceneManager:
         
         # โหลดเสียงประตู
         self.door_sound = SoundLoader.load('assets/sound/door/Door_squeeky_2.wav')
+        self.door_close_sound = SoundLoader.load('assets/sound/door/Door_close.wav')
+        
         if self.door_sound:
             self.door_sound.volume = 0.6
+        if self.door_close_sound:
+            self.door_close_sound.volume = 0.6
+            
+        # โหลดเสียงผ้า (นั่ง)
+        self.cloth_sound = SoundLoader.load('assets/sound/cloth.wav')
+        if self.cloth_sound:
+            self.cloth_sound.volume = 0.5
+
+    def play_door_full_sequence(self):
+        """เล่นเสียงประตูเปิดตามด้วยเสียงปิด"""
+        if self.door_sound:
+            self.door_sound.play()
+        # หน่วงเวลา 1.2 วินาทีเพื่อให้เสียงเอี๊ยดจบแล้วค่อยปิด
+        if self.door_close_sound:
+            Clock.schedule_once(lambda dt: self.door_close_sound.play(), 1.2)
 
     def start_quest_complete_cutscene(self, dt=None):
         """เริ่มลำดับ Cutscene เมื่อจบเควส"""
@@ -89,6 +106,9 @@ class CutsceneManager:
                 self.game.player.cutscene_mode = False 
                 
                 # ถึงที่หมายสนิทแล้ว
+                if self.cloth_sound:
+                    self.cloth_sound.play()
+                    
                 self.game.player.logic_pos = [tx, ty]
                 self.game.player.target_pos = [tx, ty]
                 self.game.player.sync_graphics_pos()
@@ -223,9 +243,8 @@ class CutsceneManager:
         """เริ่มคัทซีนเนื้อเรื่องเสริม (ตัวละคร idle, กล้องเลื่อนจากล่างขึ้นบน แล้วค่อยคุย)"""
         self.game.clear_interaction_hints()
         
-        # เล่นเสียงประตูเปิด (สมมติว่าเพิ่งเดินเข้าบ้านมา)
-        if self.door_sound:
-            self.door_sound.play()
+        # เล่นเสียงประตูเปิดตามด้วยปิด (สมมติว่าเพิ่งเดินเข้าบ้านมา)
+        self.play_door_full_sequence()
         
         # 1. หยุดผู้เล่น
         self.game.pressed_keys.clear()
@@ -424,8 +443,7 @@ class CutsceneManager:
         self.day2_black_bg.bind(size=_u_dt2, pos=_u_dt2)
         root.add_widget(self.day2_black_bg)
         
-        if self.door_sound:
-            self.door_sound.play()
+        self.play_door_full_sequence()
             
         self._day2_wait_timer = 0
 
