@@ -24,8 +24,8 @@ STORY_CONFIG = {
         "name": "Day 3", 
         "visible_npcs": [2], 
         "warning_triggers": [
-            {"type": "coordinate", "x": 480, "y": None, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES},
-            {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
+            {"type": "coordinate", "x": 880, "y": None, "buffer": 16, "min_y": 464, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES},
+            {"type": "coordinate", "x": None, "y": 464, "buffer": 16, "min_x": 880, "dialogue": WARNING_DIALOGUE, "choices": WARNING_CHOICES}
         ]
     },
     4: {"name": "Day 4", "visible_npcs": [3], "warning_triggers": []},
@@ -66,8 +66,19 @@ class StoryManager:
             target_x, target_y = trigger.get("x"), trigger.get("y")
             buffer = trigger.get("buffer", 16)
             
+            # ตรวจสอบเงื่อนไขเพิ่มเติม (ถ้ามี)
+            min_x, max_x = trigger.get("min_x"), trigger.get("max_x")
+            min_y, max_y = trigger.get("min_y"), trigger.get("max_y")
+            
             if (target_x is None or abs(px - target_x) < buffer) and \
                (target_y is None or abs(py - target_y) < buffer):
+                
+                # ตรวจสอบขอบเขตเพิ่มเติม
+                if min_x is not None and px < min_x: continue
+                if max_x is not None and px > max_x: continue
+                if min_y is not None and py < min_y: continue
+                if max_y is not None and py > max_y: continue
+
                 hit = True
                 if not self.game.warning_triggered:
                     self._stop_player_and_snap()
@@ -104,8 +115,8 @@ class StoryManager:
 
     def handle_dialogue_end(self, last_character, has_choices):
         """จัดการ Event หลังบทสนทนาจบลง (Logic Story ทอดๆ มาที่นี่)"""
-        # 1. Reaper: เปิดหน้าจอเซฟ
-        if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode:
+        # 1. Reaper: เปิดหน้าจอเซฟ (ทำเฉพาะเมื่อกดคุยเอง และไม่มีทางเลือก/ไม่ได้อยู่ในโหมดสอน)
+        if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode and getattr(self.game, 'is_reaper_save_prompt', False):
             self.game.show_save_screen()
         
         # 2. Angel/Devil: จบคัทซีนเข้าบ้าน (ทำเฉพาะเมื่ออยู่ในโหมด Cutscene จริงๆ เช่น ท้ายวัน)
@@ -119,6 +130,10 @@ class StoryManager:
         # 4. The Postman (Quest Day 2)
         if last_character == "The Postman":
             self._handle_postman_logic()
+
+        # 5. The Old Soul (Quest Day 3)
+        if last_character == "The Old Soul":
+            self._handle_old_soul_logic()
 
         # 4.1 หลังจากกดรับไอเทม "LETTERS" ให้ขึ้นประโยคบ่น (User Request)
         if last_character == "LETTERS":
@@ -152,7 +167,7 @@ class StoryManager:
                 self.game.quest_success_count += 1
             
             quest.is_active = False
-            self.game.quest_manager.show_quest_notification("COMPLETED: FIND DOLL PARTS")
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
 
@@ -175,6 +190,22 @@ class StoryManager:
             
             quest.is_active = False
             # แสดงชื่อเควสที่ถูกต้องในการแจ้งเตือนตอนจบ
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
+            self.game.quest_manager.update_quest_list_ui()
+            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
+
+    def _handle_old_soul_logic(self):
+        quest = self.game.quest_manager.active_quests.get("light_candles")
+        if not quest:
+            # เริ่มเควสทันทีหลังคุยจบ
+            self.game.quest_manager.start_quest("light_candles", "Light the candles", target=3)
+            self.game.create_candles()
+        elif quest.is_active and quest.current_count >= quest.target_count:
+            # ตรวจสอบความสำเร็จเควส
+            if not getattr(self.game, 'quest_item_fail', False):
+                self.game.quest_success_count += 1
+            
+            quest.is_active = False
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)

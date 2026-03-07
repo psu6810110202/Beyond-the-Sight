@@ -128,24 +128,31 @@ class DialogueManager:
             self.chat_tri_event = self.animate_pixel_triangle(tri)
 
         # รายชื่อตัวละครปกติที่มีรูป Portrait ประจำตัว
-        portrait_characters = ["Little girl", "Angel", "Devil", "Father", "Mother"]
+        portrait_characters = ["Little girl", "Angel", "Devil", "Father", "Mother", "Reaper"]
         
         # ถ้ามีการระบุรูป Portrait มา (เช่น รูปบ้าน หรือรูปไอเทม) หรือเป็นตัวละครที่มีรูปประจำตัว
         if portrait or character_name in portrait_characters:
-            from settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG
+            from settings import PLAYER_PORTRAIT_IMG, ANGEL_PORTRAIT_IMG, DEVIL_PORTRAIT_IMG, FATHER_PORTRAIT_IMG, MOTHER_PORTRAIT_IMG, REAPER_PORTRAIT_IMG
             
             # 1. แสดงรูปตามที่ส่งมาสำรองไว้ก่อน
             p_source = portrait
             
             # 2. ถ้าไม่ได้ส่งรูปมา แต่ชื่ออยู่ในลิสต์ ให้ดึงรูปประจำตัวมาใช้
             if not p_source and character_name in portrait_characters:
+                from settings import PLAYER_S_PORTRAIT_IMG as PS_IMG
+                # พิเศษสำหรับฉากบ้านใน Day 3 ให้ใช้รูปหน้าเศร้าเป็นค่าเริ่มต้นเสมอตามคำขอ
+                p_default = PLAYER_PORTRAIT_IMG
+                if getattr(self.game, 'current_day', 1) == 3 and getattr(self.game.player, 'is_in_home', False):
+                    p_default = PS_IMG
+
                 portrait_map = {
                     "Angel": ANGEL_PORTRAIT_IMG,
                     "Devil": DEVIL_PORTRAIT_IMG,
                     "Father": FATHER_PORTRAIT_IMG,
-                    "Mother": MOTHER_PORTRAIT_IMG
+                    "Mother": MOTHER_PORTRAIT_IMG,
+                    "Reaper": REAPER_PORTRAIT_IMG
                 }
-                p_source = portrait_map.get(character_name, PLAYER_PORTRAIT_IMG)
+                p_source = portrait_map.get(character_name, p_default)
             
             # ถ้าสุดท้ายมีรูปให้โชว์ (p_source ไม่เป็น None)
             if p_source:

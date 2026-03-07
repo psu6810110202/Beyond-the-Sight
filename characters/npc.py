@@ -23,16 +23,19 @@ class NPC:
         else:
             self.image_path = random.choice(NPC_IMAGE_LIST)
             
+        self.x = 0.0
+        self.y = 0.0
+        
         # Set x, y from dictionary if not provided
         if x is None or y is None:
             for name, (px, py) in NPC_START_POSITIONS.items():
                 if name in self.image_path:
-                    self.x = (px // TILE_SIZE) * TILE_SIZE
-                    self.y = (py // TILE_SIZE) * TILE_SIZE
+                    self.x = float((px // TILE_SIZE) * TILE_SIZE)
+                    self.y = float((py // TILE_SIZE) * TILE_SIZE)
                     break
         else:
-            self.x = x
-            self.y = y
+            self.x = float(x)
+            self.y = float(y)
         self.logic_pos = [self.x, self.y]
         self.target_pos = [self.x, self.y]
         self.is_moving = False
@@ -209,7 +212,7 @@ class NPC:
 
     def update(self, dt):
         if self.is_fading:
-            self.alpha -= dt * 1.0 # ค่อยๆ จางลง
+            self.alpha -= dt * 2.0 # ค่อยๆ จางลง (0.5 วินาที)
             if self.alpha <= 0:
                 self.alpha = 0
                 self.fading_done = True

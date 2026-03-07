@@ -24,6 +24,7 @@ class Player:
         self.current_speed = WALK_SPEED
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
         self.is_in_home = False # เช็คว่าอยู่ในบ้านหรือไม่เพื่อเปลี่ยนเสียงเดิน
+        self.cutscene_mode = False # บังคับให้เล่นอนิเมชั่นเดินแม้ไม่ได้กดปุ่ม (เช่น ในคัทซีน)
         
         # โหลด Texture
         self.idle_texture = CoreImage(PLAYER_IDLE_IMG).texture
@@ -163,7 +164,7 @@ class Player:
             
         self.update_frame()
         
-    def move(self, pressed_keys, npcs=None, reaper=None, map_rects=None):  # เพิ่ม map_rects parameter
+    def move(self, pressed_keys, npcs=None, reaper=None, map_rects=None, candles=None):  # เพิ่ม map_rects และ candles
         # 1. อัปเดตตำแหน่งก่อน หากเดินอยู่ให้เดินจนจบช่อง
         if self.is_moving:
             self.continue_move()
@@ -192,7 +193,7 @@ class Player:
                         self.turn_delay = 6  # จำนวนเฟรมที่รอก่อนเดิน (ประมาน 0.1 วินาที)
                         self.update_frame()
                     else:
-                        self.start_move(dx, dy, npcs, reaper, map_rects)  # ส่ง npcs, reaper, map_rects ไปด้วย
+                        self.start_move(dx, dy, npcs, reaper, map_rects, candles)  # ส่ง candles ไปด้วย
 
         # 3. Handling stamina and animation speed
         is_running = 'shift' in pressed_keys and self.is_moving
@@ -247,14 +248,15 @@ class Player:
         """Returns current stamina as a 0.0-1.0 ratio."""
         return max(0.0, self.stamina / self.max_stamina)
 
-    def start_move(self, dx, dy, npcs=None, reaper=None, map_rects=None):
+    def start_move(self, dx, dy, npcs=None, reaper=None, map_rects=None, candles=None):
         new_x = self.logic_pos[0] + dx
         new_y = self.logic_pos[1] + dy
         
-        # ตรวจสอบขอบเขตกำแพงล่องหนของแผนที่ (1600x1600)
-        if 0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE:
+        # ตรวจสอบขอบเขตกำแพงล่องหนของแผนที่ (1600x1600) หรืออยู่ในโหมดคัทซีน (อนุญาตให้เดินทะลุขอบตกแมพได้)
+        is_cutscene = getattr(self, 'cutscene_mode', False)
+        if is_cutscene or (0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE):
             # ตรวจสอบกำแพงจากแผนที่
-            if map_rects and self.check_map_collision(new_x, new_y, map_rects):
+            if map_rects and self.check_map_collision(new_x, new_y, map_rects) and not is_cutscene:
                 # print("Cannot move - Wall blocking!") # ปิด log เพื่อไม่ให้รกจอ
                 return
                 
@@ -264,8 +266,13 @@ class Player:
                 return
             
             # ตรวจสอบการชนกับ Reaper
-            if reaper and self.check_reaper_collision(new_x, new_y, reaper):
+            if reaper and self.check_reaper_collision(new_x, new_y, reaper) and not is_cutscene:
                 print("Cannot move - Reaper blocking!")
+                return
+            
+            # ตรวจสอบการชนกับเทียน (Day 3)
+            if candles and self.check_candle_collision(new_x, new_y, candles) and not is_cutscene:
+                # print("Cannot move - Candle blocking!")
                 return
             
             
@@ -288,6 +295,18 @@ class Player:
                 player_rect[0] + player_rect[2] > r[0] and
                 player_rect[1] < r[1] + r[3] and
                 player_rect[1] + player_rect[3] > r[1]):
+                return True
+        return False
+
+    def check_candle_collision(self, new_x, new_y, candles):
+        """ตรวจสอบว่าตำแหน่งใหม่จะชนกับเทียนหรือไม่"""
+        player_rect = [new_x, new_y, TILE_SIZE, TILE_SIZE]
+        for candle in candles:
+            candle_rect = [candle.x, candle.y, TILE_SIZE, TILE_SIZE]
+            if (player_rect[0] < candle_rect[0] + candle_rect[2] and
+                player_rect[0] + player_rect[2] > candle_rect[0] and
+                player_rect[1] < candle_rect[1] + candle_rect[3] and
+                player_rect[1] + player_rect[3] > candle_rect[1]):
                 return True
         return False
     
@@ -354,6 +373,16 @@ class Player:
         # Note: เราใช้ _get_interaction_target ของ main.py เป็นหลักแล้ว
         # เมธอดนี้อาจเหลือไว้เพียงเพื่อให้รองรับโค้ดเก่าในบางจุด
         return None, None, None, 0, 0
+
+    def stop(self):
+        """หยุดการเดินและรีเซ็ตสถานะทั้งหมด"""
+        self.is_moving = False
+        self.target_pos = list(self.logic_pos)
+        self.state = 'idle'
+        self.frame_index = 0
+        self.cutscene_mode = False
+        self.update_frame()
+        self.update_animation_speed()
 
     def cleanup(self):
         """หยุดเสียงทั้งหมดของ Player"""

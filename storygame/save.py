@@ -46,7 +46,13 @@ class SaveManager:
             "death_count": self.game.death_count,
             "warning_dismissed": self.game.warning_dismissed,
             "has_received_blue_stone": self.game.has_received_blue_stone,
+            "has_received_lantern": self.game.has_received_lantern,
             "tutorial_triggered": self.game.tutorial_triggered,
+            "current_candle_lit_count": getattr(self.game, 'current_candle_lit_count', 0),
+            "lit_candle_positions": [
+                {"pos": list(c.logic_pos), "color": getattr(c, 'current_color', None)} 
+                for c in getattr(self.game, 'candles', []) if c.is_lit
+            ],
             "enemies_data": [
                 {
                     "id": enemy.id,

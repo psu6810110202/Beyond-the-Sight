@@ -143,3 +143,25 @@ DIALOGUE_CONFIG = {
     "msg_color": (1, 1, 1, 1),  # สีขาว
     "bg_opacity": 0.85
 }
+
+# เควสเทียน Day 3
+CANDLE_LIGHT_DIALOGUE = "The candle is unlit. Which color should I light it with?"
+CANDLE_LIGHT_CHOICES = ["RED", "YELLOW", "BLUE"]
+CANDLE_SUCCESS_DIALOGUE = "All the candles are lit now. I should go back and tell the old soul."
+
+
+OLD_SOUL_SUCCESS = "The light... it's back. I remember the way home now. Thank you, child. I don't think I'll get lost again."
+OLD_SOUL_FAIL = "No... that's not it. Everything is getting blurry again."
+
+ANGEL_DAY3_SUCCESS = [
+    "That makes three souls now... You've done so well.",
+    "But look at you, your body seems so exhausted.",
+    "Those bruises... your parents did this to you again, didn't they?",
+    "Hang in there. The light is almost here."
+]
+
+ANGEL_DAY3_FAIL = [
+    "Your heart is starting to darken, little one...",
+    "I wish I could help you more, but this is all we can do today.",
+    "Go back and hide in your safe corner for now."
+]
