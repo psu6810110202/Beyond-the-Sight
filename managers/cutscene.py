@@ -363,6 +363,12 @@ class CutsceneManager:
                 self.game.player.state = 'idle'
                 self.game.player.update_frame()
 
+    def _get_scaled_font_size(self):
+        """Scale font size (Single point of control)"""
+        # ปรับจาก 120 ลงมาเป็น 80 เพื่อให้ตัวหนังสือไม่ใหญ่จนเกินไป (Downsized for better fit)
+        from data.settings import WINDOW_HEIGHT
+        return 80 * (self.height / WINDOW_HEIGHT if self.height > 0 else 1.0)
+
     def _on_pan_complete(self):
         """เมื่อเลื่อนกล้องเสร็จ ให้เริ่มบทสนทนา"""
         self.game.cutscene_step = 11
@@ -671,10 +677,10 @@ class CutsceneManager:
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         
         # ลบวิดเจ็ตเก่าที่อาจค้างอยู่
-        if hasattr(self, 'succumb_bg') and self.succumb_bg:
-            if self.succumb_bg.parent: self.succumb_bg.parent.remove_widget(self.succumb_bg)
-        if hasattr(self, 'hidden_end_widget') and self.hidden_end_widget:
-            if self.hidden_end_widget.parent: self.hidden_end_widget.parent.remove_widget(self.hidden_end_widget)
+        if hasattr(self.game, 'succumb_bg') and self.game.succumb_bg:
+            if self.game.succumb_bg.parent: self.game.succumb_bg.parent.remove_widget(self.game.succumb_bg)
+        if hasattr(self.game, 'hidden_end_widget') and self.game.hidden_end_widget:
+            if self.game.hidden_end_widget.parent: self.game.hidden_end_widget.parent.remove_widget(self.game.hidden_end_widget)
         
         # 1. วิดเจ็ตจอดำ (ใช้สำหรับ Fade In ครั้งแรก)
         self.succumb_bg = Widget(size_hint=(1, 1), opacity=0)
@@ -732,7 +738,7 @@ class CutsceneManager:
             # 4. เรียกใช้ IntroScreen แบบ custom_text เหมือนเวลาเปลี่ยนวัน
             intro = IntroScreen(
                 callback=self.game.return_to_main_menu, 
-                custom_text="Ending 1/5 : Succumb", 
+                custom_text="Ending 1/4 :\n\nSuccumb", 
                 play_sound=False, 
                 duration=4.5
             )
@@ -779,11 +785,11 @@ class CutsceneManager:
                 self.game.black_overlay = None
             
             if total_success >= 5:
-                ending_title = "Ending 5/5\n\nPerfect"
+                ending_title = "True Ending 4/4 :\n\nThe Guide to a New Home"
             elif total_success > 0:
-                ending_title = "Ending 3/5\n\nNormal"
+                ending_title = "Normal Ending 3/4 :\n\nFreedom on a Lonely Road"
             else:
-                ending_title = "Ending 2/5\n\nBad"
+                ending_title = "Bad Ending 2/4 :\n\nThe Silent Eternal Darkness"
                 
             intro = IntroScreen(
                 callback=self.game.return_to_main_menu, 
