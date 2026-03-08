@@ -2,6 +2,7 @@ from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.clock import Clock
+from kivy.animation import Animation
 from kivy.core.audio import SoundLoader
 import os
 from data.settings import GAME_FONT, WINDOW_HEIGHT
@@ -82,7 +83,12 @@ class IntroScreen(FloatLayout):
         # Unschedule the timer if it was called manually
         Clock.unschedule(self.finish)
         
-        if self.callback:
-            self.callback()
-        if self.parent:
-            self.parent.remove_widget(self)
+        # ค่อยๆ จางหายไปก่อนเรียก callback (เพื่อความนุ่มนวล)
+        anim = Animation(opacity=0, duration=1.0)
+        def on_complete(*args):
+            if self.callback:
+                self.callback()
+            if self.parent:
+                self.parent.remove_widget(self)
+        anim.bind(on_complete=on_complete)
+        anim.start(self)
