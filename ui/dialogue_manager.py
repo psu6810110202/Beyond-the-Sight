@@ -285,6 +285,66 @@ class DialogueManager:
            ("Take this lantern. You'll need it to light the candles" in dialogue and not getattr(self.game, 'has_received_lantern', False)):
             self.game.awaiting_item_receipt = True
 
+    def update_left_portrait(self, p_source):
+        """อัปเดตหรือซ่อนภาพ Portrait ฝั่งซ้ายกลางคันระหว่างคุย"""
+        if not p_source:
+            if self.left_portrait_widget:
+                self.left_portrait_widget.opacity = 0
+            return
+            
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        scale = self.get_ui_scale()
+        box_h = DIALOGUE_CONFIG["box_height"] * scale
+        char_scale_mult = 1.0
+        if "Items" in p_source or "mark" in p_source:
+            char_scale_mult = 0.6
+        p_size = 280 * scale * char_scale_mult
+        y_base = box_h
+        x_pos = 20 * scale
+
+        if not self.left_portrait_widget:
+            self.left_portrait_widget = Widget(size_hint=(None, None), size=(p_size, p_size))
+            with self.left_portrait_widget.canvas:
+                Color(1, 1, 1, 1)
+                try:
+                    tex = CoreImage(p_source).texture
+                    tex.mag_filter = 'nearest'
+                    tex.min_filter = 'nearest'
+                    self.left_portrait_rect = Rectangle(texture=tex, size=self.left_portrait_widget.size, pos=(x_pos, y_base))
+                except Exception:
+                    self.left_portrait_rect = Rectangle(source=p_source, size=self.left_portrait_widget.size, pos=(x_pos, y_base))
+            root.add_widget(self.left_portrait_widget)
+            
+            if not hasattr(self, '_left_portrait_update_bound'):
+                def _l_p_upd(instance, value):
+                    if self.left_portrait_widget and self.left_portrait_rect:
+                        sc = self.get_ui_scale()
+                        cur_box_h = DIALOGUE_CONFIG["box_height"] * sc
+                        mult = getattr(self.left_portrait_widget, 'char_scale_mult', 1.0)
+                        new_p_size = 280 * sc * mult
+                        new_x_pos = 20 * sc
+                        new_y_base = cur_box_h
+                        self.left_portrait_widget.size = (new_p_size, new_p_size)
+                        self.left_portrait_rect.size = self.left_portrait_widget.size
+                        self.left_portrait_rect.pos = (new_x_pos, new_y_base)
+                self.game.bind(size=_l_p_upd)
+                self._left_portrait_update_bound = True
+        
+        self.left_portrait_widget.opacity = 1
+        self.left_portrait_widget.char_scale_mult = char_scale_mult
+        self.left_portrait_widget.size = (p_size, p_size)
+        
+        if hasattr(self, 'left_portrait_rect'):
+            try:
+                tex = CoreImage(p_source).texture
+                tex.mag_filter = 'nearest'
+                tex.min_filter = 'nearest'
+                self.left_portrait_rect.texture = tex
+            except Exception:
+                self.left_portrait_rect.source = p_source
+            self.left_portrait_rect.size = self.left_portrait_widget.size
+            self.left_portrait_rect.pos = (x_pos, y_base)
+
     def update_right_portrait(self, p_source):
         """อัปเดตหรือซ่อนภาพ Portrait ฝั่งขวากลางคันระหว่างคุย"""
         if not p_source:
