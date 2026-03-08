@@ -928,13 +928,13 @@ class CutsceneManager:
             elif total_success > 0:
                 ending_title = ENDING_TITLES[3]
                 json.dump({'ending': 'normal'}, open('saves/ending.flag', 'w'))
-                intro = IntroScreen(callback=self.game.return_to_main_menu, custom_text=ending_title, play_sound=False, duration=4.5)
-                root.add_widget(intro)
+                self._show_normal_ending_sequence(root, ending_title)
+
             else:
                 ending_title = ENDING_TITLES[2]
                 json.dump({'ending': 'bad'}, open('saves/ending.flag', 'w'))
-                intro = IntroScreen(callback=self.game.return_to_main_menu, custom_text=ending_title, play_sound=False, duration=4.5)
-                root.add_widget(intro)
+                self._show_bad_ending_sequence(root, ending_title)
+
                 
 
         anim.bind(on_complete=on_dark)
@@ -962,8 +962,8 @@ class CutsceneManager:
 
         dialogues = [
             ("Little girl", "Who are you? ...Why are you standing there?", PLAYER_PORTRAIT_IMG),
-            ("M",           "...",                                           REAPER_PORTRAIT_IMG),
-            ("M",           "I am the one who will take you to a place where the sun never sets... Do you want to go with me?", REAPER_PORTRAIT_IMG),
+            ("M",           "...",                                           None),
+            ("M",           "I am the one who will take you to a place where the sun never sets... Do you want to go with me?", None),
         ]
         self._true_ending_queue = list(dialogues)
         self._true_ending_root = root
@@ -1003,4 +1003,201 @@ class CutsceneManager:
         )
         root.add_widget(intro)
 
+    def _show_normal_ending_sequence(self, root, ending_title):
+        """Normal Ending: แสดง bd_ed.png + เสียงวิ่ง 7 วิ + breath พร้อมกัน แล้วขึ้น title"""
+        import os, glob
+        from kivy.core.image import Image as CoreImage
 
+        # 1. วาง background bd_ed.png เต็มจอ
+        self._normal_end_bg = Widget(size_hint=(1, 1))
+        with self._normal_end_bg.canvas:
+            Color(1, 1, 1, 1)
+            try:
+                tex = CoreImage('assets/background/bd_ed.png').texture
+                self._ne_bg_rect = Rectangle(texture=tex, size=root.size, pos=root.pos)
+            except Exception:
+                self._ne_bg_rect = Rectangle(source='assets/background/bd_ed.png',
+                                             size=root.size, pos=root.pos)
+        def _upd(inst, val):
+            self._ne_bg_rect.size = root.size
+            self._ne_bg_rect.pos  = root.pos
+        root.bind(size=_upd, pos=_upd)
+        root.add_widget(self._normal_end_bg)
+
+        # 2. โหลดไฟล์เสียงวิ่งทั้งหมดและเรียงลำดับ
+        run_dir = 'assets/sound/run'
+        run_files = sorted(
+            [f for f in os.listdir(run_dir) if f.lower().endswith('.wav')]
+        )
+        self._ne_run_sounds  = [SoundLoader.load(os.path.join(run_dir, f)) for f in run_files]
+        self._ne_run_idx     = 0
+        self._ne_run_events  = []
+
+        # ตั้งค่า volume
+        for s in self._ne_run_sounds:
+            if s: s.volume = 0.85
+
+        # 3. โหลด breath.wav และเล่นพร้อมกัน
+        self._ne_breath = SoundLoader.load('assets/sound/breath.wav')
+        if self._ne_breath:
+            self._ne_breath.volume = 0.7
+            self._ne_breath.loop   = True
+            self._ne_breath.play()
+
+        # 4. เล่นเสียงวิ่งวนไปเรื่อยๆ ทุก ~0.7 วิ (10 ไฟล์ ≈ 7 วิ)
+        step_interval = 7.0 / max(len(run_files), 1)  # หาร 7 วิ ด้วยจำนวนไฟล์
+
+        def _play_step(dt):
+            sounds = self._ne_run_sounds
+            if not sounds: return
+            idx = self._ne_run_idx % len(sounds)
+            if sounds[idx]:
+                sounds[idx].play()
+            self._ne_run_idx += 1
+
+        # Schedule ทุก step_interval จนครบ 7 วิ
+        for i, fname in enumerate(run_files):
+            ev = Clock.schedule_once(_play_step, i * step_interval)
+            self._ne_run_events.append(ev)
+
+        # 5. หลัง 7 วิ หยุดเสียง → เอา bg ออก → โชว์ title
+        def _finish_normal_ending(dt):
+            # หยุดเสียงทั้งหมด
+            for s in getattr(self, '_ne_run_sounds', []):
+                if s: s.stop()
+            if getattr(self, '_ne_breath', None):
+                self._ne_breath.stop()
+            # ลบ background
+            if getattr(self, '_normal_end_bg', None) and self._normal_end_bg.parent:
+                self._normal_end_bg.parent.remove_widget(self._normal_end_bg)
+            # โชว์ IntroScreen title
+            intro = IntroScreen(
+                callback=self.game.return_to_main_menu,
+                custom_text=ending_title,
+                play_sound=False,
+                duration=4.5
+            )
+            root.add_widget(intro)
+
+        Clock.schedule_once(_finish_normal_ending, 7.0)
+
+    # ------------------------------------------------------------------
+    # Bad Ending Sequence
+    # ------------------------------------------------------------------
+    def _show_bad_ending_sequence(self, root, ending_title):
+        """Bad Ending: home map BG + parent dialogue → Gore+Scream → black 3s → child dialogue → title"""
+        import os
+        from kivy.graphics import InstructionGroup, PushMatrix, PopMatrix, Translate
+        from kivy.core.window import Window
+
+        self._bad_root  = root
+        self._bad_title = ending_title
+
+        # 1. Black base background
+        self._bad_black_w = Widget(size_hint=(1, 1))
+        with self._bad_black_w.canvas:
+            Color(0, 0, 0, 1)
+            Rectangle(pos=(0, 0), size=(10000, 10000))
+        root.add_widget(self._bad_black_w)
+
+        # 2. Home map centered on screen (no player)
+        self._bad_map_w = Widget(size_hint=(1, 1))
+        try:
+            from assets.Tiles.map_loader import KivyTiledMap
+            home_map = KivyTiledMap('assets/Tiles/home.tmj')
+            map_px_w = home_map.width  * TILE_SIZE
+            map_px_h = home_map.height * TILE_SIZE
+            sw, sh = Window.width, Window.height
+            ox = (sw - map_px_w) / 2
+            oy = (sh - map_px_h) / 2
+            ig = InstructionGroup()
+            ig.add(PushMatrix())
+            ig.add(Translate(ox, oy, 0))
+            ig.add(Color(1, 1, 1, 1))
+            home_map.draw_ground(ig)
+            home_map.draw_background(ig)
+            home_map.draw_foreground(ig)
+            home_map.draw_roof(ig)
+            ig.add(PopMatrix())
+            self._bad_map_w.canvas.add(ig)
+        except Exception as e:
+            print(f"Bad ending home map error: {e}")
+        root.add_widget(self._bad_map_w)
+
+        # 3. Phase 1: Mother → Father dialogue
+        self._bad_q1 = [
+            ("Mother", "She's a curse... Every time she looks at us, everything goes wrong. She doesn't deserve to see anything!", None),
+            ("Father", "You're right... If she's such a curse, then she doesn't need those eyes to look at us anymore!", None),
+        ]
+        self.game._bad_ending_next = self._bad_next_1
+        self._bad_next_1()
+
+    def _bad_next_1(self):
+        if not self._bad_q1:
+            self.game._bad_ending_next = None
+            self._bad_play_sounds()
+            return
+        char, text, portrait = self._bad_q1.pop(0)
+        self.game.show_vn_dialogue(char, text, portrait_path=portrait, can_save=False)
+
+    def _bad_play_sounds(self):
+        """เล่น Gore.wav ก่อน แล้วต่อด้วย Scream.wav"""
+        import os
+        from kivy.app import App
+        app = App.get_running_app()
+        if hasattr(app, 'bg_loop') and app.bg_loop:
+            app.bg_loop.stop()
+
+        gore_path   = 'assets/sound/hit/Gore.wav'
+        scream_path = 'assets/sound/feeling/Scream.wav'
+
+        gore_dur = 0.0
+        if os.path.exists(gore_path):
+            self._bad_gore = SoundLoader.load(gore_path)
+            if self._bad_gore:
+                self._bad_gore.volume = 0.9
+                self._bad_gore.play()
+                gore_dur = self._bad_gore.length if self._bad_gore.length > 0 else 1.5
+
+        scream_dur = 0.0
+        if os.path.exists(scream_path):
+            self._bad_scream = SoundLoader.load(scream_path)
+            if self._bad_scream:
+                scream_dur = self._bad_scream.length if self._bad_scream.length > 0 else 2.5
+                def _play_scream(dt):
+                    self._bad_scream.volume = 0.9
+                    self._bad_scream.play()
+                Clock.schedule_once(_play_scream, gore_dur + 0.1)
+
+        total = gore_dur + 0.1 + scream_dur + 0.3
+        Clock.schedule_once(lambda dt: self._bad_go_dark(), total)
+
+    def _bad_go_dark(self):
+        """ลบแมพออก → จอดำ → รอ 3 วิ"""
+        if getattr(self, '_bad_map_w', None) and self._bad_map_w.parent:
+            self._bad_map_w.parent.remove_widget(self._bad_map_w)
+        # จอดำ (_bad_black_w) ยังอยู่ รอ 3 วิ
+        Clock.schedule_once(lambda dt: self._bad_phase2(), 3.0)
+
+    def _bad_phase2(self, dt=None):
+        """Phase 2: Little Girl → Reaper dialogue"""
+        self._bad_q2 = [
+            ("Little Girl", "It hurts... It hurts so much... Mr. Reaper, I can't see anything. Why is it so dark?", None),
+            ("Reaper",      "Hush now... The world you saw was too ugly for a soul like yours. In this darkness, they can't hurt you anymore.", None),
+        ]
+        self.game._bad_ending_next = self._bad_next_2
+        self._bad_next_2()
+
+    def _bad_next_2(self):
+        if not self._bad_q2:
+            self.game._bad_ending_next = None
+            intro = IntroScreen(
+                callback=self.game.return_to_main_menu,
+                custom_text=self._bad_title,
+                play_sound=False,
+                duration=4.5
+            )
+            self._bad_root.add_widget(intro)
+            return
+        char, text, portrait = self._bad_q2.pop(0)
+        self.game.show_vn_dialogue(char, text, portrait_path=portrait, can_save=False)

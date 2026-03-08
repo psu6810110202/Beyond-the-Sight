@@ -1,6 +1,7 @@
 # storygame/save.py
 import os
 import json
+import datetime
 from ui.load import SaveLoadScreen
 
 class SaveManager:
@@ -94,9 +95,15 @@ class SaveManager:
                 for c in getattr(self.game, 'candles', []) if c.is_lit
             ]
         
+        # เพิ่ม timestamp จริง (ไม่แสดงใน UI แต่ใช้เลือก save ล่าสุด)
+        save_data["saved_at"] = datetime.datetime.now().isoformat()
+
         file_path = f'saves/slot_{slot_id}.json'
         with open(file_path, 'w') as f:
             json.dump(save_data, f)
+
+        # จำ slot ที่ใช้งานอยู่ เพื่อให้ auto-save ตามถูกต้อง
+        self.game.current_save_slot = slot_id
             
         if save_screen:
             save_screen.close()
@@ -126,18 +133,33 @@ class SaveManager:
             self.game.dialogue_root.add_widget(load_screen)
 
     def get_latest_save_data(self):
-        """ค้นหาไฟล์เซฟล่าสุดและคืนค่าข้อมูล โดยเช็คจาก file mtime"""
+        """ค้นหาไฟล์เซฟล่าสุดและคืนค่าข้อมูล โดยเช็คจาก saved_at timestamp ใน JSON (fallback: mtime)"""
         saves_dir = 'saves'
         if not os.path.exists(saves_dir):
             return None
             
-        files = [os.path.join(saves_dir, f) for f in os.listdir(saves_dir) if f.endswith('.json')]
+        files = [os.path.join(saves_dir, f) for f in os.listdir(saves_dir)
+                 if f.startswith('slot_') and f.endswith('.json')]
         if not files:
             return None
-            
-        latest_file = max(files, key=os.path.getmtime)
+
+        best_file, best_ts = None, ""
+        for fp in files:
+            try:
+                with open(fp, 'r') as f:
+                    d = json.load(f)
+                ts = d.get('saved_at', '')
+                if ts > best_ts:
+                    best_ts, best_file = ts, fp
+            except Exception:
+                pass
+
+        # fallback: ถ้าไม่มี saved_at ใดเลย ใช้ mtime เหมือนเดิม
+        if not best_file:
+            best_file = max(files, key=os.path.getmtime)
+
         try:
-            with open(latest_file, 'r') as f:
+            with open(best_file, 'r') as f:
                 return json.load(f)
         except:
             return None
@@ -154,4 +176,4 @@ class SaveManager:
             # สั่งการ App ทอดๆ ให้รีโหลดเกมใหม่
             from kivy.app import App as KivyApp
             app = KivyApp.get_running_app()
-            app.show_game(initial_data=data)
+            app.show_game(initial_data=data, loaded_slot=slot_id)

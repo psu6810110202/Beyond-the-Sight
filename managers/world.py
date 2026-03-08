@@ -308,12 +308,20 @@ class WorldManager:
             # ตั้ง mapping บน game object เพื่อให้ choice.py ใช้ได้
             self.game.underground_fragments_mapping = UNDERGROUND_FRAGMENT_MAPPING
 
+            # Normalize collected_stars เป็น set of int tuples ป้องกัน type mismatch (int/float/list)
+            collected = set((int(p[0]), int(p[1])) for p in self.game.collected_stars)
+            print(f"DEBUG create_stars underground: collected={collected}, total mapping={len(UNDERGROUND_FRAGMENT_MAPPING)}")
+
             # สร้างดาวเฉพาะจุดที่ยังไม่ถูกค้น
             for pos, data in UNDERGROUND_FRAGMENT_MAPPING.items():
-                if pos in self.game.collected_stars:
+                norm_pos = (int(pos[0]), int(pos[1]))
+                if norm_pos in collected:
+                    print(f"DEBUG: Skipping already-collected star at {norm_pos}")
                     continue
                 star = Star(self.game.sorting_layer, pos[0], pos[1], is_true=(data["type"] == "true"))
                 self.game.stars.append(star)
+            print(f"DEBUG create_stars underground: created {len(self.game.stars)} stars")
+
 
     def create_candles(self):
         """สร้างเทียนที่พิกัดต่างๆ สำหรับเควส Day 3"""

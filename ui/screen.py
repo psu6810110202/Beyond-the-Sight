@@ -333,10 +333,6 @@ class SplashScreen(FloatLayout):
             px, py = self.x + (w - dw) / 2, self.y + (h - dh) / 2
             Color(1, 1, 1, 1)
             Rectangle(texture=self.image_texture, pos=(px, py), size=(dw, dh))
-            
-            # Darken the right side slightly for text readability
-            Color(0, 0, 0, 0.3)
-            Rectangle(pos=(self.x + w*0.5, self.y), size=(w*0.5, h))
     
 
     def _on_key_down(self, keyboard, keycode, text, modifiers):

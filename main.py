@@ -961,7 +961,7 @@ class GameWidget(Widget):
         from ui.screen import SplashScreen
         
         splash = SplashScreen(
-            self._get_splash_cover(),
+            app._get_splash_cover(),
             app.show_game
         )
         app.root.add_widget(splash)
@@ -1078,7 +1078,7 @@ class MyApp(App):
 
 
     
-    def show_game(self, initial_data=None):
+    def show_game(self, initial_data=None, loaded_slot=None):
         """แสดงเกมหลังจบหน้าปกเกม หรือหน้าโหลดเซฟ"""
         # ลบวิดเจ็ตเก่าและหยุดลูปเดิมก่อน
         for child in self.root.children[:]:
@@ -1089,16 +1089,18 @@ class MyApp(App):
         
         # ถ้าไม่มีข้อมูลโหลด (คือเลือก New Game) ให้แสดงหน้าจอ Day 1 ก่อน
         if initial_data is None:
-            intro = IntroScreen(callback=lambda: self._start_actual_game(initial_data))
+            intro = IntroScreen(callback=lambda: self._start_actual_game(initial_data, loaded_slot))
             self.root.add_widget(intro)
         else:
             # ถ้าโหลดเซฟมา ให้ข้ามไปเริ่มเกมเลย
-            self._start_actual_game(initial_data)
+            self._start_actual_game(initial_data, loaded_slot)
 
-    def _start_actual_game(self, initial_data):
+    def _start_actual_game(self, initial_data, loaded_slot=None):
         """รันตรรกะการสร้างตัวเกมจริงๆ หลังจบ Intro หรือ Load"""
         # สร้างตัวเกมโดยส่งข้อมูลเริ่มต้นไป (ถ้ามี)
         game = GameWidget(initial_data=initial_data)
+        if loaded_slot is not None:
+            game.current_save_slot = loaded_slot  # จำ slot ที่โหลด เพื่อ auto-save ถูก slot
         self.root.add_widget(game)
         
         # บอก GameWidget ว่า root layout คืออะไร เพื่อให้ dialogue box วาดใน screen space

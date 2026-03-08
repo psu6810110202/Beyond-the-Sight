@@ -42,6 +42,21 @@ def handle_choice_selection(game, choice):
                 game.stars.remove(game.current_star_target)
             game.current_star_target.destroy()
 
+            # Auto-save collected_stars ลงสล็อตที่กำลังใช้งานทันที (ไม่ต้องรอผู้เล่น save เอง)
+            import os, json
+            _slot = getattr(game, 'current_save_slot', None)
+            if _slot is not None:
+                _path = f'saves/slot_{_slot}.json'
+                if os.path.exists(_path):
+                    try:
+                        with open(_path, 'r') as _f:
+                            _sd = json.load(_f)
+                        _sd['collected_stars'] = [list(p) for p in game.collected_stars]
+                        with open(_path, 'w') as _f:
+                            json.dump(_sd, _f)
+                    except Exception as _e:
+                        print(f"Auto-save collected_stars failed: {_e}")
+
             # เช็คผลลัพธ์จาก Mapping
             from data.settings import UNDERGROUND_FRAGMENT_MAPPING
             mapping = getattr(game, 'underground_fragments_mapping', UNDERGROUND_FRAGMENT_MAPPING)

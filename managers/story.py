@@ -123,6 +123,13 @@ class StoryManager:
             fn()
             return
 
+        # 0b. Bad Ending dialogue queue
+        if getattr(self.game, '_bad_ending_next', None):
+            fn = self.game._bad_ending_next
+            self.game._bad_ending_next = None
+            fn()
+            return
+
         # 1. Reaper: เปิดหน้าจอเซฟ (ทำเฉพาะเมื่อกดคุยเอง และไม่มีทางเลือก/ไม่ได้อยู่ในโหมดสอน)
         if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode and getattr(self.game, 'is_reaper_save_prompt', False):
             # ตรวจสอบว่ากำลังแสดงหน้าจอ "ไอเทม" อยู่หรือไม่ (เช่น เพิ่งได้รับ Blue Stone)
