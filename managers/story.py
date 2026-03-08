@@ -280,6 +280,9 @@ class StoryManager:
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
                 self.game.save_persistent_stats() # บันทึกสถิติแบบ Global ทันที
+                # User Request: เล่นเสียงกล่องดนตรีเมื่อเควส NPC4 (Lady) สำเร็จแบบไม่เฟล
+                if hasattr(self.game, 'music_box_sound') and self.game.music_box_sound:
+                    self.game.music_box_sound.play()
             
             quest.is_active = False
 

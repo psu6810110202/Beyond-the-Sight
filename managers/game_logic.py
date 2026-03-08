@@ -132,6 +132,9 @@ class GameplayManager:
             self.game.is_ready = True            
             self.game.player.is_in_home = False
             
+            # แสดงตัวละคร player ตั้งแต่ตอนเริ่ม fade เพื่อไม่ให้ดูเหมือนวาร์ป
+            self.game.player.color_instr.a = 1
+            
             if self.game.current_day > 1:
                 self.game.collected_stars = []
                 self.game.destroyed_enemies = [] 
@@ -161,6 +164,10 @@ class GameplayManager:
                     self.game.player.is_in_home = False
                     self.game.player.state = 'idle'
                     self.game.player.is_moving = False
+                    
+                    # ตัวละคร player แสดงอยู่แล้วตั้งแต่ on_dark ไม่ต้องทำซ้ำ
+                    # self.game.player.color_instr.a = 1
+                    
                     self.game.request_keyboard_back()
                     self.game._start_intro_dialogue(0)
                 fade_in.bind(on_complete=on_fade_complete)

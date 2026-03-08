@@ -26,6 +26,7 @@ class Player:
         self.is_in_home = False      # เช็คว่าอยู่ในบ้านหรือไม่เพื่อเปลี่ยนเสียงเดิน
         self.is_underground = False   # เช็คว่าอยู่ใน underground หรือไม่
         self.cutscene_mode = False # บังคับให้เล่นอนิเมชั่นเดินแม้ไม่ได้กดปุ่ม (เช่น ในคัทซีน)
+        self.animation_disabled = False # ปิดการอนิเมชั่นทั้งหมด (สำหรับยืนนิ่งๆ ในคัทซีน)
         
         # โหลด Texture
         self.idle_texture = CoreImage(PLAYER_IDLE_IMG).texture
@@ -66,8 +67,8 @@ class Player:
         # สร้าง InstructionGroup เพื่อจัดการการวาดแบบแยกส่วน (สำหรับ Y-sorting)
         self.group = InstructionGroup()
         
-        
-        self.group.add(Color(1, 1, 1, 1))
+        self.color_instr = Color(1, 1, 1, 1)
+        self.group.add(self.color_instr)
         # จุดเกิดตอนแรก
         offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
         offset_y = TILE_SIZE / 2
@@ -145,6 +146,10 @@ class Player:
         self.rect.tex_coords = (u, v + h, u + w, v + h, u + w, v, u, v)
         
     def animate(self, dt):
+        # ถ้า animation_disabled เป็น True ให้ข้ามการอนิเมชั่นทั้งหมด
+        if getattr(self, 'animation_disabled', False):
+            return
+            
         # ตรวจสอบ state ปัจจุบัน
         is_moving_now = self.is_moving or getattr(self, 'cutscene_mode', False)
         new_state = 'walk' if is_moving_now else 'idle'
@@ -390,6 +395,7 @@ class Player:
         self.state = 'idle'
         self.frame_index = 0
         self.cutscene_mode = False
+        self.animation_disabled = False
         self.update_frame()
         self.update_animation_speed()
 

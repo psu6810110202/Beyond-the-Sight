@@ -257,6 +257,12 @@ class GameWidget(Widget):
         if self.click_sound:
             self.click_sound.volume = 0.6
 
+        # โหลดเสียงกล่องดนตรี (Day 4 NPC4 Success / House Cutscene)
+        self.music_box_sound = SoundLoader.load('assets/sound/loop/music-box.wav')
+        if self.music_box_sound:
+            self.music_box_sound.loop = True
+            self.music_box_sound.volume = 0.7
+
         # 1. สร้าง Sorting Layer สำหรับตัวละคร (เพื่อให้วาดทับกันตามค่า Y)
         # ต้องสร้างก่อน Quest/Stars เผื่อมีการโหลดเซฟแล้วเรียกใช้ทันที
         self.sorting_layer = InstructionGroup()
@@ -426,28 +432,6 @@ class GameWidget(Widget):
 
         # เริ่มลูปเกม
         self._main_loop_event = Clock.schedule_interval(self.move_step, 1.0 / FPS)  
-
-    def stop_all_sounds(self):
-        """หยุดเสียงทั้งหมดที่มีใน GameWidget นี้ (ยกเว้น Ambiance หลักที่คุมโดย App)"""
-        # 1. หยุดเสียงผีไล่ล่า
-        if getattr(self, 'ghost_sounds', None):
-            for s in self.ghost_sounds.values():
-                if getattr(s, 'state', '') == 'play': s.stop()
-        
-        # 2. รายชื่อเสียงอื่นๆ
-        sound_attrs = [
-            'find_sound', 'shock_sound', 'curious_sound',
-            'sad_soul_sound', 'reaper_voice_sound', 'click_sound',
-            'sit_sound'
-        ]
-        for attr in sound_attrs:
-            s_obj = getattr(self, attr, None)
-            if s_obj and getattr(s_obj, 'state', '') == 'play':
-                s_obj.stop()
-        
-        # 3. หยุดเสียงเดิน/หายใจของผู้เล่น
-        if hasattr(self, 'player'):
-            self.player.cleanup()
 
     def _set_game_ready(self, dt):
         """ปลดล็อกให้ผู้เล่นเดินได้หลังจากเริ่มเกมไปแล้ว 1 วินาที"""
@@ -825,7 +809,8 @@ class GameWidget(Widget):
         """หยุดเสียงประกอบเกมทั้งหมด (เช่น เมื่อเริ่มคัทซีนฉากจบ) ยกเว้นเสียง Ambiance หลัก"""
         sounds = [
             self.curious_sound, self.sad_soul_sound, self.reaper_voice_sound,
-            self.click_sound, self.find_sound, self.shock_sound
+            self.click_sound, self.find_sound, self.shock_sound,
+            getattr(self, 'music_box_sound', None)
         ]
         if hasattr(self, 'ghost_sounds'):
             sounds.extend(self.ghost_sounds.values())

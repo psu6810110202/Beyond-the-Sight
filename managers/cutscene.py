@@ -5,6 +5,7 @@ from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.core.audio import SoundLoader
 from kivy.animation import Animation
+from kivy.core.image import Image as CoreImage
 from ui.intro import IntroScreen
 from data.settings import *
 from data.settings import PLAYER_PORTRAIT_IMG
@@ -30,6 +31,14 @@ class CutsceneManager:
         self.sit_sound = SoundLoader.load('assets/sound/sit.wav')
         if self.sit_sound:
             self.sit_sound.volume = 0.5
+        
+        # โหลดเสียงกระทืบ
+        self.hit_sound = SoundLoader.load('assets/sound/hit/hit.mp3')
+        if self.hit_sound:
+            self.hit_sound.volume = 0.8
+        
+        # โหลด father hit animation
+        self._init_father_hit_animation()
 
     def play_door_full_sequence(self):
         """เล่นเสียงประตูเปิดตามด้วยเสียงปิด"""
@@ -38,6 +47,112 @@ class CutsceneManager:
         # หน่วงเวลา 1.2 วินาทีเพื่อให้เสียงเอี๊ยดจบแล้วค่อยปิด
         if self.door_close_sound:
             Clock.schedule_once(lambda dt: self.door_close_sound.play(), 1.2)
+
+    def _init_father_hit_animation(self):
+        """เริ่มต้นการตั้งค่า father hit animation"""
+        try:
+            self.father_hit_texture = CoreImage(FATHER_HIT_ANIM['path']).texture
+            self.father_hit_config = {
+                'tex': self.father_hit_texture,
+                'cols': FATHER_HIT_ANIM['cols'],
+                'rows': FATHER_HIT_ANIM['rows']
+            }
+            self.father_hit_frame = 0
+            self.father_hit_timer = 0
+            self.father_hit_fps = FATHER_HIT_ANIM['fps']
+            self.father_hit_widget = None
+            self.father_hit_rect = None
+        except Exception as e:
+            print(f"Error loading father hit animation: {e}")
+            self.father_hit_texture = None
+
+    def update_father_hit_animation(self, dt):
+        """อัปเดต animation frame ของ father hit"""
+        if not self.father_hit_texture or not self.father_hit_rect:
+            return
+            
+        self.father_hit_timer += dt
+        frame_duration = 1.0 / self.father_hit_fps
+        
+        if self.father_hit_timer >= frame_duration:
+            self.father_hit_timer = 0
+            self.father_hit_frame = (self.father_hit_frame + 1) % FATHER_HIT_ANIM['cols']
+            self._update_father_hit_frame()
+
+    def _update_father_hit_frame(self):
+        """อัปเดต texture region สำหรับ father hit"""
+        if not self.father_hit_rect or not self.father_hit_texture:
+            return
+            
+        config = self.father_hit_config
+        tex = config['tex']
+        w = 1.0 / config['cols']
+        h = 1.0 / config['rows']
+        
+        u = self.father_hit_frame * w
+        v = 1.0 - h  # เนื่องจากมีแค่ 1 แถว
+        
+        self.father_hit_rect.texture = tex
+        self.father_hit_rect.tex_coords = (u, v + h, u + w, v + h, u + w, v, u, v)
+
+    def start_father_hit_animation(self):
+        """เริ่มแสดง father hit animation"""
+        if not self.father_hit_texture:
+            return
+            
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        
+        # สร้าง widget สำหรับ animation
+        self.father_hit_widget = Widget(size_hint=(1, 1))
+        
+        # ใช้ขนาดคงที่ตามขนาดจริงของ animation (32x32 ต่อเฟรม * 5 เฟรม)
+        anim_width = FATHER_HIT_ANIM['width'] * 3  # ขยาย 3 เท่าจาก 32x32 -> 96x48
+        anim_height = FATHER_HIT_ANIM['height'] * 3  # ขยาย 3 เท่า
+        anim_x = (root.width - anim_width) / 2
+        anim_y = (root.height - anim_height) / 2 - 16  # เลื่อนขึ้น 16 พิกเซล
+        
+        with self.father_hit_widget.canvas:
+            Color(1, 1, 1, 1)
+            self.father_hit_rect = Rectangle(
+                texture=self.father_hit_texture,
+                size=(anim_width, anim_height), 
+                pos=(anim_x, anim_y)
+            )
+        
+        def _update_size(instance, value):
+            if self.father_hit_rect:
+                # ใช้ขนาดคงที่เพื่อรักษาสัดส่วน
+                new_width = FATHER_HIT_ANIM['width'] * 3
+                new_height = FATHER_HIT_ANIM['height'] * 3
+                new_x = (instance.width - new_width) / 2
+                new_y = (instance.height - new_height) / 2 - 16  # เลื่อนขึ้น 16 พิกเซล
+                self.father_hit_rect.size = (new_width, new_height)
+                self.father_hit_rect.pos = (new_x, new_y)
+                
+        self.father_hit_widget.bind(size=_update_size, pos=_update_size)
+        root.add_widget(self.father_hit_widget)
+        
+        # รีเซ็ต animation
+        self.father_hit_frame = 0
+        self.father_hit_timer = 0
+        self._update_father_hit_frame()
+        
+        # เล่นเสียงกระทืบแบบ loop
+        if self.hit_sound:
+            self.hit_sound.loop = True
+            self.hit_sound.play()
+
+    def stop_father_hit_animation(self):
+        """หยุดแสดง father hit animation"""
+        if self.father_hit_widget and self.father_hit_widget.parent:
+            self.father_hit_widget.parent.remove_widget(self.father_hit_widget)
+        self.father_hit_widget = None
+        self.father_hit_rect = None
+        
+        # หยุดเสียงกระทืบ
+        if self.hit_sound:
+            self.hit_sound.stop()
+            self.hit_sound.loop = False
 
     def start_quest_complete_cutscene(self, dt=None):
         """เริ่มลำดับ Cutscene เมื่อจบเควส"""
@@ -343,29 +458,36 @@ class CutsceneManager:
                         self.game.player.logic_pos = [tx, ty]
 
         elif self.game.cutscene_step == 41:
-            # ยืน/นั่งรอ 3 วิ (ไม่ต้อง reset state ซ้ำทุก frame เพราะทำไปแล้วใน step 40)
-            
-            self._anim_timer += dt
-            if self._anim_timer >= 3.0:
-                self.game.cutscene_step = 0 
-                # เฉพาะ Day 2 ที่ไม่ต้องหาอาหารตามคำขอ USER - ขึ้น '...' แล้วเปลี่ยนวันทันที
-                if self.game.current_day == 2:
+            if self.game.current_day == 2:
+                # Day 2: ยืนรอจนกดปิดแชท ไม่ต้องเดินไปมุมห้อง
+                self.game.player.cutscene_mode = False
+                self.game.player.is_moving = False
+                self.game.player.state = 'idle'
+                self.game.player.update_frame()
+                
+                # เมื่อบทสนทนาจบลง
+                if self.game.is_dialogue_active == False:
+                    self.game.cutscene_step = 0 
                     self.game.is_cutscene_active = False
                     self.game.camera.locked = False
                     self.game.request_keyboard_back()
+                    # ขึ้น '...' ก่อนข้ามวัน
                     self.game.show_vn_dialogue("Little girl", "...", portrait=PLAYER_S_PORTRAIT_IMG)
-                    # ตั้งธงให้ handle_dialogue_end รู้ว่าจะเปลี่ยนวันหลังจาก "..." จบ
                     self.game._pending_day_transition = True
-                elif self.game.current_day == 3:
-                    self.game._pending_day_transition = True
-                    self.game.handle_day_transition(increment=True)
-                else:
-                    # วันอื่นๆ (1, 4, 5) ให้ปลดล็อกเพื่อให้ผู้เล่นเริ่มหาของกินได้
-                    self.game.is_cutscene_active = False
-                    self.game.camera.locked = False
-                    self.game.request_keyboard_back()
-                    # เริ่มเควสหาของกิน
-                    self.game.quest_manager.start_quest("find_food", "Find Something to Eat", target=1, show_notif=True)
+            else:
+                # วันอื่นๆ: นั่ง/ยืนรอ 3 วินาที
+                self._anim_timer += dt
+                if self._anim_timer >= 3.0:
+                    self.game.cutscene_step = 0 
+                    if self.game.current_day == 3:
+                        self.game._pending_day_transition = True
+                        self.game.handle_day_transition(increment=True)
+                    else:
+                        # วันอื่นๆ (1, 4, 5) ให้ปลดล็อกเพื่อให้ผู้เล่นเริ่มหาของกินได้
+                        self.game.is_cutscene_active = False
+                        self.game.camera.locked = False
+                        self.game.request_keyboard_back()
+                        self.game.quest_manager.start_quest("find_food", "Find Something to Eat", target=1, show_notif=True)
 
         elif self.game.cutscene_step >= 100:
             # Hidden Ending logic is primarily driven by animations and input events
@@ -417,6 +539,10 @@ class CutsceneManager:
         self.game.cutscene_step = 10  # 10 คือรหัส step สำหรับ Side Story Cutscene
         self.game.camera.locked = True
         
+        # User Request: เล่นเสียงกล่องดนตรีตอนคัทซีนบ้าน
+        if hasattr(self.game, 'music_box_sound') and self.game.music_box_sound:
+            self.game.music_box_sound.play()
+        
         # เก็บข้อมูลบทสนทนาไว้เปิดทีหลัง
         self.side_story_data = {
             "queue": dialogue_queue,
@@ -460,7 +586,16 @@ class CutsceneManager:
                 self.game.request_keyboard_back()
                 return
 
-            # ทุกวันอื่นๆ ที่มีคัทซีนเข้าบ้าน (2, 4, 5): เดินไปที่มุมประจำก่อน
+            # Day 2: ไม่ต้องเดินไปมุมห้อง ยืนเฉยๆ รอคุย
+            if self.game.current_day == 2:
+                print(f"DEBUG: end_side_story_cutscene - Day 2: Standing still for conversation")
+                self.game.cutscene_step = 41  # ข้ามไปตอนยืนรอเลย
+                self.game.is_cutscene_active = True
+                self._pending_find_food_quest = False
+                self._anim_timer = 0
+                return
+            
+            # วันอื่นๆ (4, 5): เดินไปที่มุมประจำก่อน
             print(f"DEBUG: end_side_story_cutscene - Triggering walk to sit for Day {self.game.current_day}")
             self.game.cutscene_step = 40
             self.game.is_cutscene_active = True
@@ -477,6 +612,10 @@ class CutsceneManager:
         self.game.player.state = 'idle'
         self.game.player.update_frame()
         self.game.request_keyboard_back()
+
+        # หยุดเสียงกล่องดนตรีเมื่อจบคัทซีนบ้าน
+        if hasattr(self.game, 'music_box_sound') and self.game.music_box_sound:
+            self.game.music_box_sound.stop()
 
     def start_food_transition_cutscene(self):
         """เริ่มคัทซีนบังคับเดินไปกินแล้วเปลี่ยนวัน"""
@@ -661,135 +800,79 @@ class CutsceneManager:
         self.game.cutscene_step = 30
         self.game.pressed_keys.clear()
         self.game.player.stop()
+        self.game.player.cutscene_mode = True  # บังคับให้อยู่ในโหมดคัทซีน
+        self.game.player.state = 'idle'  # บังคับให้ยืนเฉยๆ
+        self.game.player.is_moving = False
+        self.game.player.direction = 'up'  # หันหลังให้กล้อง
+        self.game.player.frame_index = 0  # รีเซ็ตเฟรมแรก
+        self.game.player.current_speed = 0  # หยุดการเคลื่อนไหว
+        self.game.player.animation_disabled = True  # ปิดการอนิเมชั่นทั้งหมด
+        self.game.player.update_frame()  # อัปเดตเฟรมทันที
+        
+        # ซ่อนตัวละคร player ระหว่าง cutscene
+        self.game.player.color_instr.a = 0
+        
+        # ตั้งพิกัดตัวละครที่ (160, 80)
+        self.game.player.logic_pos = [160, 80]
+        self.game.player.target_pos = [160, 80]
+        self.game.player.sync_graphics_pos()
+        self.game.player.update_frame()
+        
+        # ตั้งกล้องให้จุดศูนย์กลางอยู่ที่ตัวละคร (160, 80)
+        from data.settings import TILE_SIZE
+        cam_x = 160 + TILE_SIZE / 2
+        cam_y = 80 + TILE_SIZE / 2
+        self.game.camera.trans_pos.xy = (-cam_x, -cam_y)
+        
         self.game.camera.locked = True
         self.game.clear_interaction_hints()
         
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
-        self.day2_black_bg = Widget(size_hint=(1, 1))
-        with self.day2_black_bg.canvas:
-            Color(0, 0, 0, 1)
-            self.day2_rect = Rectangle(size=root.size, pos=(0, 0))
-            
-        def _u_dt2(instance, value):
-            self.day2_rect.size = instance.size
-            self.day2_rect.pos = instance.pos
-        self.day2_black_bg.bind(size=_u_dt2, pos=_u_dt2)
-        root.add_widget(self.day2_black_bg)
+        
+        # เริ่ม father hit animation
+        self.start_father_hit_animation()
+        
+        # เริ่มบทสนทนาพ่อแม่ทะเลาะกัน
+        from data.chat import PARENT_FIGHT_DIALOGUE
+        self.game.current_dialogue_queue = [dialogue["text"] for dialogue in PARENT_FIGHT_DIALOGUE]
+        self.game.temp_dialogue_chars = [dialogue["char"] for dialogue in PARENT_FIGHT_DIALOGUE]
+        self.game.current_dialogue_index = 0
+        self.game.current_character_name = PARENT_FIGHT_DIALOGUE[0]["char"]
+        self.game.is_dialogue_active = True
+        
+        # แสดงบทสนทนาประโยคแรก
+        self.game.show_vn_dialogue(
+            self.game.current_character_name, 
+            self.game.current_dialogue_queue[0],
+            portrait=FATHER_PORTRAIT_IMG if self.game.current_character_name == "Father" else MOTHER_PORTRAIT_IMG
+        )
         
         self.play_door_full_sequence()
             
         self._day2_wait_timer = 0
-
-    def start_father_hit_animation(self, dt=None):
-        """เริ่มอนิเมชั่นพ่อกระทืบผู้เล่น (sprite sheet 1x5)"""
-        self.game.clear_interaction_hints()
-        self.game.pressed_keys.clear()
-        self.game.player.stop()
-        self.game.is_cutscene_active = True
-        self.game.camera.locked = True
-        
-        # สร้างวิดเจ็ตสำหรับแสดงอนิเมชั่น
-        root = self.game.dialogue_root if self.game.dialogue_root else self.game
-        self.father_hit_widget = Widget(size_hint=(1, 1))
-        
-        # คำนวณขนาดและตำแหน่งตรงกลาง
-        sprite_width, sprite_height = 32, 32  # ขนาดเหมือนตัวละคร player
-        img_width, img_height = sprite_width * 4, sprite_height * 4  # ขยาย 4 เท่าให้เห็นชัด
-        center_x = self.game.width // 2 - img_width // 2
-        center_y = self.game.height // 2 - img_height // 2
-        
-        # โหลดภาพ fatherhit (เป็นภาพเดี่ยว ไม่ใช่ sprite sheet)
-        from kivy.core.image import Image as CoreImage
-        try:
-            tex = CoreImage('assets/characters/fatherhit.png').texture
-            tex.mag_filter = 'nearest'
-            tex.min_filter = 'nearest'
-            
-            # ใช้ภาพเดี่ยว ไม่ต้องทำ sprite animation
-            self.father_hit_frames = 1
-            self.current_frame = 0
-            
-            with self.father_hit_widget.canvas:
-                Color(1, 1, 1, 1)
-                self.father_hit_rect = Rectangle(texture=tex, size=(img_width, img_height), 
-                                               pos=(center_x, center_y))
-        except Exception:
-            with self.father_hit_widget.canvas:
-                Color(1, 1, 1, 1)
-                self.father_hit_rect = Rectangle(source='assets/characters/fatherhit.png', size=(img_width, img_height),
-                                               pos=(center_x, center_y))
-            self.father_hit_frames = 1
-            self.current_frame = 0
-        
-        # ฟังก์ชันอัปเดตตำแหน่งเมื่อขนาดหน้าจอเปลี่ยน
-        def update_hit_pos(instance, value):
-            new_center_x = instance.width // 2 - img_width // 2
-            new_center_y = instance.height // 2 - img_height // 2
-            if hasattr(self, 'father_hit_rect'):
-                self.father_hit_rect.pos = (new_center_x, new_center_y)
-        
-        self.father_hit_widget.bind(size=update_hit_pos, pos=update_hit_pos)
-        root.add_widget(self.father_hit_widget)
-        
-        # เริ่มอนิเมชั่น
-        self.father_hit_total_time = 2.0  # แสดง 2 วินาที
-        Clock.schedule_once(self.end_father_hit_animation, self.father_hit_total_time)
-        
-        # เล่นเสียงกระทืบ (ถ้ามี)
-        self.play_hit_sound()
-
-    def get_frame_uv(self, frame_index):
-        """คำนวณ UV coordinates สำหรับ sprite sheet"""
-        if self.father_hit_frames <= 1:
-            return (0, 0, 1, 1)
-        
-        # Sprite sheet 1x5: 1 แถว 5 คอลัมน์ (เรียงกันในแนวนอน)
-        u_per_frame = 1.0 / self.father_hit_frames
-        u_start = frame_index * u_per_frame
-        u_end = u_start + u_per_frame
-        
-        # Kivy ใช้ (u1, v1, u2, v2) โดย v กลับด้าน
-        # สำหรับ 5 คอลัมน์: แบ่งในแนวนอน
-        return (u_start, 0, u_end, 1)
-
-    def update_father_hit_animation(self, dt):
-        """อัปเดตเฟรมอนิเมชั่น"""
-        if not hasattr(self, 'father_hit_rect') or not hasattr(self, 'father_hit_frames'):
-            return
-            
-        # ถ้าเป็นภาพเดี่ยว (1 เฟรม) ไม่ต้องทำ animation
-        if self.father_hit_frames <= 1:
-            return
-            
-        self.animation_timer += dt
-        if self.animation_timer >= self.frame_duration:
-            self.animation_timer = 0
-            self.current_frame = (self.current_frame + 1) % self.father_hit_frames
-            
-            # อัปเดต UV coordinates
-            self.father_hit_rect.tex_coords = self.get_frame_uv(self.current_frame)
-
-    def play_hit_sound(self):
-        """เล่นเสียงการกระทืบ"""
-        # สามารถเพิ่มเสียงที่นี่ได้ถ้ามีไฟล์เสียง
-        pass
-
-    def end_father_hit_animation(self, dt=None):
-        """จบอนิเมชั่นการกระทืบและไปต่อ"""
-        if hasattr(self, 'father_hit_widget') and self.father_hit_widget:
-            if self.father_hit_widget.parent:
-                self.father_hit_widget.parent.remove_widget(self.father_hit_widget)
-            self.father_hit_widget = None
-        
-        # ไปฉากต่อไป (เดินไปที่นั่ง)
-        self.game.cutscene_step = 40
-        self.game.is_cutscene_active = True
-        self._anim_timer = 0
-
     def end_day2_parent_cutscene(self):
-        """จบฉากพ่อแม่ทะเลาะกัน"""
-        # เริ่มอนิเมชั่นพ่อกระทืบผู้เล่น
-        Clock.schedule_once(self.start_father_hit_animation, 0.5)
+        """จบฉากพ่อแม่ทะเลาะกัน และตัดเข้าสู่ Day 3 ทันที"""
+        self.game.is_cutscene_active = False
+        self.game.cutscene_step = 0
+        self.game.camera.locked = False
+        self.game.request_keyboard_back()
+        
+        # หยุด father hit animation
+        self.stop_father_hit_animation()
+        
+        # ปิดบทสนทนา
+        self.game.is_dialogue_active = False
+        self.game.current_dialogue_queue = []
+        self.game.current_dialogue_index = 0
+        self.game.current_character_name = ""
+        self.game.temp_dialogue_chars = []
+        
+        # ไม่แสดงตัวละคร player จนกว่าจะขึ้น day3 (จะถูกแสดงใน handle_day_transition)
+        # self.game.player.color_instr.a = 1  # คอมเมนต์ไว้ก่อน
+        
+        self._pending_find_food_quest = False
+        self.game._pending_day_transition = True
+        self.game.handle_day_transition()
 
     def start_succumb_ending(self):
         """เริ่มคัทซีนฉากจบ Succumb (ตายครบ 3 ครั้ง)"""
