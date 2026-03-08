@@ -129,6 +129,16 @@ ENEMY_TYPES = {
     }
 }
 
+# ข้อมูลอนิเมชั่นพิเศษ (father hit)
+FATHER_HIT_ANIM = {
+    'path': 'assets/characters/fatherhit.png',
+    'cols': 5,
+    'rows': 1,
+    'fps': 8,
+    'width': 32,
+    'height': 32
+}
+
 # ตำแหน่งเกิดและประเภทของศัตรู
 ENEMY_SPAWN_DATA = {
     1: [

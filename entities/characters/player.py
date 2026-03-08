@@ -66,8 +66,8 @@ class Player:
         # สร้าง InstructionGroup เพื่อจัดการการวาดแบบแยกส่วน (สำหรับ Y-sorting)
         self.group = InstructionGroup()
         
-        
-        self.group.add(Color(1, 1, 1, 1))
+        self.color_instr = Color(1, 1, 1, 1)
+        self.group.add(self.color_instr)
         # จุดเกิดตอนแรก
         offset_x = (TILE_SIZE - PLAYER_WIDTH) / 2
         offset_y = TILE_SIZE / 2

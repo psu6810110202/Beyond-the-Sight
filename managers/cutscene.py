@@ -5,6 +5,7 @@ from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.core.audio import SoundLoader
 from kivy.animation import Animation
+from kivy.core.image import Image as CoreImage
 from ui.intro import IntroScreen
 from data.settings import *
 from data.settings import PLAYER_PORTRAIT_IMG
@@ -30,6 +31,14 @@ class CutsceneManager:
         self.sit_sound = SoundLoader.load('assets/sound/sit.wav')
         if self.sit_sound:
             self.sit_sound.volume = 0.5
+        
+        # โหลดเสียงกระทืบ
+        self.hit_sound = SoundLoader.load('assets/sound/hit/hit.mp3')
+        if self.hit_sound:
+            self.hit_sound.volume = 0.8
+        
+        # โหลด father hit animation
+        self._init_father_hit_animation()
 
     def play_door_full_sequence(self):
         """เล่นเสียงประตูเปิดตามด้วยเสียงปิด"""
@@ -38,6 +47,112 @@ class CutsceneManager:
         # หน่วงเวลา 1.2 วินาทีเพื่อให้เสียงเอี๊ยดจบแล้วค่อยปิด
         if self.door_close_sound:
             Clock.schedule_once(lambda dt: self.door_close_sound.play(), 1.2)
+
+    def _init_father_hit_animation(self):
+        """เริ่มต้นการตั้งค่า father hit animation"""
+        try:
+            self.father_hit_texture = CoreImage(FATHER_HIT_ANIM['path']).texture
+            self.father_hit_config = {
+                'tex': self.father_hit_texture,
+                'cols': FATHER_HIT_ANIM['cols'],
+                'rows': FATHER_HIT_ANIM['rows']
+            }
+            self.father_hit_frame = 0
+            self.father_hit_timer = 0
+            self.father_hit_fps = FATHER_HIT_ANIM['fps']
+            self.father_hit_widget = None
+            self.father_hit_rect = None
+        except Exception as e:
+            print(f"Error loading father hit animation: {e}")
+            self.father_hit_texture = None
+
+    def update_father_hit_animation(self, dt):
+        """อัปเดต animation frame ของ father hit"""
+        if not self.father_hit_texture or not self.father_hit_rect:
+            return
+            
+        self.father_hit_timer += dt
+        frame_duration = 1.0 / self.father_hit_fps
+        
+        if self.father_hit_timer >= frame_duration:
+            self.father_hit_timer = 0
+            self.father_hit_frame = (self.father_hit_frame + 1) % FATHER_HIT_ANIM['cols']
+            self._update_father_hit_frame()
+
+    def _update_father_hit_frame(self):
+        """อัปเดต texture region สำหรับ father hit"""
+        if not self.father_hit_rect or not self.father_hit_texture:
+            return
+            
+        config = self.father_hit_config
+        tex = config['tex']
+        w = 1.0 / config['cols']
+        h = 1.0 / config['rows']
+        
+        u = self.father_hit_frame * w
+        v = 1.0 - h  # เนื่องจากมีแค่ 1 แถว
+        
+        self.father_hit_rect.texture = tex
+        self.father_hit_rect.tex_coords = (u, v + h, u + w, v + h, u + w, v, u, v)
+
+    def start_father_hit_animation(self):
+        """เริ่มแสดง father hit animation"""
+        if not self.father_hit_texture:
+            return
+            
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        
+        # สร้าง widget สำหรับ animation
+        self.father_hit_widget = Widget(size_hint=(1, 1))
+        
+        # ใช้ขนาดคงที่ตามขนาดจริงของ animation (32x32 ต่อเฟรม * 5 เฟรม)
+        anim_width = FATHER_HIT_ANIM['width'] * 3  # ขยาย 3 เท่าจาก 32x32 -> 96x48
+        anim_height = FATHER_HIT_ANIM['height'] * 3  # ขยาย 3 เท่า
+        anim_x = (root.width - anim_width) / 2
+        anim_y = (root.height - anim_height) / 2 - 16  # เลื่อนขึ้น 16 พิกเซล
+        
+        with self.father_hit_widget.canvas:
+            Color(1, 1, 1, 1)
+            self.father_hit_rect = Rectangle(
+                texture=self.father_hit_texture,
+                size=(anim_width, anim_height), 
+                pos=(anim_x, anim_y)
+            )
+        
+        def _update_size(instance, value):
+            if self.father_hit_rect:
+                # ใช้ขนาดคงที่เพื่อรักษาสัดส่วน
+                new_width = FATHER_HIT_ANIM['width'] * 3
+                new_height = FATHER_HIT_ANIM['height'] * 3
+                new_x = (instance.width - new_width) / 2
+                new_y = (instance.height - new_height) / 2 - 16  # เลื่อนขึ้น 16 พิกเซล
+                self.father_hit_rect.size = (new_width, new_height)
+                self.father_hit_rect.pos = (new_x, new_y)
+                
+        self.father_hit_widget.bind(size=_update_size, pos=_update_size)
+        root.add_widget(self.father_hit_widget)
+        
+        # รีเซ็ต animation
+        self.father_hit_frame = 0
+        self.father_hit_timer = 0
+        self._update_father_hit_frame()
+        
+        # เล่นเสียงกระทืบแบบ loop
+        if self.hit_sound:
+            self.hit_sound.loop = True
+            self.hit_sound.play()
+
+    def stop_father_hit_animation(self):
+        """หยุดแสดง father hit animation"""
+        if self.father_hit_widget and self.father_hit_widget.parent:
+            self.father_hit_widget.parent.remove_widget(self.father_hit_widget)
+        self.father_hit_widget = None
+        self.father_hit_rect = None
+        
+        # หยุดเสียงกระทืบ
+        if self.hit_sound:
+            self.hit_sound.stop()
+            self.hit_sound.loop = False
 
     def start_quest_complete_cutscene(self, dt=None):
         """เริ่มลำดับ Cutscene เมื่อจบเควส"""
@@ -672,32 +787,43 @@ class CutsceneManager:
         self.game.player.animation_disabled = True  # ปิดการอนิเมชั่นทั้งหมด
         self.game.player.update_frame()  # อัปเดตเฟรมทันที
         
-        # ตั้งพิกัดตัวละครที่ (160, 96)
-        self.game.player.logic_pos = [160, 96]
-        self.game.player.target_pos = [160, 96]
+        # ซ่อนตัวละคร player ระหว่าง cutscene
+        self.game.player.color_instr.a = 0
+        
+        # ตั้งพิกัดตัวละครที่ (160, 80)
+        self.game.player.logic_pos = [160, 80]
+        self.game.player.target_pos = [160, 80]
         self.game.player.sync_graphics_pos()
         self.game.player.update_frame()
         
-        # ตั้งกล้องให้จุดศูนย์กลางอยู่ที่ตัวละคร (160, 96)
+        # ตั้งกล้องให้จุดศูนย์กลางอยู่ที่ตัวละคร (160, 80)
         from data.settings import TILE_SIZE
         cam_x = 160 + TILE_SIZE / 2
-        cam_y = 96 + TILE_SIZE / 2
+        cam_y = 80 + TILE_SIZE / 2
         self.game.camera.trans_pos.xy = (-cam_x, -cam_y)
         
         self.game.camera.locked = True
         self.game.clear_interaction_hints()
         
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
-        self.day2_black_bg = Widget(size_hint=(1, 1))
-        with self.day2_black_bg.canvas:
-            Color(0, 0, 0, 1)
-            self.day2_rect = Rectangle(size=root.size, pos=(0, 0))
-            
-        def _u_dt2(instance, value):
-            self.day2_rect.size = instance.size
-            self.day2_rect.pos = instance.pos
-        self.day2_black_bg.bind(size=_u_dt2, pos=_u_dt2)
-        root.add_widget(self.day2_black_bg)
+        
+        # เริ่ม father hit animation
+        self.start_father_hit_animation()
+        
+        # เริ่มบทสนทนาพ่อแม่ทะเลาะกัน
+        from data.chat import PARENT_FIGHT_DIALOGUE
+        self.game.current_dialogue_queue = [dialogue["text"] for dialogue in PARENT_FIGHT_DIALOGUE]
+        self.game.temp_dialogue_chars = [dialogue["char"] for dialogue in PARENT_FIGHT_DIALOGUE]
+        self.game.current_dialogue_index = 0
+        self.game.current_character_name = PARENT_FIGHT_DIALOGUE[0]["char"]
+        self.game.is_dialogue_active = True
+        
+        # แสดงบทสนทนาประโยคแรก
+        self.game.show_vn_dialogue(
+            self.game.current_character_name, 
+            self.game.current_dialogue_queue[0],
+            portrait=FATHER_PORTRAIT_IMG if self.game.current_character_name == "Father" else MOTHER_PORTRAIT_IMG
+        )
         
         self.play_door_full_sequence()
             
@@ -708,6 +834,19 @@ class CutsceneManager:
         self.game.cutscene_step = 0
         self.game.camera.locked = False
         self.game.request_keyboard_back()
+        
+        # หยุด father hit animation
+        self.stop_father_hit_animation()
+        
+        # ปิดบทสนทนา
+        self.game.is_dialogue_active = False
+        self.game.current_dialogue_queue = []
+        self.game.current_dialogue_index = 0
+        self.game.current_character_name = ""
+        self.game.temp_dialogue_chars = []
+        
+        # ไม่แสดงตัวละคร player จนกว่าจะขึ้น day3 (จะถูกแสดงใน handle_day_transition)
+        # self.game.player.color_instr.a = 1  # คอมเมนต์ไว้ก่อน
         
         self._pending_find_food_quest = False
         self.game._pending_day_transition = True
