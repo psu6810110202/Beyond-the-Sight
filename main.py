@@ -102,6 +102,7 @@ class GameWidget(Widget):
         self.quest_success_count = initial_data.get('quest_success_count', 0) if initial_data else 0
         self.quest_item_fail = initial_data.get('quest_item_fail', False) if initial_data else False
         self.death_count = initial_data.get('death_count', 0) if initial_data else 0
+        self.stun_cooldown = initial_data.get('stun_cooldown', 0) if initial_data else 0
         self.last_death_quote_index = -1
 
         # Setup Camera
@@ -150,20 +151,9 @@ class GameWidget(Widget):
         self.is_cutscene_active = False
         self.cutscene_timer = 0
         self.cutscene_step = 0
-        self.black_overlay = None
-        
-        # Widget สำหรับ dialogue box ใน screen space (จะถูก attach โดย MyApp.build)
-        self.dialogue_root = None
-        
-        # Stun Cooldown
-        self.stun_cooldown = 0
-        self.stun_label = Label(
-            text="",
-            font_size=24,
-            color=(0.5, 0.8, 1, 1),
-            bold=True,
-            pos_hint={'center_x': 0.5, 'top': 0.2} # แสดงตรงกลางขอบจอบน
-        )
+        self.black_overlay = None            # ดำ/จาง ของหน้าจอ
+        self.dialogue_root = None             # Root สำหรับ UI ทุกอย่างที่อยู่หน้าสุด
+        self._main_loop_event = None          # ตัวแปรเก็บ Event Loop
         
         # ป้องกันการเดินตอนเริ่มเกมที่ยังโหลดไม่เสร็จ (Stutter prevention เฉพาะเริ่มเกมใหม่)
         if initial_data is None:
@@ -407,6 +397,28 @@ class GameWidget(Widget):
         # เริ่มลูปเกม
         self._main_loop_event = Clock.schedule_interval(self.move_step, 1.0 / FPS)  
 
+    def stop_all_sounds(self):
+        """หยุดเสียงทั้งหมดที่มีใน GameWidget นี้ (ยกเว้น Ambiance หลักที่คุมโดย App)"""
+        # 1. หยุดเสียงผีไล่ล่า
+        if getattr(self, 'ghost_sounds', None):
+            for s in self.ghost_sounds.values():
+                if getattr(s, 'state', '') == 'play': s.stop()
+        
+        # 2. รายชื่อเสียงอื่นๆ
+        sound_attrs = [
+            'find_sound', 'shock_sound', 'curious_sound',
+            'sad_soul_sound', 'reaper_voice_sound', 'click_sound',
+            'sit_sound'
+        ]
+        for attr in sound_attrs:
+            s_obj = getattr(self, attr, None)
+            if s_obj and getattr(s_obj, 'state', '') == 'play':
+                s_obj.stop()
+        
+        # 3. หยุดเสียงเดิน/หายใจของผู้เล่น
+        if hasattr(self, 'player'):
+            self.player.cleanup()
+
     def _set_game_ready(self, dt):
         """ปลดล็อกให้ผู้เล่นเดินได้หลังจากเริ่มเกมไปแล้ว 1 วินาที"""
         self.is_ready = True
@@ -439,6 +451,14 @@ class GameWidget(Widget):
         # เรียกปรับสเกลของแชท/บทสนทนา
         if getattr(self, 'dialogue_manager', None):
             self.dialogue_manager.update_ui_scaling()
+        
+        # จัดการการแสดงผลแถบสตัน (โชว์เมื่อได้ไอเทมแล้วเท่านั้น)
+        if getattr(self, 'heart_ui', None):
+            self.heart_ui.set_stun_visibility(self.has_received_blue_stone)
+            # เพิ่ม Label เข้า Root ถ้ายังไม่มี
+            if self.has_received_blue_stone and self.heart_ui.stun_label and \
+               self.heart_ui.stun_label.parent is None and self.dialogue_root:
+                self.dialogue_root.add_widget(self.heart_ui.stun_label)
 
     def _on_keyboard_closed(self): 
         self.input_handler.on_keyboard_closed()
@@ -501,8 +521,13 @@ class GameWidget(Widget):
                 if self.sad_soul_sound.state != 'play':
                     self.sad_soul_sound.play()
             else:
-                if self.sad_soul_sound.state == 'play':
-                    self.sad_soul_sound.stop()
+                # ถ้ากำลังคุยอยู่ ให้ยอมให้เสียงเล่นต่อไปได้ (แต่ตอนกดหยุดเกม หรือคัทซีนเปลี่ยนฉากต้องหยุดจริง)
+                if self.is_dialogue_active and sad_soul_active and not self.is_paused:
+                    if self.sad_soul_sound.state != 'play':
+                        self.sad_soul_sound.play()
+                else:
+                    if self.sad_soul_sound.state == 'play':
+                        self.sad_soul_sound.stop()
 
         # 1. จัดการตรรกะเกม (Logic) - ทำงานเฉพาะเมื่อไม่ได้คุยหรือหยุดเกม
         if self.is_cutscene_active:
@@ -606,14 +631,10 @@ class GameWidget(Widget):
 
             if self.stun_cooldown > 0:
                 self.stun_cooldown -= dt
-                if self.stun_cooldown > 0:
-                    self.stun_label.text = f"Stunned: {self.stun_cooldown:.1f}s"
-                    if self.stun_label.parent is None and self.dialogue_root:
-                        self.dialogue_root.add_widget(self.stun_label)
-                else:
-                    self.stun_label.text = ""
-                    if self.stun_label.parent:
-                        self.stun_label.parent.remove_widget(self.stun_label)
+                if self.stun_cooldown < 0: self.stun_cooldown = 0
+                self.heart_ui.update_stun_cooldown(self.stun_cooldown)
+            else:
+                self.heart_ui.update_stun_cooldown(0)
 
             # เช็คการโต้ตอบ (Interactive Hints)
             self.update_interaction_hints()
@@ -628,6 +649,12 @@ class GameWidget(Widget):
                     sound.stop()
             if self.player.breath_sound and self.player.breath_sound.state == 'play':
                 self.player.breath_sound.stop()
+            
+            # ยอมให้เสียง Sad Soul เล่นได้แม้จะอยู่ในโหมดคุย (is_dialogue_active) ถ้าตัวยังอยู่
+            sad_soul_active = any('NPC1' in n.image_path and not n.fading_done for n in self.npcs)
+            if self.sad_soul_sound and self.sad_soul_sound.state == 'play':
+                if self.is_paused or self.is_cutscene_active or not sad_soul_active:
+                    self.sad_soul_sound.stop()
 
         # ---------------------------------------------------------
         # 2. กราฟิกที่ต้องอัปเดตเสมอทุกลูกเฟรม
@@ -895,46 +922,48 @@ class GameWidget(Widget):
     def _on_pause_load_selected(self, slot_id, load_screen=None):
         self.save_manager._on_pause_load_selected(slot_id, load_screen)
 
+    def cleanup(self):
+        """ล้างสถานะและปิดเสียงทั้งหมด และหยุดลูปหลักเมื่อออกจากเกม"""
+        # 1. หยุดลูปเกมทันที ไม่ให้ไปสั่งเล่นเสียงซ้ำในเฟรมถัดไป
+        if self._main_loop_event:
+            self._main_loop_event.cancel()
+            self._main_loop_event = None
+            
+        # 2. ปิดเสียงทั้งหมด
+        self.stop_all_sounds()
+        
+        # 3. ล้างสถานะปุ่มกด และ UI ลอยตัว
+        self.pressed_keys.clear()
+        self.clear_interaction_hints()
+        
+        # 4. ล้าง Stun Label ที่ผูกกับ HeartUI ออกจากจอ
+        if hasattr(self, 'heart_ui') and self.heart_ui.stun_label:
+            if self.heart_ui.stun_label.parent:
+                self.heart_ui.stun_label.parent.remove_widget(self.heart_ui.stun_label)
+        
+        if hasattr(self, 'player'):
+            self.player.cleanup()
+
     def return_to_main_menu(self):
         """กลับไปหน้าจอหลัก (Title Screen)"""
-        # ล้างทรัพยากรทั้งหมด (เสียง/ปุ่มค้าง) ก่อนออกจาก GameWidget
+        # 1. ล้างทรัพยากรทั้งหมด (เสียง/ลูป/ปุ่มค้าง)
         self.cleanup()
         
+        # 2. เข้าสู่สถานะ Resume เพื่อปลดล็อก Input เผื่อค้าง
         self.resume_game()
+        
+        # 3. เคลียร์ Widget ทั้งหมดใน App Root เพื่อกลับหน้าเมนู
         app = App.get_running_app()
         app.root.clear_widgets()
+        
+        from ui.screen import SplashScreen
+        from data.settings import SPLASH_COVER_IMG
         
         splash = SplashScreen(
             SPLASH_COVER_IMG,
             app.show_game
         )
         app.root.add_widget(splash)
-
-    def cleanup(self):
-        """ล้างสถานะและปิดเสียงทั้งหมดของตัวเกม"""
-        self.stop_all_sounds()
-        self.pressed_keys.clear()
-        if hasattr(self, 'player'):
-            self.player.stop()
-
-    def stop_all_sounds(self):
-        """วนลูปสั่งปิดเสียงทั้งหมดที่มีในเกมเพลย์นี้"""
-        # ปิดเสียงผีไล่ต่างๆ
-        if getattr(self, 'ghost_sounds', None):
-            for s in self.ghost_sounds.values():
-                if getattr(s, 'state', '') == 'play':
-                    s.stop()
-        
-        # ปิดเสียงอื่นๆ
-        sound_attrs = [
-            'find_sound', 'shock_sound', 'curious_sound',
-            'sad_soul_sound', 'reaper_voice_sound', 'click_sound'
-        ]
-        for attr in sound_attrs:
-            s_obj = getattr(self, attr, None)
-            if s_obj and getattr(s_obj, 'state', '') == 'play':
-                s_obj.stop()
-
 
     def exit_game(self):
         """ออกจากเกม"""

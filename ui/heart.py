@@ -26,6 +26,8 @@ class HeartUI:
         self.tex_heart_empty.min_filter = 'nearest'
 
         self.hearts = []
+        self.stun_visible = False # คุมการโชว์แถบคูลดาวน์
+        self.stun_label = None # จะถูกสร้างเมื่อเรียก update_position ครั้งแรก
         
         with self.canvas.after:
             Color(1, 1, 1, 1)
@@ -46,6 +48,17 @@ class HeartUI:
             # Stamina Bar Foreground
             Color(0.3, 0.7, 1.0, 1)  # สีฟ้าอ่อนๆ (Stamina)
             self.stamina_bar = RoundedRectangle(size=(0, 6), radius=[2])
+
+            # --- Stun Cooldown Bar (User Request) ---
+            self.stun_opacity = 0 # เริ่มต้นซ่อนไว้
+            self.stun_color_border = Color(0.8, 0, 0, self.stun_opacity)
+            self.stun_border = RoundedRectangle(size=(0, 6), radius=[3])
+            
+            self.stun_color_bg = Color(0.2, 0.2, 0.2, self.stun_opacity)
+            self.stun_bg = RoundedRectangle(size=(0, 6), radius=[2])
+            
+            self.stun_color_fg = Color(1.0, 0.2, 0.2, self.stun_opacity)
+            self.stun_bar = RoundedRectangle(size=(0, 6), radius=[2])
             
         self.current_ui_scale = 1.0
 
@@ -113,7 +126,64 @@ class HeartUI:
         self.stamina_bar.size = (self.stamina_max_width, self.stamina_height)
         self.stamina_bar.radius = [2 * ui_scale]
 
+        # --- Update Stun Bar Dimensions ---
+        stun_y = stamina_y - (16 * ui_scale) 
+        
+        self.stun_border.pos = (current_start_x - border_thickness, stun_y - border_thickness)
+        self.stun_border.size = (self.stamina_max_width + (border_thickness * 2), self.stamina_height + (border_thickness * 2))
+        self.stun_border.radius = [3 * ui_scale]
+        
+        self.stun_bg.pos = (current_start_x, stun_y)
+        self.stun_bg.size = (self.stamina_max_width, self.stamina_height)
+        self.stun_bg.radius = [2 * ui_scale]
+        
+        self.stun_bar.pos = (current_start_x, stun_y)
+        self.stun_bar.size = (0, self.stamina_height)
+        self.stun_bar.radius = [2 * ui_scale]
+
+        # จัดการ Label ตัวเลขบนแถบ
+        if self.stun_label is None:
+            from kivy.uix.label import Label
+            from data.settings import GAME_FONT
+            self.stun_label = Label(
+                text="", font_name=GAME_FONT, font_size=12 * ui_scale,
+                color=(1, 1, 1, 0), bold=True, size_hint=(None, None),
+                halign='center', valign='middle'
+            )
+            # ผูก text_size กับ size เพื่อให้ halign ทำงาน
+            self.stun_label.bind(size=lambda l, s: setattr(l, 'text_size', s))
+        
+        if self.stun_label:
+            self.stun_label.font_size = 12 * ui_scale
+            # วางตำแหน่งไว้ท้ายแถบหรือกลางแถบ
+            self.stun_label.size = (self.stamina_max_width, self.stamina_height * 2)
+            self.stun_label.pos = (current_start_x, stun_y - self.stamina_height * 0.5)
+
     def update_stamina(self, ratio):
         """Updates the stamina bar width based on the current ratio (0.0 - 1.0)."""
         if hasattr(self, 'stamina_max_width'):
             self.stamina_bar.size = (self.stamina_max_width * ratio, self.stamina_height)
+
+    def set_stun_visibility(self, visible):
+        """คุมการแสดงผลของแถบคูลดาวน์"""
+        self.stun_visible = visible
+        opacity = 1.0 if visible else 0.0
+        self.stun_color_border.a = opacity
+        self.stun_color_bg.a = opacity
+        self.stun_color_fg.a = opacity
+        if self.stun_label:
+            self.stun_label.color = (1, 1, 1, opacity)
+
+    def update_stun_cooldown(self, current_time, max_time=15.0):
+        """อัปเดตความกว้างและตัวเลขคูลดาวน์"""
+        if not self.stun_visible: return
+        
+        ratio = max(0, min(1, current_time / max_time))
+        if hasattr(self, 'stamina_max_width'):
+            self.stun_bar.size = (self.stamina_max_width * ratio, self.stamina_height)
+            
+        if self.stun_label:
+                if current_time > 0:
+                    self.stun_label.text = f"{current_time:.1f}s"
+                else:
+                    self.stun_label.text = "READY"

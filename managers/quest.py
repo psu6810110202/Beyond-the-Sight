@@ -115,7 +115,7 @@ class QuestManager:
                 font_name=GAME_FONT,
                 size_hint=(None, 0.05), # ใช้ None เพื่อให้ขยายตามตัวอักษรได้จริงๆ
                 width=200,
-                pos_hint={'x': -0.25, 'top': 0.86},
+                pos_hint={'x': -0.25, 'top': 0.83}, # เลื่อนลงจาก
                 halign='left',
                 valign='middle',
                 color=(1, 1, 1, 1),
@@ -178,10 +178,10 @@ class QuestManager:
         if count > 0:
             if animate:
                 # ค่อยๆ เลื่อนออกมา (Slide In) และเลือนชัดขึ้น (Fade In)
-                anim = Animation(pos_hint={'x': 0, 'top': 0.86}, opacity=1, duration=1.0, t='out_quad')
+                anim = Animation(pos_hint={'x': 0, 'top': 0.83}, opacity=1, duration=1.0, t='out_quad')
                 anim.start(self.quest_ui_label)
             else:
-                self.quest_ui_label.pos_hint = {'x': 0, 'top': 0.86}
+                self.quest_ui_label.pos_hint = {'x': 0, 'top': 0.83}
                 self.quest_ui_label.opacity = 1
         else:
             self.quest_ui_label.opacity = 0

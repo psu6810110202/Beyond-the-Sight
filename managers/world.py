@@ -66,27 +66,29 @@ class WorldManager:
             # User Request: Day 1 เป็นหลัก (0 Extra), 2-4 เพิ่มแบบสะสม
             # Day 2: เพิ่ม 1 ตัว (ใกล้ NPC1)
             if day >= 2:
-                er1 = Reaper(self.game.sorting_layer, x=896, y=416)
-                er1.direction = 'down'
+                er1 = Reaper(self.game.sorting_layer, x=304, y=288)
+                er1.direction = 'right'
                 er1.update_frame()
                 er1.update_visual_positions()
                 self.game.extra_reapers.append(er1)
                 
             # Day 3: เพิ่มตัวที่ 2 (ใกล้ NPC2)
             if day >= 3:
-                er2 = Reaper(self.game.sorting_layer, x=304, y=288)
-                er2.direction = 'right'
+                er2 = Reaper(self.game.sorting_layer, x=480, y=1312)
+                er2.direction = 'down'
                 er2.update_frame()
                 er2.update_visual_positions()
                 self.game.extra_reapers.append(er2)
                 
             # Day 4: เพิ่มตัวที่ 3 (ตรอกลึก NPC3)
             if day >= 4:
-                er3 = Reaper(self.game.sorting_layer, x=480, y=1312)
+                er3 = Reaper(self.game.sorting_layer, x=1328, y=944)
                 er3.direction = 'down'
                 er3.update_frame()
                 er3.update_visual_positions()
                 self.game.extra_reapers.append(er3)
+
+            print(f"DEBUG: Added {len(self.game.extra_reapers)} extra reapers for day {day}")
 
             # หมายเหตุ: สำหรับ Day 5 จะไม่มีการเพิ่ม Extra ในหมู่บ้าน (เพราะไปอยู่ใต้ดิน)
                 

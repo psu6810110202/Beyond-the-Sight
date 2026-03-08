@@ -11,6 +11,9 @@ class GameplayManager:
 
     def respawn_at_reaper(self):
         """เมื่อหัวใจหมด วาปผู้เล่นกลับไปยังจุดเริ่มต้นและรีเซ็ตหัวใจ"""
+        # หยุดเสียงทั้งหมดทันที (รวมถึงเสียงผีไล่)
+        self.game.stop_all_sounds()
+        
         self.game.death_count += 1
         print(f"Player died. Total deaths: {self.game.death_count}")
         
@@ -57,11 +60,17 @@ class GameplayManager:
                 self.game.cutscene_manager.start_succumb_ending()
             return
 
+        # ส่งคำพูดผ่าน InteractionManager เพื่อให้ระบบ Dialogue ทำงานถูกต้อง (และหยุดเสียงผี)
         available_indices = [i for i in range(len(REAPER_DEATH_QUOTES)) if i != self.game.last_death_quote_index]
         if available_indices:
             q_idx = random.choice(available_indices)
             self.game.last_death_quote_index = q_idx
-            self.game.dialogue_manager.show_vn_dialogue("Reaper", REAPER_DEATH_QUOTES[q_idx])
+            # เรียกผ่านระบบ Interaction เพื่อให้ is_dialogue_active = True
+            # พอตายแล้วขึ้น chat reaper ไม่ต้องให้ขึ้น save (can_save=False)
+            self.game.interaction_manager.show_dialogue_above_reaper(
+                [REAPER_DEATH_QUOTES[q_idx]], 
+                can_save=False
+            )
 
     def use_stun_item(self):
         """ใช้ Blue Stone เพื่อสตันผีรอบๆ ตัว"""
@@ -84,16 +93,9 @@ class GameplayManager:
                 stunned_any = True
         
         if stunned_any:
-            # 1. เล่นเสียงแจ้งเตือน
-            if self.game.shock_sound:
-                self.game.shock_sound.play()
-            
             # การอัปเดต Label คูลดาวน์จะทำใน main.py ทุกเฟรม
             print("Stun activated!")
         else:
-            # ถึงไม่สตันใครเลย ก็ควรมีเอฟเฟกต์เล็กน้อยให้รู้ว่ากดติด
-            if self.game.click_sound:
-                self.game.click_sound.play()
             print("Stun used but no enemies nearby.")
 
     def handle_day_transition(self, increment=True):

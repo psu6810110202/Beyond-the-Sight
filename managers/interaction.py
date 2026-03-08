@@ -63,6 +63,10 @@ class InteractionManager:
         """จัดการแสดงผลปุ่ม [E] ขึ้นเหนือหัว NPC หรือไอเทม เมื่อเดินไปใกล้"""
         self.game.clear_interaction_hints()
         
+        # 0. บล็อกการทำงานในสถานะที่ไม่เหมาะสม
+        if not getattr(self.game, 'is_ready', False):
+            return
+            
         if self.game.is_dialogue_active or self.game.is_paused or self.game.is_cutscene_active or \
            getattr(self.game.dialogue_manager, 'is_item_notif_active', False):
             return
@@ -72,67 +76,39 @@ class InteractionManager:
         if any(isinstance(child, SaveLoadScreen) for child in root_to_check):
             return
             
-        # เช็คไอเทมดวงดาวก่อน (ระยะ 20)
+        # 1. เช็คไอเทมดวงดาว (ระยะ 20)
         star_target, _, _ = self.get_interaction_target(self.game.stars, limit=20)
         self.game.current_star_target = star_target
-        if star_target: return 
+        if star_target:
+            self._draw_interaction_hint(star_target, offset_y=35)
+            return 
         
-        # เช็คไอเทมเทียน (Day 3)
+        # 2. เช็คไอเทมเทียน (Day 3) (ระยะ 20)
         candle_target, _, _ = self.get_interaction_target(self.game.candles, limit=20)
         self.game.current_candle_target = candle_target
-        if candle_target: return
-
-        # เช็ค NPC / Reaper (ระยะ 32)
-        target, dx, dy = self.get_interaction_target(self.game.npcs + [self.game.reaper] + getattr(self.game, 'extra_reapers', []), limit=32)
-        if target:
-            hint_text = "E"
-            box_width = 25
-            hint = Label(
-                text=hint_text, font_name=GAME_FONT, font_size='12sp',
-                color=(1, 1, 1, 1), size_hint=(None, None), size=(box_width, 25),
-                halign='center', valign='middle', bold=True
-            )
-            hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
-            
-            with hint.canvas.before:
-                Color(0, 0, 0, 0.8)
-                hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
-            
-            hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
-            hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
-            
-            spos = self.game.camera.world_to_screen(target.logic_pos[0] + TILE_SIZE/2, target.logic_pos[1] + 45)
-            hint.pos = (spos[0] - (box_width / 2), spos[1])
-            
-            if self.game.dialogue_root: self.game.dialogue_root.add_widget(hint)
-            self.game.interaction_hints.append(hint)
+        if candle_target:
+            self._draw_interaction_hint(candle_target, offset_y=35)
             return
 
-        # เช็ค Underground Portal
+        # 3. เช็ค NPC / Reaper (ระยะ 32)
+        # กรองเอาเฉพาะที่มองเห็นได้ เพื่อกัน E ขึ้นกลางตัวตอนกำลังโหลด
+        npcs_to_check = [n for n in self.game.npcs if getattr(n, 'opacity', 1.0) > 0.1]
+        reapers_to_check = [r for r in [self.game.reaper] + getattr(self.game, 'extra_reapers', []) if getattr(r, 'opacity', 1.0) > 0.1]
+        
+        target, dx, dy = self.get_interaction_target(npcs_to_check + reapers_to_check, limit=32)
+        if target:
+            self._draw_interaction_hint(target, offset_y=50) # ยกสูง 50
+            return
+
+        # 4. เช็ค Underground Portal (Day 5)
         px, py = self.game.player.logic_pos
         ux, uy = UNDERGROUND_PORTAL_POS
         dist = ((px - ux)**2 + (py - uy)**2)**0.5
-        
         if dist <= 32 and self.game.current_day == 5:
-            hint = Label(
-                text="E", font_name=GAME_FONT, font_size='12sp',
-                color=(1, 1, 1, 1), size_hint=(None, None), size=(25, 25),
-                halign='center', valign='middle', bold=True
-            )
-            hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
-            with hint.canvas.before:
-                Color(0, 0, 0, 0.8)
-                hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
-            hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
-            hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
-            
-            spos = self.game.camera.world_to_screen(ux + TILE_SIZE/2, uy + 45)
-            hint.pos = (spos[0] - 12.5, spos[1])
-            if self.game.dialogue_root: self.game.dialogue_root.add_widget(hint)
-            self.game.interaction_hints.append(hint)
+            self._draw_interaction_hint(None, offset_y=45, pos_override=UNDERGROUND_PORTAL_POS)
             return
 
-        # เช็คจุดวางจดหมาย (Day 2)
+        # 5. เช็คจุดวางจดหมาย (Day 2)
         if self.game.current_day == 2 and getattr(self.game, 'letters_held', 0) > 0:
             for i, spot in enumerate(HOUSE_DOOR_SPOTS):
                 if i in self.game.delivered_house_indices:
@@ -140,9 +116,39 @@ class InteractionManager:
                 px, py = self.game.player.logic_pos
                 if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
                     self.game.pending_drop_spot = (spot, i)
+                    # วาด Hint E ตรงประตู
+                    self._draw_interaction_hint(None, offset_y=32, pos_override=spot)
                     return
 
         self.game.current_search_target = self.get_search_target()
+
+    def _draw_interaction_hint(self, target, offset_y=50, pos_override=None):
+        """Helper สำหรับวาดปุ่ม E ใน Screen Space"""
+        hint_text = "E"
+        box_width = 25
+        hint = Label(
+            text=hint_text, font_name=GAME_FONT, font_size='12sp',
+            color=(1, 1, 1, 1), size_hint=(None, None), size=(box_width, 25),
+            halign='center', valign='middle', bold=True
+        )
+        hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
+        
+        with hint.canvas.before:
+            Color(0, 0, 0, 0.8)
+            hint.bg_rect = RoundedRectangle(pos=hint.pos, size=hint.size, radius=[3])
+        
+        hint.bind(pos=lambda inst, val: setattr(inst.bg_rect, 'pos', inst.pos))
+        hint.bind(size=lambda inst, val: setattr(inst.bg_rect, 'size', inst.size))
+        
+        if pos_override:
+            spos = self.game.camera.world_to_screen(pos_override[0] + TILE_SIZE/2, pos_override[1] + offset_y)
+        else:
+            spos = self.game.camera.world_to_screen(target.logic_pos[0] + TILE_SIZE/2, target.logic_pos[1] + offset_y)
+            
+        hint.pos = (spos[0] - (box_width / 2), spos[1])
+        
+        if self.game.dialogue_root: self.game.dialogue_root.add_widget(hint)
+        self.game.interaction_hints.append(hint)
 
     def interact(self):
         """จัดการการกดปุ่ม [E] เพื่อคุยหรือสำรวจ"""
@@ -247,11 +253,21 @@ class InteractionManager:
 
     def process_interaction(self, target, index, dx, dy):
         """ประมวลผลการคุยกับ NPC หรือ Reaper"""
+        # ให้เป้าหมายหันหน้ามาหาผู้เล่น (dx = target_x - player_x)
+        if hasattr(target, 'direction'):
+            if abs(dx) > abs(dy):
+                target.direction = 'left' if dx > 0 else 'right'
+            else:
+                target.direction = 'down' if dy > 0 else 'up'
+            if hasattr(target, 'update_frame'):
+                target.update_frame()
+
         if target == self.game.reaper or target in getattr(self.game, 'extra_reapers', []):
             # เช็คว่าเป็น Reaper ปลอม/ตัวแถม ในพิกัดอันตรายหรือไม่
             is_extra = target in getattr(self.game, 'extra_reapers', [])
             dialogue = self.get_reaper_dialogue(dx, dy)
-            self.show_dialogue_above_reaper(dialogue, can_save=not is_extra)
+            # User Request: ให้ Extra Reaper ก็เซฟได้ด้วย
+            self.show_dialogue_above_reaper(dialogue, can_save=True)
         elif target in self.game.npcs:
             npc_name = ""
             if hasattr(target, 'name') and target.name:

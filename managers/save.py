@@ -46,6 +46,7 @@ class SaveManager:
             "has_received_blue_stone": self.game.has_received_blue_stone,
             "has_received_lantern": self.game.has_received_lantern,
             "tutorial_triggered": self.game.tutorial_triggered,
+            "stun_cooldown": getattr(self.game, 'stun_cooldown', 0),
             
             # สถานะของมอนสเตอร์และสภาพแวดล้อมในแมพปัจจุบัน
             "destroyed_enemies": self.game.destroyed_enemies,
