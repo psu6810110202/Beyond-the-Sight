@@ -7,6 +7,7 @@ from kivy.core.audio import SoundLoader
 from kivy.animation import Animation
 from ui.intro import IntroScreen
 from data.settings import *
+from data.chat import ENDING_TITLES
 
 class CutsceneManager:
     def __init__(self, game):
@@ -23,11 +24,11 @@ class CutsceneManager:
             self.door_sound.volume = 0.6
         if self.door_close_sound:
             self.door_close_sound.volume = 0.6
-            
-        # โหลดเสียงผ้า (นั่ง)
-        self.cloth_sound = SoundLoader.load('assets/sound/cloth.wav')
-        if self.cloth_sound:
-            self.cloth_sound.volume = 0.5
+        
+        # โหลดเสียงนั่ง
+        self.sit_sound = SoundLoader.load('assets/sound/sit.wav')
+        if self.sit_sound:
+            self.sit_sound.volume = 0.5
 
     def play_door_full_sequence(self):
         """เล่นเสียงประตูเปิดตามด้วยเสียงปิด"""
@@ -147,8 +148,8 @@ class CutsceneManager:
                 self.game.player.cutscene_mode = False 
                 
                 # ถึงที่หมายสนิทแล้ว
-                if self.cloth_sound:
-                    self.cloth_sound.play()
+                if getattr(self.game, 'sit_sound', None):
+                    self.game.sit_sound.play()
                     
                 self.game.player.logic_pos = [tx, ty]
                 self.game.player.target_pos = [tx, ty]
@@ -269,8 +270,8 @@ class CutsceneManager:
                 self.game.player.cutscene_mode = False # ปิดโหมดคัทซีนเพื่อให้เล่นอนิเมชั่น Idle
                 
                 # ถึงที่หมายสนิทแล้ว
-                if self.cloth_sound:
-                    self.cloth_sound.play()
+                if self.sit_sound:
+                    self.sit_sound.play()
                     
                 self.game.player.logic_pos = [tx, ty]
                 self.game.player.target_pos = [tx, ty]
@@ -436,7 +437,20 @@ class CutsceneManager:
                  # ยังไม่ต้อง self.game.cutscene_step = 40 เดี๋ยว Step ต่อไปจะเรียก end_side_story_cutscene อีกรอบหลัง "..." จบ
                  return
 
-            # ทุกวันที่มีคัทซีนเข้าบ้าน (1, 2, 3, 4, 5): เดินไปที่มุมประจำก่อน
+            # --- เริ่มเควสทันทีหลังคุยจบ (User Request - Day 1) ---
+            if self.game.current_day == 1:
+                self.game.quest_manager.start_quest("find_food", "Find Something to Eat", target=1, show_notif=True)
+                # สำหรับ Day 1: จบคัทซีนทันทีเพื่อให้ผู้เล่นเดินหาได้เลย ไม่ต้องเดินไปมุมห้อง
+                self._pending_find_food_quest = False
+                self.game.is_cutscene_active = False
+                self.game.cutscene_step = 0
+                self.game.camera.locked = False
+                self.game.player.cutscene_mode = False
+                self.game.player.stop()
+                self.game.request_keyboard_back()
+                return
+
+            # ทุกวันอื่นๆ ที่มีคัทซีนเข้าบ้าน (2, 4, 5): เดินไปที่มุมประจำก่อน
             print(f"DEBUG: end_side_story_cutscene - Triggering walk to sit for Day {self.game.current_day}")
             self.game.cutscene_step = 40
             self.game.is_cutscene_active = True
@@ -465,7 +479,7 @@ class CutsceneManager:
         self.game._pending_day_transition = True # สำคัญ: เพื่อให้ handle_day_transition ทำงานได้
         # บังคับหยุดเดินเดิมก่อน
         self.game.player.stop()
-
+        
     def show_black_screen_transition(self):
         """แสดงฉากสีดำและบทสนทนาของ Angel"""
         # หยุดการเดินและอนิเมชั่นของผู้เล่นทันที
@@ -577,7 +591,7 @@ class CutsceneManager:
         if getattr(self.game, 'current_day', 1) == 2:
             Clock.schedule_once(self.start_day2_parent_cutscene, 0.5)
         elif getattr(self.game, 'current_day', 1) == 3:
-            # Day 3: จอฟ้าขึ้น
+            # Day 3: พิกัดอันตรายจะเป็นสีดำตามปกติ แต่ในบ้านจะมีหมอกฟ้าเสมอ
             self._apply_blue_tint()
             # ปลดล็อกกล้องเพื่อให้ตามตัวละครในบ้าน
             self.game.camera.locked = False
@@ -595,7 +609,7 @@ class CutsceneManager:
         # เอาไปใส่ใน map_after_group เพื่อให้อยู่ในระบบของกล้อง (ไม่ล้นจอ)
         target_group = self.game.map_after_group
         
-        # ลบของเก่าถ้ามี
+        # ลบฟิลเตอร์เก่าออกก่อนหากมีการเรียกซ้ำ
         if hasattr(self, 'blue_tint_instr') and self.blue_tint_instr:
             if self.blue_tint_instr in target_group.children:
                 target_group.remove(self.blue_tint_instr)
@@ -612,17 +626,17 @@ class CutsceneManager:
         # สีฟ้า Alpha 0.15 
         self.blue_tint_color = Color(0.2, 0.4, 0.8, 0.15) 
         
-        # คำนวณขนาดความกว้าง/ยาวให้พอดีเป๊ะกับแมพ
+        # คำนวณขนาดให้ครอบคลุมทั้งแผนที่
         map_w = self.game.game_map.width * TILE_SIZE
         map_h = self.game.game_map.height * TILE_SIZE
         
-        # สร้างสี่เหลี่ยมสีฟ้าขนาดเท่าแมพ วางที่พิกัด (0,0)
+        # สร้างสี่เหลี่ยมสีฟ้าทับซ้อนลงไป
         self.blue_tint_rect = Rectangle(size=(map_w, map_h), pos=(0, 0))
         
         self.blue_tint_instr.add(self.blue_tint_color)
         self.blue_tint_instr.add(self.blue_tint_rect)
         
-        # แอดเข้าไปทับหลังคา แต่ยังอยู่ภายใต้ระบบกล้อง
+        # แอดเข้าไปในกลุ่มกราฟิกเพื่อให้แสดงผลในเกม
         target_group.add(self.blue_tint_instr)
 
     def start_day2_parent_cutscene(self, dt=None):
@@ -743,7 +757,7 @@ class CutsceneManager:
             # 4. เรียกใช้ IntroScreen แบบ custom_text เหมือนเวลาเปลี่ยนวัน
             intro = IntroScreen(
                 callback=self.game.return_to_main_menu, 
-                custom_text="Ending 1/4 :\n\nSuccumb", 
+                custom_text=ENDING_TITLES[1], 
                 play_sound=False, 
                 duration=4.5
             )
@@ -790,11 +804,11 @@ class CutsceneManager:
                 self.game.black_overlay = None
             
             if total_success >= 5:
-                ending_title = "True Ending 4/4 :\n\nThe Guide to a New Home"
+                ending_title = ENDING_TITLES[4]
             elif total_success > 0:
-                ending_title = "Normal Ending 3/4 :\n\nFreedom on a Lonely Road"
+                ending_title = ENDING_TITLES[3]
             else:
-                ending_title = "Bad Ending 2/4 :\n\nThe Silent Eternal Darkness"
+                ending_title = ENDING_TITLES[2]
                 
             intro = IntroScreen(
                 callback=self.game.return_to_main_menu, 

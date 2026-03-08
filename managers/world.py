@@ -12,6 +12,7 @@ import random
 class WorldManager:
     def __init__(self, game):
         self.game = game
+        self.darkness_base_color = (0, 0, 0, 0.4) # RGBA
         
     def create_reapers(self):
         """จัดการการสร้าง Reaper หลักและ Extra Reapers ตามความก้าวหน้าของวัน"""
@@ -466,7 +467,7 @@ class WorldManager:
         if self.game.warning_dismissed or self.game.game_map.filename != MAP_FILE:
             return
             
-        base_alpha = 0.4
+        r, g, b, base_alpha = self.darkness_base_color
         fade_range = 160
         
         if self.game.current_day == 1:
@@ -475,7 +476,7 @@ class WorldManager:
             dark_y_start = 464 + fade_range
             
             # ส่วนทึบ
-            self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+            self.game.darkness_group.add(Color(r, g, b, base_alpha))
             # แถบซ้ายทั้งหมด
             self.game.darkness_group.add(Rectangle(pos=(0, 0), size=(dark_x_start, MAP_HEIGHT)))
             # แถบบน (ในส่วนที่เหลือทางขวา)
@@ -486,7 +487,7 @@ class WorldManager:
             step_size = fade_range / fade_steps
             for i in range(fade_steps):
                 alpha = base_alpha * (1 - (i / fade_steps))
-                self.game.darkness_group.add(Color(0, 0, 0, alpha))
+                self.game.darkness_group.add(Color(r, g, b, alpha))
                 
                 # วาดแถบแนวตั้ง (จากซ้ายไปขวา)
                 self.game.darkness_group.add(Rectangle(
@@ -505,7 +506,7 @@ class WorldManager:
             dark_y_start = 464 + fade_range
             
             # ส่วนทึบ (ขวาบน ทึบสนิท)
-            self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+            self.game.darkness_group.add(Color(r, g, b, base_alpha))
             self.game.darkness_group.add(Rectangle(
                 pos=(dark_x_start, dark_y_start), 
                 size=(MAP_WIDTH - dark_x_start, MAP_HEIGHT - dark_y_start)
@@ -516,7 +517,7 @@ class WorldManager:
             step_size = fade_range / fade_steps
             for i in range(fade_steps):
                 alpha = base_alpha * (i / fade_steps)
-                self.game.darkness_group.add(Color(0, 0, 0, alpha))
+                self.game.darkness_group.add(Color(r, g, b, alpha))
                 
                 # เส้นแนวตั้ง (ไล่จาก 880 ไปทางขวาเฉพาะส่วนบน)
                 self.game.darkness_group.add(Rectangle(
@@ -534,7 +535,7 @@ class WorldManager:
             dark_y_start = 464 + fade_range
             
             # ส่วนทึบ (ครอบคลุมพื้นที่ด้านบนทั้งหมด)
-            self.game.darkness_group.add(Color(0, 0, 0, base_alpha))
+            self.game.darkness_group.add(Color(r, g, b, base_alpha))
             self.game.darkness_group.add(Rectangle(pos=(0, dark_y_start), size=(MAP_WIDTH, MAP_HEIGHT - dark_y_start)))
             
             # ส่วนไล่สี (Gradient) แนวนอนอย่างเดียว
@@ -542,7 +543,7 @@ class WorldManager:
             step_size = fade_range / fade_steps
             for i in range(fade_steps):
                 alpha = base_alpha * (1 - (i / fade_steps))
-                self.game.darkness_group.add(Color(0, 0, 0, alpha))
+                self.game.darkness_group.add(Color(r, g, b, alpha))
                 
                 self.game.darkness_group.add(Rectangle(
                     pos=(0, dark_y_start - ((i+1) * step_size)), 
@@ -550,6 +551,11 @@ class WorldManager:
                 ))
 
         self.game.darkness_group.add(Color(1, 1, 1, 1))
+
+    def update_darkness_color(self, r, g, b, a):
+        """อัปเดตสีของหมอก/ความมืด"""
+        self.darkness_base_color = (r, g, b, a)
+        self.refresh_darkness()
 
     def recreate_world(self):
         """รีโหลดโลกทั้งหมดเมื่อข้ามวัน"""

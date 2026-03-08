@@ -263,3 +263,10 @@ NPC5_FAIL = [
     "Wait... these fragments... they don't belong to me.",
     "My essence is still scattered... I feel even emptier than before."
 ]
+
+ENDING_TITLES = {
+    1: "Ending 1/4 :\n\nSuccumb",
+    2: "Bad Ending 2/4 :\n\nThe Silent Eternal Darkness",
+    3: "Normal Ending 3/4 :\n\nFreedom on a Lonely Road",
+    4: "True Ending 4/4 :\n\nThe Guide to a New Home"
+}

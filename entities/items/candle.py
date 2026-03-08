@@ -50,6 +50,14 @@ class Candle:
             self.is_lit = True
             self.current_color = color_name
 
+    def update_visuals(self):
+        """อัปเดตกราฟิกตามสถานะ (เปิด/ปิดไฟ)"""
+        if not self.is_lit:
+            if 'default' in self.textures:
+                self.rect.texture = self.textures['default']
+        elif self.current_color and self.current_color in self.textures:
+            self.rect.texture = self.textures[self.current_color]
+
     def destroy(self):
         if self.group and self.group in self.canvas.children:
             self.canvas.remove(self.group)

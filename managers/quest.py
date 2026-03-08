@@ -185,7 +185,7 @@ class QuestManager:
                 self.quest_ui_label.opacity = 1
         else:
             self.quest_ui_label.opacity = 0
-    def update_quest_progress(self, quest_id, amount=1):
+    def update_quest_progress(self, quest_id, amount=1, show_notif=True):
         """อัปเดตความคืบหน้าของเควส"""
         if quest_id in self.active_quests:
             quest = self.active_quests[quest_id]
@@ -198,7 +198,9 @@ class QuestManager:
                     if quest_id not in ["doll_parts", "deliver_letters", "light_candles", "find_key", "soul_fragments"]:
                         quest.is_active = False
                         quest.completed_sidebar = True
-                        self.show_quest_notification(f"COMPLETED: {quest.name}")
+                        
+                        if show_notif:
+                            self.show_quest_notification(f"COMPLETED: {quest.name}")
                         
                         # ให้แสดง COMPLETED ในแถบข้าง 3 วินาทีแล้วค่อยหายไป
                         def remove_from_sidebar(dt):

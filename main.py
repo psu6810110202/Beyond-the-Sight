@@ -68,6 +68,7 @@ class GameWidget(Widget):
         self.current_candle_target = None
         # โหลดจำนวนเทียนที่จุดไปแล้วจากเซฟ
         self.current_candle_lit_count = initial_data.get('current_candle_lit_count', 0) if initial_data else 0
+        self.player_candle_sequence = [] # เก็บสีที่ผู้เล่นจุดจริงตามลำดับ
         
         # คลีนข้อมูล Day 1 ถ้าโหลดมาเป็นวันอื่น (User Request)
         if initial_data and initial_data.get('day', 1) > 1:
@@ -137,6 +138,7 @@ class GameWidget(Widget):
         self.choice_buttons = []
         self.choice_index = 0
         self.pending_post_discovery_dialogue = None # เก็บแชทที่ต้องขึ้นต่อจากตอนหยิบของเสร็จ
+        self._pending_food_success = False
         
         self.interaction_hints = []  # เก็บปุ่ม E ของแต่ละ NPC
         self.stars = []             # เก็บวัตถุดาว (Day 1)
@@ -155,6 +157,13 @@ class GameWidget(Widget):
         
         # Stun Cooldown
         self.stun_cooldown = 0
+        self.stun_label = Label(
+            text="",
+            font_size=24,
+            color=(0.5, 0.8, 1, 1),
+            bold=True,
+            pos_hint={'center_x': 0.5, 'top': 0.2} # แสดงตรงกลางขอบจอบน
+        )
         
         # ป้องกันการเดินตอนเริ่มเกมที่ยังโหลดไม่เสร็จ (Stutter prevention เฉพาะเริ่มเกมใหม่)
         if initial_data is None:
@@ -169,7 +178,10 @@ class GameWidget(Widget):
         self.forced_move_target = None
         
         # สุ่มจุดที่มีของกินจริงๆ แค่ 1 จุดจากรายการ
-        self.correct_food_spot = random.choice(SEARCHABLE_SPOTS_HOME)
+        if initial_data and 'correct_food_spot' in initial_data:
+            self.correct_food_spot = tuple(initial_data['correct_food_spot'])
+        else:
+            self.correct_food_spot = random.choice(SEARCHABLE_SPOTS_HOME)
         
         # โหลดเสียงผีไล่ตามประเภท
         self.ghost_sounds = {}
@@ -189,6 +201,11 @@ class GameWidget(Widget):
         self.find_sound = SoundLoader.load('assets/sound/find.wav')
         if self.find_sound:
             self.find_sound.volume = 0.7
+            
+        # โหลดเสียงกินอาหาร/ชุดคลุมขยับ
+        self.sit_sound = SoundLoader.load('assets/sound/sit.wav')
+        if self.sit_sound:
+            self.sit_sound.volume = 0.6
             
         # โหลดเสียงตกใจเมื่อชนผี
         self.shock_sound = SoundLoader.load('assets/sound/feeling/shocked.wav')
@@ -433,39 +450,33 @@ class GameWidget(Widget):
         return self.input_handler.on_key_up(keyboard, keycode)
 
     def set_candle_color(self, color_name):
-        """เปลี่ยนสีเทียนตามที่เลือกและอัปเดตสถานะ"""
-        from data.settings import CANDLE_COLOR_MAPPING
-        from data.chat import CANDLE_SUCCESS_DIALOGUE
+        # ลำดับที่ถูกต้อง: แดง (ดอกไม้) -> ฟ้า (พรม) -> เหลือง (แดด)
+        correct_order = ["Red", "Blue", "Yellow"]
+        
+        if not self.has_received_lantern:
+            self.show_vn_dialogue("Little girl", "I need something to light this...")
+            return
+
         if self.current_candle_target and not self.current_candle_target.is_lit:
-            candle = self.current_candle_target
-            candle.set_color(color_name)
+            current_step = len(self.player_candle_sequence)
             
-            # ตรวจสอบความถูกต้อง (User Request: แดง=688,1312, ฟ้า=528,960, เหลือง=462,560)
-            target_color = CANDLE_COLOR_MAPPING.get((candle.x, candle.y))
-            if color_name != target_color:
+            # ตรวจสอบว่าสีที่เลือกตรงกับลำดับที่ต้องจุดในขั้นตอนนี้หรือไม่
+            if color_name != correct_order[current_step]:
+                # ผิด: บันทึกความล้มเหลว และแสดงบทพูดเตือน (แต่ไม่ดับไฟ เพื่อให้เปลี่ยนไม่ได้)
                 self.quest_item_fail = True
-                print(f"DEBUG: Incorrect color at ({candle.x}, {candle.y}). Expected {target_color}, got {color_name}")
+                self.show_vn_dialogue("Old Soul", "No... that's not it. Everything is getting blurry again.")
             
+            # บันทึกสถานะไม่ว่าจะถูกหรือผิด (เพื่อให้จุดไฟแล้วติดเลย เปลี่ยนไม่ได้)
+            self.player_candle_sequence.append(color_name)
+            self.current_candle_target.set_color(color_name)
             self.current_candle_lit_count += 1
-            print(f"Candle lit with {color_name}. Total lit: {self.current_candle_lit_count}")
-
-            # อัปเดตความคืบหน้าเควสผ่าน Quest Manager
-            if "light_candles" in self.quest_manager.active_quests:
-                self.quest_manager.update_quest_progress("light_candles", 1)
-
+            
             if self.current_candle_lit_count >= 3:
-                # ปรับข้อความให้ชัดเจน (Return to Old Soul)
-                self.show_vn_dialogue("Little girl", CANDLE_SUCCESS_DIALOGUE)
-                
-                # เปลี่ยนเป้าหมายเควสให้กลับไปหา Old Soul
+                # สำเร็จภารกิจ (จะล้มเหลวหรือสำเร็จจริงจะไปตัดสินตอนคุยกับ Old Soul)
+                self.show_vn_dialogue("Little girl", "The path is clear now. I should return to him.")
                 q = self.quest_manager.active_quests.get("light_candles")
-                if q:
-                    q.name = "Return to The Old Soul"
-                    self.quest_manager.update_quest_list_ui()
-            else:
-                self.show_vn_dialogue("Little girl", f"The candle glows {color_name.lower()}.")
-        else:
-            self.show_vn_dialogue("Little girl", "This candle is already burning brightly.")
+                if q: q.name = "Return to The Old Soul"
+                self.quest_manager.update_quest_list_ui()
 
 
     def move_step(self, dt):
@@ -485,8 +496,8 @@ class GameWidget(Widget):
         if self.sad_soul_sound:
             # เช็คว่ามี NPC1 อยู่ในจอไหม (เช็คจาก image_path) และยังจางหายไม่จบ
             sad_soul_active = any('NPC1' in n.image_path and not n.fading_done for n in self.npcs)
-            # ต้องไม่เล่นในช่วงการคุย, หยุดเกม หรือคัทซีน
-            if not (self.is_paused or self.is_dialogue_active or self.is_cutscene_active) and sad_soul_active:
+            # ต้องไม่เล่นในช่วง หยุดเกม หรือคัทซีน (แต่ยอมให้เล่นตอนคุยเพื่อความต่อเนื่อง)
+            if not (self.is_paused or self.is_cutscene_active) and sad_soul_active:
                 if self.sad_soul_sound.state != 'play':
                     self.sad_soul_sound.play()
             else:
@@ -595,6 +606,14 @@ class GameWidget(Widget):
 
             if self.stun_cooldown > 0:
                 self.stun_cooldown -= dt
+                if self.stun_cooldown > 0:
+                    self.stun_label.text = f"Stunned: {self.stun_cooldown:.1f}s"
+                    if self.stun_label.parent is None and self.dialogue_root:
+                        self.dialogue_root.add_widget(self.stun_label)
+                else:
+                    self.stun_label.text = ""
+                    if self.stun_label.parent:
+                        self.stun_label.parent.remove_widget(self.stun_label)
 
             # เช็คการโต้ตอบ (Interactive Hints)
             self.update_interaction_hints()
@@ -796,6 +815,7 @@ class GameWidget(Widget):
         self.interaction_manager.show_dialogue_above_reaper(dialogue, choices, portrait, can_save)
 
     def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
+        self.current_character_name = character_name
         self.dialogue_manager.show_vn_dialogue(character_name, dialogue, choices, portrait, left_portrait)
 
     def show_item_discovery(self, text, image_path=None, choices=None):

@@ -188,49 +188,32 @@ class StoryManager:
                 if getattr(self.game, 'cutscene_step', 0) == 101:
                     self.game.cutscene_manager.continue_succumb_ending()
 
-    def _handle_lady_logic(self):
-        quest = self.game.quest_manager.active_quests.get("find_key")
-        if not quest:
-            # เริ่มเควส "Find Key" (ไม่ต้องโชว์ตัวเลขจำนวน)
-            self.game.quest_manager.start_quest("find_key", "Find Key", target=1)
-            self.game.create_stars()
-        elif quest.is_active and quest.current_count < quest.target_count:
-            # ถ้าเควสยังไม่เสร็จแต่เคยโหลดมาแล้วดาวหาย ให้สร้างคืน
-            if not self.game.stars:
-                self.game.create_stars()
-        elif quest.is_active and quest.current_count >= quest.target_count:
-            # ตรวจสอบความสำเร็จเควส
-            if not getattr(self.game, 'quest_item_fail', False):
-                self.game.quest_success_count += 1
-            
-            quest.is_active = False
-            # ลบดาวทิ้งทันทีเมื่อจบเควสที่ NPC
-            for s in self.game.stars[:]: s.destroy()
-            self.game.stars.clear()
-
-            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
-            self.game.quest_manager.update_quest_list_ui()
-            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
-
     def _handle_sad_soul_logic(self):
         quest = self.game.quest_manager.active_quests.get("doll_parts")
         if not quest:
             self.game.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
             self.game.create_stars()
-        elif quest.is_active and quest.current_count < quest.target_count:
-            # ถ้าเควสยังไม่เสร็จแต่เคยโหลดมาแล้วดาวหาย ให้สร้างคืน
-            if not self.game.stars:
-                self.game.create_stars()
         elif quest.is_active and quest.current_count >= quest.target_count:
             # ตรวจสอบความสำเร็จเควส
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
             
             quest.is_active = False
-            # ลบดาวทิ้งทันทีเมื่อจบเควสที่ NPC
-            for s in self.game.stars[:]: s.destroy()
-            self.game.stars.clear()
-
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
+            self.game.quest_manager.update_quest_list_ui()
+            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
+            
+    def _handle_sad_soul_logic(self):
+        quest = self.game.quest_manager.active_quests.get("doll_parts")
+        if not quest:
+            self.game.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
+            self.game.create_stars()
+        elif quest.is_active and quest.current_count >= quest.target_count:
+            # ตรวจสอบความสำเร็จเควส
+            if not getattr(self.game, 'quest_item_fail', False):
+                self.game.quest_success_count += 1
+            
+            quest.is_active = False
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
@@ -257,7 +240,7 @@ class StoryManager:
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
-
+            
     def _handle_old_soul_logic(self):
         quest = self.game.quest_manager.active_quests.get("light_candles")
         if not quest:
@@ -301,7 +284,7 @@ class StoryManager:
         """ประมวลผลการค้นหาตามจุดต่างๆ (เรียกจาก InteractionManager)"""
         # 1. การค้นหาในบ้าน (ทุกวัน)
         if "home.tmj" in self.game.game_map.filename.lower():
-            # ถ้าเป็นวันที่ต้องหาอาหาร (1, 2, 4)
+            # ถ้าเป็นวันที่ต้องหาอาหาร (1, 4)
             if self.game.current_day in [1, 4]:
                 if spot == EMPTY_SPOT_HOME:
                     self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["empty"])
@@ -316,7 +299,7 @@ class StoryManager:
                     self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["nothing"])
                 return
             else:
-                # วันอื่นๆ (3, 5) ในบ้าน มักจะไม่มีอะไรให้กิน
+                # วันที่ 3 หรือวันอื่นๆ ที่ไม่ต้องหาอาหารในบ้าน
                 self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["empty"])
                 return
 

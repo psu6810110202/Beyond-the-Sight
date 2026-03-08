@@ -88,44 +88,7 @@ class GameplayManager:
             if self.game.shock_sound:
                 self.game.shock_sound.play()
             
-            # 2. เพิ่ม Visual Flash ทับตัวผู้เล่น
-            root = self.game.dialogue_root if self.game.dialogue_root else self.game
-            flash = Widget(size=(200, 200), opacity=0)
-            with flash.canvas:
-                Color(0.6, 0.8, 1, 0.5) # สีฟ้าอ่อนโปร่งแสง
-                self.flash_ellipse = Ellipse(size=(0, 0), pos=(0, 0))
-            
-            # คำนวณตำแหน่งกลางตัวละครในระดับ Screen Space
-            # (เนื่องจากเป็น Ellipse ใน root widget ต้องแปลงพิกัดหรือใช้วิธีง่ายๆ)
-            # เพื่อความง่าย เราจะใช้ Ellipse วาดใน canvas ของ GameWidget เองตรงๆ
-            with self.game.canvas.after:
-                self.stun_color = Color(0.6, 0.8, 1, 0.6)
-                self.stun_circle = Ellipse(
-                    pos=(player_center_x, player_center_y),
-                    size=(0, 0)
-                )
-            
-            # สร้าง Animation ขยายวงแหวนแล้วจางหาย
-            duration = 0.5
-            def update_stun_circle(anim, instance, value):
-                # value คือรัศมีที่กำลังขยาย
-                r = value * stun_range * 2
-                self.stun_circle.size = (r, r)
-                self.stun_circle.pos = (player_center_x - r/2, player_center_y - r/2)
-            
-            def cleanup_stun_circle(*args):
-                if self.stun_circle:
-                    self.game.canvas.after.remove(self.stun_circle)
-                    self.game.canvas.after.remove(self.stun_color)
-
-            anim = Animation(d=duration, t='out_quad')
-            anim.bind(on_progress=update_stun_circle, on_complete=cleanup_stun_circle)
-            
-            # คลินิกสีให้จางลงพร้อมกัน
-            color_anim = Animation(a=0, duration=duration)
-            color_anim.start(self.stun_color)
-            anim.start(flash) # ใช้ Widget หลอกๆ เพื่อรัน Animation
-            
+            # การอัปเดต Label คูลดาวน์จะทำใน main.py ทุกเฟรม
             print("Stun activated!")
         else:
             # ถึงไม่สตันใครเลย ก็ควรมีเอฟเฟกต์เล็กน้อยให้รู้ว่ากดติด
