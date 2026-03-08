@@ -52,6 +52,8 @@ class GameplayManager:
         # User Request: เมื่อตายครบ 3 ครั้ง (death_count = 3) ให้ขึ้น Hidden Ending
         if self.game.death_count == 3:
             if hasattr(self.game, 'cutscene_manager'):
+                # ตรวจสอบและหยุดเสียง NPC ทั้งหมดก่อนเริ่มฉากจบ
+                self.game.stop_all_sounds()
                 self.game.cutscene_manager.start_succumb_ending()
             return
 
