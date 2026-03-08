@@ -485,7 +485,8 @@ class GameWidget(Widget):
         if self.sad_soul_sound:
             # เช็คว่ามี NPC1 อยู่ในจอไหม (เช็คจาก image_path) และยังจางหายไม่จบ
             sad_soul_active = any('NPC1' in n.image_path and not n.fading_done for n in self.npcs)
-            if not self.is_paused and sad_soul_active:
+            # ต้องไม่เล่นในช่วงการคุย, หยุดเกม หรือคัทซีน
+            if not (self.is_paused or self.is_dialogue_active or self.is_cutscene_active) and sad_soul_active:
                 if self.sad_soul_sound.state != 'play':
                     self.sad_soul_sound.play()
             else:
@@ -986,7 +987,7 @@ class MyApp(App):
             self.bg_loop = SoundLoader.load(ambiance_path)
             if self.bg_loop:
                 self.bg_loop.loop = True
-                self.bg_loop.volume = 0.4
+                self.bg_loop.volume = 0.8
                 self.bg_loop.play()
                 
         self.root = FloatLayout()
