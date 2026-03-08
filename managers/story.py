@@ -179,6 +179,11 @@ class StoryManager:
         if last_character == "Mother" and self.game.current_day == 2:
             if hasattr(self.game, 'cutscene_manager'):
                 self.game.cutscene_manager.end_day2_parent_cutscene()
+        
+        # 6.1 Little girl (จบ "..." ใน Day 2 แล้วเปลี่ยนวันทันที)
+        if last_character == "Little girl" and self.game.current_day == 2 and getattr(self.game, '_pending_day_transition', False):
+            self.game._pending_day_transition = False
+            self.game.handle_day_transition(increment=True)
 
         # 7. ?? (Hidden Ending)
         # ตรวจสอบชื่อตัวละครปริศนา (รองรับทั้ง ?? และ ???)
