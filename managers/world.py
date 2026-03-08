@@ -299,54 +299,21 @@ class WorldManager:
                 star = Star(self.game.sorting_layer, x, y, is_true=True) # ให้เก็บได้ทุกลูก
                 self.game.stars.append(star)
         elif 'underground.tmj' in getattr(self.game.game_map, 'filename', '').lower():
-            # สำหรับแมพใต้ดิน: ถ้ามีเควสมั้ย
+            # สำหรับแมพใต้ดิน: ใช้ UNDERGROUND_FRAGMENT_MAPPING ที่กำหนดไว้ใน settings.py
             quest = self.game.quest_manager.active_quests.get("soul_fragments")
             if quest and not quest.is_active:
                 return
-            # สำหรับแมพใต้ดิน: ระบบเดียวกับ Day 1/4 (สุ่ม 3 จุดจริง, 5 จุดผีหลอก)
-            layers = self.game.game_map.map_data.get('layers', [])
-            objects_layer = next((l for l in layers if l.get('name') == "ของ"), None)
-            if objects_layer:
-                # รวบรวมตำแหน่งทั้งหมดที่มี "ของ"
-                all_positions = []
-                for obj in objects_layer.get('objects', []):
-                    ox, oy = obj.get('x', 0), obj.get('y', 0)
-                    obj_y_render = self.game.game_map.height * 16 - oy
-                    all_positions.append((ox, obj_y_render))
-                
-                # ถ้ายังไม่มีการทำ mapping (กันพิกัดเปลี่ยนตอนโหลด)
-                if not hasattr(self.game, 'underground_fragments_mapping'):
-                    import random
-                    r = random.Random(777)
-                    
-                    self.game.underground_fragments_mapping = {}
-                    
-                    # 1. กำหนดตำแหน่งจริง 3 จุด (กระจายกัน) จาก settings
-                    from data.settings import UNDERGROUND_TRUE_POSITIONS
-                    true_positions = UNDERGROUND_TRUE_POSITIONS
-                    available_spots = [s for s in all_positions if s not in true_positions]
-                    for pos in true_positions:
-                        self.game.underground_fragments_mapping[pos] = {"type": "true"}
-                    
-                    # 2. สุ่มตำแหน่งอื่นๆ ที่เหลือ (ไม่ทับจุดจริง)
-                    remaining_pos = [p for p in all_positions if p not in true_positions]
-                    r.shuffle(remaining_pos)
-                    
-                    # เลือก 3 จุดเป็นของปลอม (ไม่เจออะไร)
-                    for i in range(min(3, len(remaining_pos))):
-                        self.game.underground_fragments_mapping[remaining_pos[i]] = {"type": "fake"}
-                    
-                    # เลือกอีก 3 จุดเป็นผี (Ghost Scare)
-                    for i in range(3, min(6, len(remaining_pos))):
-                        self.game.underground_fragments_mapping[remaining_pos[i]] = {"type": "ghost"}
 
-                # สร้างดาวเฉพาะจุดที่มีความสำคัญ (ใน mapping)
-                for pos, data in self.game.underground_fragments_mapping.items():
-                    if pos in self.game.collected_stars: continue
-                    
-                    # สร้างดาว ( Sparks)
-                    star = Star(self.game.sorting_layer, pos[0], pos[1], is_true=(data["type"] == "true"))
-                    self.game.stars.append(star)
+            from data.settings import UNDERGROUND_FRAGMENT_MAPPING
+            # ตั้ง mapping บน game object เพื่อให้ choice.py ใช้ได้
+            self.game.underground_fragments_mapping = UNDERGROUND_FRAGMENT_MAPPING
+
+            # สร้างดาวเฉพาะจุดที่ยังไม่ถูกค้น
+            for pos, data in UNDERGROUND_FRAGMENT_MAPPING.items():
+                if pos in self.game.collected_stars:
+                    continue
+                star = Star(self.game.sorting_layer, pos[0], pos[1], is_true=(data["type"] == "true"))
+                self.game.stars.append(star)
 
     def create_candles(self):
         """สร้างเทียนที่พิกัดต่างๆ สำหรับเควส Day 3"""
@@ -573,6 +540,25 @@ class WorldManager:
             if self.game.blue_overlay.parent:
                 self.game.blue_overlay.parent.remove_widget(self.game.blue_overlay)
             self.game.blue_overlay = None
+        
+        # 1.2 รีเซ็ตสถานะ underground และสลับ bg loop กลับ
+        if getattr(self.game.player, 'is_underground', False):
+            self.game.player.is_underground = False
+            from kivy.app import App
+            from kivy.core.audio import SoundLoader
+            app = App.get_running_app()
+            if hasattr(app, 'bg_loop') and app.bg_loop:
+                app.bg_loop.stop()
+            original_bgm_path = 'assets/sound/loop/Ambiance_Cave_Dark_Loop_Stereo.wav'
+            import os
+            if os.path.exists(original_bgm_path):
+                original_bgm = SoundLoader.load(original_bgm_path)
+                if original_bgm:
+                    original_bgm.loop = True
+                    original_bgm.volume = 0.8
+                    original_bgm.play()
+                    app.bg_loop = original_bgm
+
         
         # 2. Map Reset
         if self.game.game_map.filename != MAP_FILE:

@@ -1,6 +1,7 @@
 from kivy.uix.label import Label
 from kivy.graphics import Color, RoundedRectangle
 from data.settings import *
+from data.chat import CANDLE_LIGHT_DIALOGUE, CANDLE_LIGHT_CHOICES
 
 class InteractionManager:
     def __init__(self, game):
@@ -76,18 +77,16 @@ class InteractionManager:
         if any(isinstance(child, SaveLoadScreen) for child in root_to_check):
             return
             
-        # 1. เช็คไอเทมดวงดาว (ระยะ 20)
-        star_target, _, _ = self.get_interaction_target(self.game.stars, limit=20)
+        # 1. เช็คไอเทมดวงดาว (ระยะ 32 — ขยายจาก 20 เพราะใน underground star อยู่บน solid tile)
+        star_target, _, _ = self.get_interaction_target(self.game.stars, limit=32)
         self.game.current_star_target = star_target
         if star_target:
-            self._draw_interaction_hint(star_target, offset_y=35)
             return 
         
         # 2. เช็คไอเทมเทียน (Day 3) (ระยะ 20)
         candle_target, _, _ = self.get_interaction_target(self.game.candles, limit=20)
         self.game.current_candle_target = candle_target
         if candle_target:
-            self._draw_interaction_hint(candle_target, offset_y=35)
             return
 
         # 3. เช็ค NPC / Reaper (ระยะ 32)
@@ -116,8 +115,8 @@ class InteractionManager:
                 px, py = self.game.player.logic_pos
                 if abs(px - spot[0]) <= 32 and abs(py - spot[1]) <= 32:
                     self.game.pending_drop_spot = (spot, i)
-                    # วาด Hint E ตรงประตู
-                    self._draw_interaction_hint(None, offset_y=32, pos_override=spot)
+                    # User Request: ไม่ต้องโชว์ปุ่ม E สำหรับจุดวางจดหมาย (Marks)
+                    # self._draw_interaction_hint(None, offset_y=32, pos_override=spot)
                     return
 
         self.game.current_search_target = self.get_search_target()
@@ -180,14 +179,27 @@ class InteractionManager:
             self.game.player.logic_pos = [1088, 16] 
             self.game.player.target_pos = [1088, 16]
             self.game.player.direction = 'up'
+            self.game.player.is_underground = True    # ← สลับเสียงเดิน
             self.game.player.update_frame()
             self.game.player.sync_graphics_pos()
             self.game.sorting_layer.add(self.game.player.group)
+
+            # สลับ bg loop เป็นเสียง Underground
+            from kivy.app import App
+            from kivy.core.audio import SoundLoader
+            app = App.get_running_app()
+            if hasattr(app, 'bg_loop') and app.bg_loop:
+                app.bg_loop.stop()
+            underground_bgm = SoundLoader.load('assets/sound/loop/Underground.wav')
+            if underground_bgm:
+                underground_bgm.loop = True
+                underground_bgm.volume = 0.7
+                underground_bgm.play()
+                app.bg_loop = underground_bgm  # เก็บไว้สำหรับหยุดทีหลัง
             
             self.game.create_npcs()
             self.game.create_enemies()
             self.game.world_manager.create_reapers() 
-            self.game.create_stars()
             
             self.game.show_vn_dialogue("Little girl", "It's cold and damp down here... I should be careful.")
             return
@@ -209,7 +221,10 @@ class InteractionManager:
                 
             star_pos = (self.game.current_star_target.x, self.game.current_star_target.y)
             if 'underground.tmj' in self.game.game_map.filename.lower():
-                self.game.show_vn_dialogue("Little girl", "I found one of those objects... should I search inside?", choices=["SEARCH", "LEAVE IT"])
+                from data.settings import UNDERGROUND_FRAGMENT_MAPPING
+                mapping = getattr(self.game, 'underground_fragments_mapping', UNDERGROUND_FRAGMENT_MAPPING)
+                portrait = mapping.get(star_pos, {}).get("portrait")
+                self.game.show_vn_dialogue("Little girl", "There's something here... should I search inside?", choices=["SEARCH", "LEAVE IT"], portrait=portrait)
             elif self.game.current_day == 4:
                 portrait = DAY4_KEY_MAPPING.get(star_pos, {}).get("portrait")
                 self.game.show_vn_dialogue("Little girl", "There's a piece of something here...", choices=["PICK UP", "LEAVE IT"], portrait=portrait)
@@ -401,6 +416,10 @@ class InteractionManager:
         quest_candles = self.game.quest_manager.active_quests.get("light_candles")
         if quest_candles and quest_candles.is_active and quest_candles.current_count < quest_candles.target_count:
             return ["He already told you the order. Just follow the sequence of his memories."]
+
+        quest_key = self.game.quest_manager.active_quests.get("find_key")
+        if quest_key and quest_key.is_active and quest_key.current_count < quest_key.target_count:
+            return ["Don't wander too far, kid. What she yearns for is still resting within the shadow of her own building."]
 
         return [random.choice(REAPER_DIALOGUES)]
 

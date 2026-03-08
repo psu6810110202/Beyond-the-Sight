@@ -149,9 +149,8 @@ class CutsceneManager:
             
             # 1. เช็คว่าถึงที่หมายหรือยัง
             at_target = abs(px - tx) < 2 and abs(py - ty) < 2
-            
             if at_target and not self.game.player.is_moving:
-                self.game.player.cutscene_mode = False 
+                self.game.player.stop() 
                 
                 # ถึงที่หมายสนิทแล้ว
                 if getattr(self.game, 'sit_sound', None):
@@ -210,8 +209,7 @@ class CutsceneManager:
             if self.game.player.is_moving:
                 self.game.player.move(set(), self.game.npcs, self.game.reaper, self.game.game_map.solid_rects)
             
-            self.game.player.state = 'idle'
-            self.game.player.is_moving = False
+            self.game.player.stop()
             self.game.player.update_frame()
             
             self._food_wait_timer += dt
@@ -271,9 +269,12 @@ class CutsceneManager:
             at_target = abs(px - tx) < 2 and abs(py - ty) < 2
             
             if at_target and not self.game.player.is_moving:
-                # --- แก้ไขตรงนี้: เรียกใช้ stop() เพื่อรีเซ็ต FPS และความเร็ว ---
-                self.game.player.stop() 
-                self.game.player.cutscene_mode = False # ปิดโหมดคัทซีนเพื่อให้เล่นอนิเมชั่น Idle
+                # หยุดตัวละครและรีเซ็ต FPS ครั้งเดียวก่อนเข้า step 41
+                self.game.player.cutscene_mode = False
+                self.game.player.is_moving = False
+                self.game.player.state = 'idle'
+                self.game.player.frame_index = 0
+                self.game.player.update_animation_speed()  # รีเซ็ต FPS เป็น idle (2 fps)
                 
                 # ถึงที่หมายสนิทแล้ว
                 if self.sit_sound:
@@ -342,11 +343,7 @@ class CutsceneManager:
                         self.game.player.logic_pos = [tx, ty]
 
         elif self.game.cutscene_step == 41:
-            # ยืน/นั่งรอ 3 วิ 
-            self.game.player.cutscene_mode = False
-            self.game.player.is_moving = False
-            self.game.player.state = 'idle'
-            self.game.player.update_frame()
+            # ยืน/นั่งรอ 3 วิ (ไม่ต้อง reset state ซ้ำทุก frame เพราะทำไปแล้วใน step 40)
             
             self._anim_timer += dt
             if self._anim_timer >= 3.0:
@@ -450,10 +447,10 @@ class CutsceneManager:
                  # ยังไม่ต้อง self.game.cutscene_step = 40 เดี๋ยว Step ต่อไปจะเรียก end_side_story_cutscene อีกรอบหลัง "..." จบ
                  return
 
-            # --- เริ่มเควสทันทีหลังคุยจบ (User Request - Day 1) ---
-            if self.game.current_day == 1:
+            # --- เริ่มเควสทันทีหลังคุยจบ (Day 1 และ Day 4 ใช้ flow เดียวกัน) ---
+            if self.game.current_day in [1, 4]:
                 self.game.quest_manager.start_quest("find_food", "Find Something to Eat", target=1, show_notif=True)
-                # สำหรับ Day 1: จบคัทซีนทันทีเพื่อให้ผู้เล่นเดินหาได้เลย ไม่ต้องเดินไปมุมห้อง
+                # จบคัทซีนทันทีเพื่อให้ผู้เล่นเดินหาได้เลย ไม่ต้องเดินไปมุมห้อง
                 self._pending_find_food_quest = False
                 self.game.is_cutscene_active = False
                 self.game.cutscene_step = 0
@@ -920,20 +917,90 @@ class CutsceneManager:
                     self.game.black_overlay.parent.remove_widget(self.game.black_overlay)
                 self.game.black_overlay = None
             
+            import os, json
+            os.makedirs('saves', exist_ok=True)
+
             if total_success >= 5:
                 ending_title = ENDING_TITLES[4]
+                json.dump({'ending': 'true'}, open('saves/ending.flag', 'w'))
+                self._show_true_ending_dialogue(root, ending_title)
+
             elif total_success > 0:
                 ending_title = ENDING_TITLES[3]
+                json.dump({'ending': 'normal'}, open('saves/ending.flag', 'w'))
+                intro = IntroScreen(callback=self.game.return_to_main_menu, custom_text=ending_title, play_sound=False, duration=4.5)
+                root.add_widget(intro)
             else:
                 ending_title = ENDING_TITLES[2]
+                json.dump({'ending': 'bad'}, open('saves/ending.flag', 'w'))
+                intro = IntroScreen(callback=self.game.return_to_main_menu, custom_text=ending_title, play_sound=False, duration=4.5)
+                root.add_widget(intro)
                 
-            intro = IntroScreen(
-                callback=self.game.return_to_main_menu, 
-                custom_text=ending_title, 
-                play_sound=False, 
-                duration=4.5
-            )
-            root.add_widget(intro)
-            
+
         anim.bind(on_complete=on_dark)
         anim.start(self.ending_bg)
+
+    def _show_true_ending_dialogue(self, root, ending_title):
+        """แสดง dialogue ก่อน True Ending title card พร้อม bg.jpg เป็นพื้นหลัง"""
+        from data.settings import PLAYER_PORTRAIT_IMG, REAPER_PORTRAIT_IMG
+        from kivy.core.image import Image as CoreImage
+
+        # วาง bg.jpg เหนือ ending_bg (ดำ) แต่ใต้ dialogue
+        self._true_ending_bg_widget = Widget(size_hint=(1, 1))
+        with self._true_ending_bg_widget.canvas:
+            Color(1, 1, 1, 1)
+            try:
+                tex = CoreImage('assets/background/bg.jpg').texture
+                self._true_ending_bg_rect = Rectangle(texture=tex, size=root.size, pos=root.pos)
+            except Exception:
+                self._true_ending_bg_rect = Rectangle(source='assets/background/bg.jpg', size=root.size, pos=root.pos)
+        def _upd_bg(inst, val):
+            self._true_ending_bg_rect.size = root.size
+            self._true_ending_bg_rect.pos = root.pos
+        root.bind(size=_upd_bg, pos=_upd_bg)
+        root.add_widget(self._true_ending_bg_widget)
+
+        dialogues = [
+            ("Little girl", "Who are you? ...Why are you standing there?", PLAYER_PORTRAIT_IMG),
+            ("M",           "...",                                           REAPER_PORTRAIT_IMG),
+            ("M",           "I am the one who will take you to a place where the sun never sets... Do you want to go with me?", REAPER_PORTRAIT_IMG),
+        ]
+        self._true_ending_queue = list(dialogues)
+        self._true_ending_root = root
+        self._true_ending_title = ending_title
+        self._advance_true_ending_dialogue()
+
+    def _advance_true_ending_dialogue(self, *args):
+        """เล่น dialogue ถัดไปใน True Ending queue"""
+        if self._true_ending_queue:
+            name, text, portrait = self._true_ending_queue.pop(0)
+            self.game.show_vn_dialogue(name, text, portrait=portrait)
+            # เก็บ callback สำหรับตอนผู้เล่นกด Enter/E ต่อไป
+            self.game._true_ending_next = self._advance_true_ending_dialogue
+        else:
+            # Queue หมดแล้ว — เล่นเสียง Nod แล้วโชว์ title
+            self.game.close_dialogue()
+            nod_sound = SoundLoader.load('assets/sound/feeling/Nod.wav')
+            if nod_sound:
+                nod_sound.play()
+                # รอเสียงจบ (ประมาณ 1.5 วิ) แล้วโชว์ IntroScreen
+                Clock.schedule_once(lambda dt: self._show_true_ending_title(), nod_sound.length or 1.5)
+            else:
+                Clock.schedule_once(lambda dt: self._show_true_ending_title(), 0.5)
+
+    def _show_true_ending_title(self):
+        root = self._true_ending_root
+        # ลบ bg.jpg widget ก่อนโชว์ IntroScreen
+        if hasattr(self, '_true_ending_bg_widget') and self._true_ending_bg_widget:
+            if self._true_ending_bg_widget.parent:
+                self._true_ending_bg_widget.parent.remove_widget(self._true_ending_bg_widget)
+            self._true_ending_bg_widget = None
+        intro = IntroScreen(
+            callback=self.game.return_to_main_menu,
+            custom_text=self._true_ending_title,
+            play_sound=False,
+            duration=4.5
+        )
+        root.add_widget(intro)
+
+

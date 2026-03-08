@@ -1,4 +1,5 @@
 # storygame/choice.py
+import random
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
 from kivy.graphics import Color, RoundedRectangle, Line
@@ -29,67 +30,111 @@ def handle_choice_selection(game, choice):
         game.player.start_move(dx, dy)
 
     elif choice == "SEARCH":
-        # พิเศษสำหรับแมพใต้ดิน (Soul Fragments) 
+        # พิเศษสำหรับแมพใต้ดิน (Soul Fragments)
         if hasattr(game, 'current_star_target') and game.current_star_target:
             star_pos = (game.current_star_target.x, game.current_star_target.y)
             if not hasattr(game, 'collected_stars'):
                 game.collected_stars = []
             game.collected_stars.append(star_pos)
-            
-            # ลบดาวทิ้งเพื่อให้รู้ว่าจุดนี้รื้อไปแล้ว
+
+            # ลบดาวทิ้ง
             if game.current_star_target in game.stars:
                 game.stars.remove(game.current_star_target)
             game.current_star_target.destroy()
-            
+
             # เช็คผลลัพธ์จาก Mapping
-            mapping = getattr(game, 'underground_fragments_mapping', {})
-            result = mapping.get(star_pos, {"type": "ghost"}) # Default เป็นผีถ้าไม่อยู่ในแมพ
-            
-            from data.chat import UNDERGROUND_STRINGS
-            if result["type"] == "true":
-                # เคส: เจอของจริง
+            from data.settings import UNDERGROUND_FRAGMENT_MAPPING
+            mapping = getattr(game, 'underground_fragments_mapping', UNDERGROUND_FRAGMENT_MAPPING)
+            result = mapping.get(star_pos, {"type": "ghost"})
+
+            rtype = result.get("type", "ghost")
+            img   = result.get("img", None)
+            portrait = result.get("portrait", PLAYER_PORTRAIT_IMG)
+
+            if rtype == "true":
+                # ของจริง — โชว์ item discovery + เพิ่มเควส
                 game.quest_manager.update_quest_progress("soul_fragments", 1)
-                game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_soul"], portrait=PLAYER_PORTRAIT_IMG)
-            elif result["type"] == "fake":
-                # เคส: ของปลอม (นับเข้าเควสแต่ทำให้เควสเฟลเหมือน NPC1)
+                if img:
+                    game.show_item_discovery("SOUL FRAGMENT", img)
+                    game.pending_post_discovery_dialogue = {
+                        "name": "Little girl",
+                        "text": "There's something here... a fragment of a soul.",
+                        "portrait": portrait
+                    }
+                else:
+                    game.show_vn_dialogue("Little girl", "There's something here... a fragment of a soul.", portrait=portrait)
+
+            elif rtype == "fake":
+                # ของปลอม — โชว์ item discovery แต่ set fail
                 game.quest_item_fail = True
                 game.quest_manager.update_quest_progress("soul_fragments", 1)
-                game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_soul"], portrait=PLAYER_S_PORTRAIT_IMG)
-            else:
-                # เคส: เจอผีหลอก (Ghost Scare)
-                if game.scare_sound: game.scare_sound.play()
-                
-                # 1. สปาวน์ผีชั่วคราวทิ้งไว้ที่จุดที่รื้อ และให้ "นิ่ง 2 วิ" 
-                from entities.characters.enemy import Enemy
-                ghost = Enemy(game.sorting_layer, star_pos[0], star_pos[1], enemy_id=999, enemy_type=1)
-                ghost.is_stunned = True
-                ghost.stun_timer = 2.0 # นิ่ง 2 วินาทีเพื่อให้โอกาสวิ่ง
-                game.enemies.append(ghost)
-                
-                # ให้หายไปหลังจาก 2 วิ
-                from kivy.clock import Clock
-                def remove_ghost(dt):
-                    if ghost in game.enemies:
-                        game.enemies.remove(ghost)
-                    ghost.destroy()
-                Clock.schedule_once(remove_ghost, 2.0)
+                if img:
+                    game.show_item_discovery("SOUL FRAGMENT", img)
+                    game.pending_post_discovery_dialogue = {
+                        "name": "Little girl",
+                        "text": "This doesn't feel right... something is wrong.",
+                        "portrait": portrait
+                    }
+                else:
+                    game.show_vn_dialogue("Little girl", "This doesn't feel right...", portrait=portrait)
 
-                # 2. ตัวละครถอยหลัง 3 ก้าว (3 * 32 = 96px)
-                back_map = {'up': (0, -96), 'down': (0, 96), 'left': (96, 0), 'right': (-96, 0)}
+            else:
+                # ผีหลอก — knockback ทันที แล้วค่อยสปาวน์ผีหลังจาก 0.4 วิ
+                from entities.characters.enemy import Enemy
+                from kivy.clock import Clock
+
+                # 1. knockback ผู้เล่นทันที (3 บล็อก step-by-step)
+                back_map = {
+                    'up':    (0, -TILE_SIZE),
+                    'down':  (0,  TILE_SIZE),
+                    'left':  ( TILE_SIZE, 0),
+                    'right': (-TILE_SIZE, 0),
+                }
                 dx, dy = back_map.get(game.player.direction, (0, 0))
-                
-                new_x = game.player.logic_pos[0] + dx
-                new_y = game.player.logic_pos[1] + dy
-                
-                if not game.game_map.is_solid(new_x, new_y):
-                    game.player.logic_pos = [new_x, new_y]
-                    game.player.target_pos = [new_x, new_y]
-                    game.player.sync_graphics_pos()
-                
-                # แสดงหน้าปกติ (player_n) สำหรับเคสศัตรู/ผี
-                game.show_vn_dialogue("Ghost", UNDERGROUND_STRINGS["ghost_scare"], choices=["..."], portrait=PLAYER_PORTRAIT_IMG)
-            
+                px, py = game.player.logic_pos
+                for _ in range(3):
+                    nx, ny = px + dx, py + dy
+                    if game.game_map.is_solid(nx, ny):
+                        break
+                    px, py = nx, ny
+                game.player.logic_pos = [px, py]
+                game.player.target_pos = [px, py]
+                game.player.sync_graphics_pos()
+
+                # 2. เล่นเสียงทันที
+                if hasattr(game, 'shock_sound') and game.shock_sound:
+                    game.shock_sound.play()
+
+                # 3. หาตำแหน่งสปาวน์ผีที่ไม่ทับ hitbox
+                gx, gy = star_pos
+                offsets = [(0, 0), (16, 0), (-16, 0), (0, 16), (0, -16), (32, 0), (-32, 0)]
+                spawn_x, spawn_y = gx, gy
+                for ox, oy in offsets:
+                    cx, cy = gx + ox, gy + oy
+                    if not game.game_map.is_solid(cx, cy):
+                        spawn_x, spawn_y = cx, cy
+                        break
+
+                # 4. delay 0.4 วิ แล้วค่อย spawn ผี (ผู้เล่นกระเด็นห่างแล้ว)
+                ghost_type = random.choice([1, 2, 3])
+                def spawn_ghost(dt, gtype=ghost_type, sx=spawn_x, sy=spawn_y):
+                    ghost = Enemy(game.sorting_layer, sx, sy, enemy_id=9999, enemy_type=gtype)
+                    # ใช้ stun() แทน is_chasing=False เพราะ update() จะ override is_chasing ทุก frame
+                    ghost.stun(3.0)
+                    game.enemies.append(ghost)
+
+                    def release_ghost(dt2, g=ghost):
+                        # stun หมดเองตามเวลา แต่ยกเลิก stun color เผื่อ
+                        if g in game.enemies:
+                            g.is_stunned = False
+                            g.color_instr.rgb = (1, 1, 1)
+                    Clock.schedule_once(release_ghost, 5.0)
+
+                Clock.schedule_once(spawn_ghost, 0.4)
+
+
             game.current_star_target = None
+
 
     elif choice == "PICK UP":
         # ตรวจสอบว่ามีดาวที่กำลัง interact อยู่หรือไม่
@@ -126,26 +171,33 @@ def handle_choice_selection(game, choice):
             elif game.current_day == 2:
                 game.letters_held += 1
             elif game.current_day == 4:
-                # หยิบอันไหนก็ได้ (กุญแจจริงหรือหลอก) เควสนับว่าสำรวจแล้ว เพื่อให้กลับไปคุยได้
+                # หยิบอันไหนก็ได้ เควสนับว่าสำรวจแล้วเพื่อให้กลับไปคุยได้
                 if star_pos in curr_map:
                     game.quest_manager.update_quest_progress("find_key", 1)
-                    
-                    # ตรวจสอบความถูกต้อง (เก็บไว้เช็คตอนคุยจบ)
-                    if not curr_map[star_pos].get("is_key"):
+
+                    # เล่นเสียงหยิบกุญแจ
+                    if hasattr(game, 'key_pickup_sound') and game.key_pickup_sound:
+                        game.key_pickup_sound.play()
+
+                    # ถ้าเป็นกุญแจจริง (fail=False) ให้ reset fail flag กรณีเคยหยิบผิดมาก่อน
+                    if not curr_map[star_pos].get("fail", False):
+                        game.quest_item_fail = False
+                    # ถ้าเป็นกุญแจหลอก และยังไม่เคยหยิบของจริง ให้ set fail
+                    else:
                         game.quest_item_fail = True
-                    
+
                     # อัปเดตชื่อเควสให้รู้ว่าต้องกลับไปส่ง
                     quest = game.quest_manager.active_quests.get("find_key")
                     if quest:
                         quest.name = "Return to The Lady at the Window"
                         game.quest_manager.update_quest_list_ui()
-                    
-                    # ลบดาวที่เหลือทั้งหมดออกจากแมพทันทีที่หยิบชิ้นแรก (เพราะบังคับสำรวจแค่รอบเดียวตามเงื่อนไขคุณ)
+
+                    # ลบดาวที่เหลือทั้งหมดออกจากแมพทันทีที่หยิบ
                     for remain_star in game.stars[:]:
                         remain_star.destroy()
                     game.stars.clear()
-                    
-                    # ตั้งค่าแชทที่จะขึ้นต่อหลังจากผู้เล่นกดปิด "Banner ไอเทม" (เพื่อไม่ให้ซ้อนทับกัน)
+
+                    # ตั้งค่าแชทที่จะขึ้นต่อหลังจากผู้เล่นกดปิด "Banner ไอเทม"
                     game.pending_post_discovery_dialogue = {
                         "name": "Little girl",
                         "text": "I found a key. I should return it to the lady at the window.",

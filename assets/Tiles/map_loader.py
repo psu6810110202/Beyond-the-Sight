@@ -229,10 +229,21 @@ class KivyTiledMap:
                 is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg and not is_roof
                 is_well = "well" in name
             
-            # Special Rule for underground.tmj: "ผนัง" and "ของ" must be solid (Hitbox)
-            if "underground.tmj" in self.filename.lower() and ("ผนัง" in name or "ของ" in name):
-                is_solid = True
-                is_ground = False
+            # Special Rule for underground.tmj: "ผนัง" solid, "ของ" solid + foreground (วาดทับผนัง)
+            if "underground.tmj" in self.filename.lower():
+                if "ผนัง" in name:
+                    is_solid = True
+                    is_ground = False
+                elif "ของ" in name:
+                    is_solid = True
+                    is_fg = True      # ← วาดทับผนัง (Z สูงกว่า)
+                    is_ground = False
+                else:
+                    # layer อื่นใน underground ใช้ logic ปกติ (ไม่ solid เว้นแต่ชื่อตรง)
+                    is_solid = not is_ground and (
+                        any(kw in name for kw in ("ผนัง", "กำแพง", "wall", "solid", "obstacle")) or
+                        name.lower() in ("funiture", "funiture2", "furniture", "props")
+                    )
             else:
                 # Normal solid logic
                 is_solid = not is_ground and (
@@ -461,6 +472,14 @@ class KivyTiledMap:
     def draw_foreground(self, canvas): canvas.add(self.fg_group)
     def draw_ground(self, canvas): canvas.add(self.ground_group)
     def draw_roof(self, canvas): canvas.add(self.roof_group)
+
+    def is_solid(self, x, y, size=TILE_SIZE):
+        """คืนค่า True ถ้าจุด (x,y) ทับกับ solid_rect ใดๆ (ใช้ตรวจ hitbox ก่อนสปาวน์/knockback)"""
+        for r in self.solid_rects:
+            if (x < r[0] + r[2] and x + size > r[0] and
+                    y < r[1] + r[3] and y + size > r[1]):
+                return True
+        return False
 
     def update_chunks(self, cam_x, cam_y):
         ws = TILE_SIZE * 16

@@ -70,6 +70,7 @@ class DialogueManager:
         return Clock.schedule_interval(_animate, 0.03)
 
     def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
+        dialogue = str(dialogue) if dialogue is not None else ""  # safety cast
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         cfg = DIALOGUE_CONFIG
         scale = self.get_ui_scale()
@@ -600,7 +601,15 @@ class DialogueManager:
 
         if image_path:
             from kivy.uix.boxlayout import BoxLayout
-            images = [image_path] if isinstance(image_path, str) else image_path
+            # ถ้าเป็น tuple spritesheet spec (path, cols, rows, col, row) ให้ wrap เป็น list 1 element
+            # ถ้าเป็น str ธรรมดา ก็ wrap เป็น list เช่นกัน
+            # ถ้าเป็น list ของ path หลายภาพ ใช้ตรงๆ
+            if isinstance(image_path, str):
+                images = [image_path]
+            elif isinstance(image_path, tuple) and len(image_path) >= 5 and isinstance(image_path[0], str):
+                images = [image_path]  # spritesheet frame spec
+            else:
+                images = list(image_path)  # list ของหลาย path
             
             i_sz = 90 * scale
             spacing = 20 * scale
@@ -619,12 +628,25 @@ class DialogueManager:
                 with box.canvas:
                     Color(1, 1, 1, 1)
                     try:
-                        tex = CoreImage(img).texture
-                        tex.mag_filter = 'nearest'
-                        tex.min_filter = 'nearest'
+                        # รองรับ tuple (path, cols, rows, col_idx, row_idx) สำหรับ spritesheet
+                        if isinstance(img, (tuple, list)) and len(img) >= 5:
+                            img_path, s_cols, s_rows, s_col, s_row = img[0], img[1], img[2], img[3], img[4]
+                            full_tex = CoreImage(img_path).texture
+                            full_tex.mag_filter = 'nearest'
+                            full_tex.min_filter = 'nearest'
+                            frame_w = full_tex.width // s_cols
+                            frame_h = full_tex.height // s_rows
+                            # Kivy y-up: row 0 = บน = inv_y = height - frame_h
+                            inv_y = full_tex.height - (s_row + 1) * frame_h
+                            tex = full_tex.get_region(s_col * frame_w, inv_y, frame_w, frame_h)
+                        else:
+                            tex = CoreImage(img).texture
+                            tex.mag_filter = 'nearest'
+                            tex.min_filter = 'nearest'
                         box.rect = Rectangle(texture=tex, size=(i_sz, i_sz))
                     except Exception:
-                        box.rect = Rectangle(source=img, size=(i_sz, i_sz))
+                        img_src = img[0] if isinstance(img, (tuple, list)) else img
+                        box.rect = Rectangle(source=img_src, size=(i_sz, i_sz))
                 def u_i_r(i, v):
                     i.rect.pos = i.pos
                 box.bind(pos=u_i_r, size=u_i_r)

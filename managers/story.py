@@ -116,6 +116,13 @@ class StoryManager:
 
     def handle_dialogue_end(self, last_character, has_choices):
         """จัดการ Event หลังบทสนทนาจบลง (Logic Story ทอดๆ มาที่นี่)"""
+        # 0. True Ending dialogue queue — ให้ advance ต่อก่อน logic อื่น
+        if getattr(self.game, '_true_ending_next', None):
+            fn = self.game._true_ending_next
+            self.game._true_ending_next = None
+            fn()
+            return
+
         # 1. Reaper: เปิดหน้าจอเซฟ (ทำเฉพาะเมื่อกดคุยเอง และไม่มีทางเลือก/ไม่ได้อยู่ในโหมดสอน)
         if last_character == "Reaper" and not has_choices and not self.game.tutorial_mode and getattr(self.game, 'is_reaper_save_prompt', False):
             # ตรวจสอบว่ากำลังแสดงหน้าจอ "ไอเทม" อยู่หรือไม่ (เช่น เพิ่งได้รับ Blue Stone)
@@ -262,6 +269,28 @@ class StoryManager:
             self.game.quest_manager.update_quest_list_ui()
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
 
+    def _handle_lady_logic(self):
+        quest = self.game.quest_manager.active_quests.get("find_key")
+        if not quest:
+            # เริ่มเควส "Find Key" (ไม่ต้องโชว์ตัวเลขจำนวน)
+            self.game.quest_manager.start_quest("find_key", "Find Key", target=1)
+            self.game.create_stars()
+        elif quest.is_active and quest.current_count >= quest.target_count:
+            # ตรวจสอบความสำเร็จเควส
+            if not getattr(self.game, 'quest_item_fail', False):
+                self.game.quest_success_count += 1
+            
+            quest.is_active = False
+
+            # ลบดาวที่เหลืออยู่บนแมพออกทั้งหมดเมื่อเควสสำเร็จ
+            for s in self.game.stars[:]:
+                s.destroy()
+            self.game.stars.clear()
+
+            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
+            self.game.quest_manager.update_quest_list_ui()
+            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
+
     def _handle_soul_logic(self):
         quest = self.game.quest_manager.active_quests.get("soul_fragments")
         if not quest:
@@ -287,6 +316,10 @@ class StoryManager:
 
     def process_search_spot(self, spot):
         """ประมวลผลการค้นหาตามจุดต่างๆ (เรียกจาก InteractionManager)"""
+        # เล่นเสียง 'ค้นหา' ทุกครั้งที่มีการสำรวจตามคำขอของผู้เล่น
+        if hasattr(self.game, 'find_sound') and self.game.find_sound:
+            self.game.find_sound.play()
+            
         # 1. การค้นหาในบ้าน (ทุกวัน)
         if "home.tmj" in self.game.game_map.filename.lower():
             # ถ้าเป็นวันที่ต้องหาอาหาร (1, 4)
@@ -296,8 +329,6 @@ class StoryManager:
                     return
 
                 if spot == getattr(self.game, 'correct_food_spot', None):
-                    if hasattr(self.game, 'find_sound') and self.game.find_sound:
-                        self.game.find_sound.play()
                     self.game._pending_food_success = True
                     self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["found"])
                 else:
@@ -308,7 +339,6 @@ class StoryManager:
                 self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["empty"])
                 return
 
-        # 2. การค้นหาในแมพใต้ดิน (Day 5)
+        # 2. การค้นหาในแมพใต้ดิน (Day 5) — จัดการผ่าน choice.py แล้ว ไม่ต้องทำที่นี่
         if 'underground.tmj' in self.game.game_map.filename.lower():
-             self.game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_dust"])
-             return
+            return  # ข้ามทันที ให้ choice.py จัดการ SEARCH result

@@ -191,7 +191,12 @@ class GameWidget(Widget):
         self.find_sound = SoundLoader.load('assets/sound/find.wav')
         if self.find_sound:
             self.find_sound.volume = 0.7
-            
+        
+        # โหลดเสียงหยิบกุญแจ (Day 4)
+        self.key_pickup_sound = SoundLoader.load('assets/sound/Keys_pick up.wav')
+        if self.key_pickup_sound:
+            self.key_pickup_sound.volume = 0.8
+
         # โหลดเสียงกินอาหาร/ชุดคลุมขยับ
         self.sit_sound = SoundLoader.load('assets/sound/sit.wav')
         if self.sit_sound:
@@ -279,17 +284,6 @@ class GameWidget(Widget):
                 
             self.quest_manager.update_quest_list_ui(animate=False)
             
-            # ถ้าโหลดมาระหว่างทำเควสดวงดาว (Day 1 หรือ Day 4) ให้สร้างดาวขึ้นมา
-            if "doll_parts" in self.quest_manager.active_quests:
-                quest = self.quest_manager.active_quests["doll_parts"]
-                if quest.is_active:
-                    self.create_stars()
-            elif "find_key" in self.quest_manager.active_quests:
-                quest = self.quest_manager.active_quests["find_key"]
-                # สำหรับ Day 4 ถ้าเก็บไปแล้ว (count=1) ไม่ต้องสร้างดาวแล้ว
-                if quest.is_active and quest.current_count == 0:
-                    self.create_stars()
-        
         # 1.2 เลือกและโหลดแผนที่ (ดึงจากเซฟถ้ามี ไม่เช่นนั้นใช้แผนที่หลัก)
         starting_map = MAP_FILE
         start_pos = [PLAYER_START_X, PLAYER_START_Y]
@@ -334,9 +328,16 @@ class GameWidget(Widget):
             
         # 4.7. สร้างดวงดาว (กรณีโหลดเซฟแล้วมีเควสค้างอยู่)
         active_q = self.quest_manager.active_quests
-        if ("doll_parts" in active_q and active_q["doll_parts"].is_active) or \
-           ("find_key" in active_q and active_q["find_key"].is_active) or \
-           ("soul_fragments" in active_q and active_q["soul_fragments"].is_active):
+        _should_create_stars = False
+        if "doll_parts" in active_q and active_q["doll_parts"].is_active:
+            _should_create_stars = True
+        elif "find_key" in active_q and active_q["find_key"].is_active:
+            # Day 4: สร้างดาวเฉพาะตอนที่ยังไม่ได้หยิบอะไร (count=0)
+            if active_q["find_key"].current_count == 0:
+                _should_create_stars = True
+        elif "soul_fragments" in active_q and active_q["soul_fragments"].is_active:
+            _should_create_stars = True
+        if _should_create_stars:
             self.create_stars()
             
         self.world_manager.restore_delivered_marks()
@@ -471,7 +472,7 @@ class GameWidget(Widget):
 
     def set_candle_color(self, color_name):
         # ลำดับที่ถูกต้อง: แดง (ดอกไม้) -> ฟ้า (พรม) -> เหลือง (แดด)
-        correct_order = ["Red", "Blue", "Yellow"]
+        correct_order = ["RED", "BLUE", "YELLOW"]
         
         if not self.has_received_lantern:
             self.show_vn_dialogue("Little girl", "I need something to light this...")
@@ -481,23 +482,24 @@ class GameWidget(Widget):
             current_step = len(self.player_candle_sequence)
             
             # ตรวจสอบว่าสีที่เลือกตรงกับลำดับที่ต้องจุดในขั้นตอนนี้หรือไม่
-            if color_name != correct_order[current_step]:
-                # ผิด: บันทึกความล้มเหลว และแสดงบทพูดเตือน (แต่ไม่ดับไฟ เพื่อให้เปลี่ยนไม่ได้)
+            if color_name.upper() != correct_order[current_step]:
+                # ผิด: บันทึกความล้มเหลว
                 self.quest_item_fail = True
-                self.show_vn_dialogue("Old Soul", "No... that's not it. Everything is getting blurry again.")
             
             # บันทึกสถานะไม่ว่าจะถูกหรือผิด (เพื่อให้จุดไฟแล้วติดเลย เปลี่ยนไม่ได้)
             self.player_candle_sequence.append(color_name)
             self.current_candle_target.set_color(color_name)
             self.current_candle_lit_count += 1
             
-            if self.current_candle_lit_count >= 3:
-                # สำเร็จภารกิจ (จะล้มเหลวหรือสำเร็จจริงจะไปตัดสินตอนคุยกับ Old Soul)
-                self.show_vn_dialogue("Little girl", "The path is clear now. I should return to him.")
-                q = self.quest_manager.active_quests.get("light_candles")
-                if q: q.name = "Return to The Old Soul"
+            # sync quest progress ให้ตรงกับจำนวนเทียนที่จุดจริง
+            q = self.quest_manager.active_quests.get("light_candles")
+            if q:
+                q.current_count = self.current_candle_lit_count
+                if self.current_candle_lit_count >= 3:
+                    q.current_count = q.target_count
+                    q.name = "Return to The Old Soul"
+                    self.show_vn_dialogue("Little girl", "The path is clear now. I should return to him.")
                 self.quest_manager.update_quest_list_ui()
-
 
     def move_step(self, dt):
         try:
@@ -957,10 +959,9 @@ class GameWidget(Widget):
         app.root.clear_widgets()
         
         from ui.screen import SplashScreen
-        from data.settings import SPLASH_COVER_IMG
         
         splash = SplashScreen(
-            SPLASH_COVER_IMG,
+            self._get_splash_cover(),
             app.show_game
         )
         app.root.add_widget(splash)
@@ -1043,12 +1044,39 @@ class MyApp(App):
         
         # แสดงหน้าจอปกเกมที่เริ่มเล่น (กด Enter เพื่อเริ่ม)
         splash = SplashScreen(
-            SPLASH_COVER_IMG,
+            self._get_splash_cover(),
             self.show_game
         )
         self.root.add_widget(splash)
         
         return self.root
+
+    def _get_splash_cover(self):
+        """เลือกภาพปกตาม ending ล่าสุดที่ได้รับ (อ่านจาก saves/ending.flag)"""
+        import os, json
+        from data.settings import (SPLASH_COVER_IMG, SPLASH_COVER_TRUE_IMG,
+                                   SPLASH_COVER_NORM_IMG, SPLASH_COVER_BAD_IMG)
+        cover_map = {
+            'true':   SPLASH_COVER_TRUE_IMG,
+            'normal': SPLASH_COVER_NORM_IMG,
+            'bad':    SPLASH_COVER_BAD_IMG,
+        }
+        flag_path = 'saves/ending.flag'
+        if os.path.exists(flag_path):
+            try:
+                with open(flag_path, 'r') as f:
+                    data = json.load(f)
+                ending = data.get('ending', '')
+                if ending in cover_map:
+                    return cover_map[ending]
+            except Exception:
+                pass
+        # backward compat: flag เก่า (true_ending.flag)
+        if os.path.exists('saves/true_ending.flag'):
+            return SPLASH_COVER_TRUE_IMG
+        return SPLASH_COVER_IMG
+
+
     
     def show_game(self, initial_data=None):
         """แสดงเกมหลังจบหน้าปกเกม หรือหน้าโหลดเซฟ"""

@@ -23,7 +23,8 @@ class Player:
         self.logic_pos = [start_x, start_y]
         self.current_speed = WALK_SPEED
         self.turn_delay = 0  # <--- เพิ่มตัวหน่วงเวลาตอนเปลี่ยนทิศทาง
-        self.is_in_home = False # เช็คว่าอยู่ในบ้านหรือไม่เพื่อเปลี่ยนเสียงเดิน
+        self.is_in_home = False      # เช็คว่าอยู่ในบ้านหรือไม่เพื่อเปลี่ยนเสียงเดิน
+        self.is_underground = False   # เช็คว่าอยู่ใน underground หรือไม่
         self.cutscene_mode = False # บังคับให้เล่นอนิเมชั่นเดินแม้ไม่ได้กดปุ่ม (เช่น ในคัทซีน)
         
         # โหลด Texture
@@ -97,6 +98,10 @@ class Player:
         
         # โหลดเสียงวิ่งในบ้าน (ไม้)
         self.run_w_sounds = self._load_sounds('assets/sound/run_w', 0.6)
+
+        # โหลดเสียงเดิน/วิ่งใน Underground (หิน)
+        self.walk_r_sounds = self._load_sounds('assets/sound/walk_r', 0.5)
+        self.run_r_sounds  = self._load_sounds('assets/sound/run_r', 0.6)
         
         # โหลดเสียงหอบเมื่อเหนื่อย
         self.breath_sound = SoundLoader.load('assets/sound/breath.wav')
@@ -156,10 +161,14 @@ class Player:
             # เล่นเสียงเดิน/วิ่ง (ในจังหวะลงเท้า: เฟรม 0 และ 4 ของอนิเมชั่น 8 เฟรม)
             if self.state == 'walk' and self.frame_index in [0, 4]:
                 if self.current_speed == RUN_SPEED:
-                    sounds = self.run_w_sounds if self.is_in_home else self.run_sounds
+                    if self.is_underground:  sounds = self.run_r_sounds
+                    elif self.is_in_home:    sounds = self.run_w_sounds
+                    else:                    sounds = self.run_sounds
                     if sounds: random.choice(sounds).play()
                 else:
-                    sounds = self.walk_w_sounds if self.is_in_home else self.walk_sounds
+                    if self.is_underground:  sounds = self.walk_r_sounds
+                    elif self.is_in_home:    sounds = self.walk_w_sounds
+                    else:                    sounds = self.walk_sounds
                     if sounds: random.choice(sounds).play()
             
         self.update_frame()
