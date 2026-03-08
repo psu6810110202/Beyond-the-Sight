@@ -97,6 +97,7 @@ class SaveManager:
         
         # เพิ่ม timestamp จริง (ไม่แสดงใน UI แต่ใช้เลือก save ล่าสุด)
         save_data["saved_at"] = datetime.datetime.now().isoformat()
+        save_data["slot_id"]  = slot_id   # เก็บ slot เพื่อให้ game รู้ว่ากำลัง auto-save ไปที่ไหน
 
         file_path = f'saves/slot_{slot_id}.json'
         with open(file_path, 'w') as f:

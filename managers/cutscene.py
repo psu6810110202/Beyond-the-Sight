@@ -923,16 +923,19 @@ class CutsceneManager:
             if total_success >= 5:
                 ending_title = ENDING_TITLES[4]
                 json.dump({'ending': 'true'}, open('saves/ending.flag', 'w'))
+                self.game.save_persistent_stats(last_ending='true') # บันทึกลง Persistent ทันที
                 self._show_true_ending_dialogue(root, ending_title)
 
             elif total_success > 0:
                 ending_title = ENDING_TITLES[3]
                 json.dump({'ending': 'normal'}, open('saves/ending.flag', 'w'))
+                self.game.save_persistent_stats(last_ending='normal') # บันทึกลง Persistent ทันที
                 self._show_normal_ending_sequence(root, ending_title)
 
             else:
                 ending_title = ENDING_TITLES[2]
                 json.dump({'ending': 'bad'}, open('saves/ending.flag', 'w'))
+                self.game.save_persistent_stats(last_ending='bad') # บันทึกลง Persistent ทันที
                 self._show_bad_ending_sequence(root, ending_title)
 
                 
@@ -1138,7 +1141,7 @@ class CutsceneManager:
             self._bad_play_sounds()
             return
         char, text, portrait = self._bad_q1.pop(0)
-        self.game.show_vn_dialogue(char, text, portrait_path=portrait, can_save=False)
+        self.game.show_vn_dialogue(char, text, portrait=portrait)
 
     def _bad_play_sounds(self):
         """เล่น Gore.wav ก่อน แล้วต่อด้วย Scream.wav"""
@@ -1151,29 +1154,40 @@ class CutsceneManager:
         gore_path   = 'assets/sound/hit/Gore.wav'
         scream_path = 'assets/sound/feeling/Scream.wav'
 
-        gore_dur = 0.0
+        gore_dur = 2.0  # fallback
+        has_gore = False
         if os.path.exists(gore_path):
-            self._bad_gore = SoundLoader.load(gore_path)
-            if self._bad_gore:
-                self._bad_gore.volume = 0.9
-                self._bad_gore.play()
-                gore_dur = self._bad_gore.length if self._bad_gore.length > 0 else 1.5
+            try:
+                self._bad_gore = SoundLoader.load(gore_path)
+                if self._bad_gore:
+                    self._bad_gore.volume = 1.0
+                    self._bad_gore.play()
+                    gore_dur = self._bad_gore.length if self._bad_gore.length > 0 else 2.0
+                    has_gore = True
+            except Exception as e:
+                print(f"Error playing gore sound: {e}")
 
-        scream_dur = 0.0
+        scream_dur = 3.0 # fallback
         if os.path.exists(scream_path):
-            self._bad_scream = SoundLoader.load(scream_path)
-            if self._bad_scream:
-                scream_dur = self._bad_scream.length if self._bad_scream.length > 0 else 2.5
-                def _play_scream(dt):
-                    self._bad_scream.volume = 0.9
-                    self._bad_scream.play()
-                Clock.schedule_once(_play_scream, gore_dur + 0.1)
+            try:
+                self._bad_scream = SoundLoader.load(scream_path)
+                if self._bad_scream:
+                    scream_dur = self._bad_scream.length if self._bad_scream.length > 0 else 3.0
+                    def _play_scream(dt):
+                        if self._bad_scream:
+                            self._bad_scream.volume = 1.0
+                            self._bad_scream.play()
+                    # เล่นหลังจาก gore จบ (หรือหลังจาก 2.1 วิถ้าไม่มี gore)
+                    Clock.schedule_once(_play_scream, gore_dur if has_gore else 0.5)
+            except Exception as e:
+                print(f"Error playing scream sound: {e}")
 
-        total = gore_dur + 0.1 + scream_dur + 0.3
-        Clock.schedule_once(lambda dt: self._bad_go_dark(), total)
+        total_wait = gore_dur + scream_dur + 0.5
+        Clock.schedule_once(lambda dt: self._bad_go_dark(), total_wait)
 
     def _bad_go_dark(self):
         """ลบแมพออก → จอดำ → รอ 3 วิ"""
+        print("DEBUG: Bad ending go dark")
         if getattr(self, '_bad_map_w', None) and self._bad_map_w.parent:
             self._bad_map_w.parent.remove_widget(self._bad_map_w)
         # จอดำ (_bad_black_w) ยังอยู่ รอ 3 วิ
@@ -1181,6 +1195,7 @@ class CutsceneManager:
 
     def _bad_phase2(self, dt=None):
         """Phase 2: Little Girl → Reaper dialogue"""
+        print("DEBUG: Bad ending phase 2 started")
         self._bad_q2 = [
             ("Little Girl", "It hurts... It hurts so much... Mr. Reaper, I can't see anything. Why is it so dark?", None),
             ("Reaper",      "Hush now... The world you saw was too ugly for a soul like yours. In this darkness, they can't hurt you anymore.", None),
@@ -1200,4 +1215,4 @@ class CutsceneManager:
             self._bad_root.add_widget(intro)
             return
         char, text, portrait = self._bad_q2.pop(0)
-        self.game.show_vn_dialogue(char, text, portrait_path=portrait, can_save=False)
+        self.game.show_vn_dialogue(char, text, portrait=portrait)

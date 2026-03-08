@@ -146,7 +146,12 @@ class StoryManager:
         if getattr(self.game, 'is_cutscene_active', False) and getattr(self.game, 'black_overlay', None) is not None:
             if self.game.current_day == 5:
                 success = not getattr(self.game, 'quest_item_fail', False)
-                total_success = self.game.quest_success_count + (1 if success else 0)
+                # ใช้ค่าสูงสุดระหว่างที่นับได้ในรอบนี้ กับที่เคยบันทึกไว้ใน Persistent 
+                base_success = self.game.quest_success_count
+                if hasattr(self.game, 'persistent_stats'):
+                    base_success = max(base_success, self.game.persistent_stats.get('max_quest_success', 0))
+                
+                total_success = base_success + (1 if success else 0)
                 if hasattr(self.game, 'cutscene_manager'):
                     self.game.cutscene_manager.start_day5_ending(total_success)
             else:
@@ -216,21 +221,7 @@ class StoryManager:
             # ตรวจสอบความสำเร็จเควส
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
-            
-            quest.is_active = False
-            self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
-            self.game.quest_manager.update_quest_list_ui()
-            Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
-            
-    def _handle_sad_soul_logic(self):
-        quest = self.game.quest_manager.active_quests.get("doll_parts")
-        if not quest:
-            self.game.quest_manager.start_quest("doll_parts", "Find doll parts", target=3)
-            self.game.create_stars()
-        elif quest.is_active and quest.current_count >= quest.target_count:
-            # ตรวจสอบความสำเร็จเควส
-            if not getattr(self.game, 'quest_item_fail', False):
-                self.game.quest_success_count += 1
+                self.game.save_persistent_stats() # บันทึกสถิติแบบ Global ทันที
             
             quest.is_active = False
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
@@ -253,6 +244,7 @@ class StoryManager:
         elif quest.is_active and quest.current_count >= quest.target_count:
             # ตรวจสอบความสำเร็จเควส (ใน Day 2 จดหมายทุพฉบับจริงหมด)
             self.game.quest_success_count += 1
+            self.game.save_persistent_stats() # บันทึกสถิติแบบ Global ทันที
             
             quest.is_active = False
             # แสดงชื่อเควสที่ถูกต้องในการแจ้งเตือนตอนจบ
@@ -270,6 +262,7 @@ class StoryManager:
             # ตรวจสอบความสำเร็จเควส
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
+                self.game.save_persistent_stats() # บันทึกสถิติแบบ Global ทันที
             
             quest.is_active = False
             self.game.quest_manager.show_quest_notification(f"COMPLETED: {quest.name.upper()}")
@@ -286,6 +279,7 @@ class StoryManager:
             # ตรวจสอบความสำเร็จเควส
             if not getattr(self.game, 'quest_item_fail', False):
                 self.game.quest_success_count += 1
+                self.game.save_persistent_stats() # บันทึกสถิติแบบ Global ทันที
             
             quest.is_active = False
 
@@ -309,9 +303,12 @@ class StoryManager:
             if not self.game.stars:
                 self.game.create_stars()
         elif quest.is_active and quest.current_count >= quest.target_count:
-            # สำเร็จเควส
-            self.game.quest_success_count += 1
+            # สำเร็จเควส — เช็ค fail ก่อนนับ success เหมือนวันอื่นๆ
+            if not getattr(self.game, 'quest_item_fail', False):
+                self.game.quest_success_count += 1
+                self.game.save_persistent_stats() # บันทึกสถิติแบบ Global ทันที
             quest.is_active = False
+
             # ลบดาวทิ้งทันทีเมื่อจบเควสที่ NPC
             for s in self.game.stars[:]: s.destroy()
             self.game.stars.clear()

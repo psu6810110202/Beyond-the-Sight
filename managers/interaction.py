@@ -393,8 +393,8 @@ class InteractionManager:
                 if quest.current_count >= quest.target_count:
                     from data.chat import NPC5_SUCCESS, NPC5_FAIL
                     if getattr(self.game, 'quest_item_fail', False):
-                        return [NPC5_FAIL or "These aren't my fragments..."]
-                    return [NPC5_SUCCESS or "I feel whole again... Thank you."]
+                        return NPC5_FAIL or ["These aren't my fragments..."]
+                    return NPC5_SUCCESS or ["I feel whole again... Thank you."]
                 elif quest.is_active:
                     return ["Were you able to find the fragments? I can almost feel myself becoming whole again..."]
 

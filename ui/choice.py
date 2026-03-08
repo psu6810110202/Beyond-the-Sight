@@ -44,6 +44,7 @@ def handle_choice_selection(game, choice):
 
             # Auto-save collected_stars ลงสล็อตที่กำลังใช้งานทันที (ไม่ต้องรอผู้เล่น save เอง)
             import os, json
+            os.makedirs('saves', exist_ok=True)
             _slot = getattr(game, 'current_save_slot', None)
             if _slot is not None:
                 _path = f'saves/slot_{_slot}.json'
@@ -56,6 +57,12 @@ def handle_choice_selection(game, choice):
                             json.dump(_sd, _f)
                     except Exception as _e:
                         print(f"Auto-save collected_stars failed: {_e}")
+            # เขียน standalone file เสมอ — สำหรับผู้เล่นที่ไม่เคย save เลย
+            try:
+                with open('saves/underground_progress.json', 'w') as _f:
+                    json.dump({'collected_stars': [list(p) for p in game.collected_stars]}, _f)
+            except Exception:
+                pass
 
             # เช็คผลลัพธ์จาก Mapping
             from data.settings import UNDERGROUND_FRAGMENT_MAPPING

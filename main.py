@@ -63,6 +63,23 @@ class GameWidget(Widget):
         self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
         # แปลงพิกัดจาก List ใน JSON ให้เป็น Tuple เพื่อให้เช็คกับพิกัดใน Settings ได้ถูกต้อง
         self.collected_stars = [tuple(pos) for pos in initial_data.get('collected_stars', [])] if initial_data else []
+        # อ่าน slot_id จาก save ทันที (ทำให้ auto-save ถูก slot จากทุก load path)
+        self.current_save_slot = initial_data.get('slot_id', None) if initial_data else None
+        print(f"DEBUG _initialize_game: current_save_slot={self.current_save_slot}, collected_stars={self.collected_stars}")
+        
+        # Merge underground_progress.json — ครอบคลุมผู้เล่นที่ไม่เคย save เลย
+        import json as _json, os as _os
+        _up = 'saves/underground_progress.json'
+        if _os.path.exists(_up):
+            try:
+                with open(_up, 'r') as _f:
+                    _prog = _json.load(_f)
+                _extra = set(tuple(p) for p in _prog.get('collected_stars', []))
+                _existing = set(self.collected_stars)
+                self.collected_stars = list(_existing | _extra)
+                print(f"DEBUG merged underground_progress: {_extra} → total {len(self.collected_stars)}")
+            except Exception:
+                pass
         
         self.candles = []
         self.current_candle_target = None
@@ -70,12 +87,24 @@ class GameWidget(Widget):
         self.current_candle_lit_count = initial_data.get('current_candle_lit_count', 0) if initial_data else 0
         self.player_candle_sequence = [] # เก็บสีที่ผู้เล่นจุดจริงตามลำดับ
         
-        # คลีนข้อมูล Day 1 ถ้าโหลดมาเป็นวันอื่น (User Request)
-        if initial_data and initial_data.get('day', 1) > 1:
-            self.collected_stars = []
-        else:
-            # ถ้าเป็น Day 1 หรือเริ่มเกมใหม่ ให้รีเซ็ตจำนวนเทียนด้วย
+        # คลีนข้อมูล Day 1 เฉพาะตอนข้ามวันจริงๆ (ย้ายไปอยู่ใน game_logic.py แล้ว)
+        # แต่สำหรับข้อมูลการจุดเทียน Day 3 ให้รีเซ็ตเมื่อเริ่มวันใหม่
+        if not initial_data:
             self.current_candle_lit_count = 0
+            
+        # --- ระบบPersistent Data (Global Stats) ---
+        # สำหรับกรณีที่ผู้เล่นไม่ยอมเซฟเลย เราจะใช้ค่าความสำเร็จสูงสุดที่เคยทำได้
+        self.persistent_stats_path = 'saves/persistent_progress.json'
+        self.persistent_stats = {}
+        if _os.path.exists(self.persistent_stats_path):
+            try:
+                with open(self.persistent_stats_path, 'r') as _f:
+                    self.persistent_stats = _json.load(_f)
+                
+                # ถ้าโหลดเกมใหม่ (ไม่มี initial_data) หรือโหลดเซฟที่สำเร็จน้อยกว่าสถิติสูงสุด
+                # ให้พิจารณาใช้ค่าจาก Persistent (แต่ในตอนนี้เน้นใช้เพื่อตัดสิน Ending เป็นหลัก)
+                print(f"DEBUG persistent_stats loaded: {self.persistent_stats}")
+            except Exception: pass
             
         self.has_received_blue_stone = initial_data.get('has_received_blue_stone', False) if initial_data else False
         self.has_received_lantern = initial_data.get('has_received_lantern', False) if initial_data else False
@@ -917,6 +946,39 @@ class GameWidget(Widget):
 
     def on_save_confirmed(self, slot_id, save_screen=None):
         self.save_manager.on_save_confirmed(slot_id, save_screen)
+
+    def save_persistent_stats(self, last_ending=None):
+        """บันทึกสถิติความก้าวหน้าแบบ Global ทันทีโดยไม่ต้องพึ่งพาไฟล์เซฟสล็อต"""
+        import os, json
+        os.makedirs('saves', exist_ok=True)
+        
+        # 1. อ่านข้อมูลเดิมถ้ามี
+        stats = {}
+        if os.path.exists(self.persistent_stats_path):
+            try:
+                with open(self.persistent_stats_path, 'r') as f:
+                    stats = json.load(f)
+            except Exception: pass
+            
+        # 2. ปรับปรุงข้อมูล (ใช้ค่าสูงสุดที่เคยทำได้)
+        old_max = stats.get('max_quest_success', 0)
+        stats['max_quest_success'] = max(old_max, self.quest_success_count)
+        
+        if last_ending:
+            stats['last_ending'] = last_ending
+            achieved = stats.get('achieved_endings', [])
+            if last_ending not in achieved:
+                achieved.append(last_ending)
+            stats['achieved_endings'] = achieved
+            
+        # 3. บันทึกกลับลงไฟล์
+        try:
+            with open(self.persistent_stats_path, 'w') as f:
+                json.dump(stats, f)
+            self.persistent_stats = stats
+            print(f"DEBUG: Persistent stats updated! max_success={stats['max_quest_success']}")
+        except Exception as e:
+            print(f"DEBUG: Failed to save persistent stats: {e}")
 
     def load_game_from_pause(self):
         self.save_manager.load_game_from_pause()

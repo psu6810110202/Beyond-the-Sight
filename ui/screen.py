@@ -90,11 +90,9 @@ class GameMenu(FloatLayout):
             Color(1, 1, 1, 1) # ขอบสีขาว
             self.border = Line(rectangle=(self.x, self.y, self.width, self.height), width=2)
             
-            # ตกแต่งมุม
-            # มุมซ้ายบน
-            Line(points=[self.x, self.y + self.height - 15, self.x, self.y + self.height, self.x + 15, self.y + self.height], width=2)
-            # มุมขวาล่าง
-            Line(points=[self.x + self.width - 15, self.y, self.x + self.width, self.y, self.x + self.width, self.y + 15], width=2)
+            # ตกแต่งมุม (เก็บ reference เพื่อ update ทีหลัง)
+            self.corner_tl = Line(points=[self.x, self.y + self.height - 15, self.x, self.y + self.height, self.x + 15, self.y + self.height], width=2)
+            self.corner_br = Line(points=[self.x + self.width - 15, self.y, self.x + self.width, self.y, self.x + self.width, self.y + 15], width=2)
 
         # สร้างปุ่ม
         for text in items:
@@ -120,6 +118,9 @@ class GameMenu(FloatLayout):
         self.bg_rect.pos = self.pos
         self.bg_rect.size = self.size
         self.border.rectangle = (self.x, self.y, self.width, self.height)
+        # อัปเดต corner decorations
+        self.corner_tl.points = [self.x, self.y + self.height - 15, self.x, self.y + self.height, self.x + 15, self.y + self.height]
+        self.corner_br.points = [self.x + self.width - 15, self.y, self.x + self.width, self.y, self.x + self.width, self.y + 15]
         self.layout_buttons() # อัปเดตตำแหน่งปุ่มทุกครั้งที่มีการ Resize
 
     def move_selection(self, direction):
@@ -266,15 +267,15 @@ class SplashScreen(FloatLayout):
         if load_screen:
             load_screen.close()
             
-        self.finish_splash(initial_data=data)
+        self.finish_splash(initial_data=data, loaded_slot=slot_id)
 
-    def finish_splash(self, initial_data=None):
+    def finish_splash(self, initial_data=None, loaded_slot=None):
         if self._keyboard:
             self._keyboard.unbind(on_key_down=self._on_key_down)
             self._keyboard = None
         if self.callback:
             # ส่งข้อมูลที่โหลดมากลับไปที่ show_game ใน MyApp
-            self.callback(initial_data=initial_data)
+            self.callback(initial_data=initial_data, loaded_slot=loaded_slot)
         if self.parent:
             self.parent.remove_widget(self)
 
