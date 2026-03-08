@@ -61,7 +61,8 @@ class GameWidget(Widget):
         
         # จัดการข้อมูลศัตรูที่ถูกกำจัดไปแล้ว (ไม่เกิดใหม่)
         self.destroyed_enemies = initial_data.get('destroyed_enemies', []) if initial_data else []
-        self.collected_stars = initial_data.get('collected_stars', []) if initial_data else []
+        # แปลงพิกัดจาก List ใน JSON ให้เป็น Tuple เพื่อให้เช็คกับพิกัดใน Settings ได้ถูกต้อง
+        self.collected_stars = [tuple(pos) for pos in initial_data.get('collected_stars', [])] if initial_data else []
         
         self.candles = []
         self.current_candle_target = None
@@ -403,9 +404,6 @@ class GameWidget(Widget):
         self.player.direction = 'right'
         self.player.update_frame()
         
-        # เปิดธงเพื่อให้แสดงหน้าจอเซฟหลังคุยจบ
-        self.is_reaper_save_prompt = True
-        
         # ดึงบทสนทนาเริ่มต้นตามวัน (Safe fallback to Day 1)
         dialogue = INTRO_DIALOGUES.get(self.current_day, INTRO_DIALOGUES[1])
         self.show_dialogue_above_reaper(dialogue)
@@ -745,6 +743,32 @@ class GameWidget(Widget):
     def interact(self):
         self.interaction_manager.interact()
 
+    def stop_all_sounds(self):
+        """หยุดเสียงประกอบเกมทั้งหมด (เช่น เมื่อเริ่มคัทซีนฉากจบ) ยกเว้นเสียง Ambiance หลัก"""
+        sounds = [
+            self.curious_sound, self.sad_soul_sound, self.reaper_voice_sound,
+            self.click_sound, self.find_sound, self.shock_sound
+        ]
+        if hasattr(self, 'ghost_sounds'):
+            sounds.extend(self.ghost_sounds.values())
+        
+        for s in sounds:
+            if s and s.state == 'play':
+                # ตรวจสอบว่าเป็นเสียงบรรยากาศหลักหรือไม่ ถ้าใช่ให้ผ่านไป
+                if hasattr(s, 'source') and 'Ambiance_Cave_Dark_Loop_Stereo.wav' in s.source:
+                    continue
+                s.stop()
+        
+        # ตรวจสอบเสียงจาก App (ถ้ามี)
+        from kivy.app import App
+        app = App.get_running_app()
+        if hasattr(app, 'bg_loop') and app.bg_loop:
+            if app.bg_loop.state != 'play':
+                app.bg_loop.play() # ให้แน่ใจว่ายังเล่นอยู่
+        
+        if hasattr(self, 'player'):
+            self.player.cleanup() # หยุดเสียงเดินและเสียงหอบของ Player
+
     def clear_interaction_hints(self):
         self.interaction_manager.clear_interaction_hints()
 
@@ -767,8 +791,8 @@ class GameWidget(Widget):
     def show_dialogue_above_npc(self, npc, dialogue, npc_name=None):
         self.interaction_manager.show_dialogue_above_npc(npc, dialogue, npc_name)
 
-    def show_dialogue_above_reaper(self, dialogue, choices=None, portrait=None):
-        self.interaction_manager.show_dialogue_above_reaper(dialogue, choices, portrait)
+    def show_dialogue_above_reaper(self, dialogue, choices=None, portrait=None, can_save=True):
+        self.interaction_manager.show_dialogue_above_reaper(dialogue, choices, portrait, can_save)
 
     def show_vn_dialogue(self, character_name, dialogue, choices=None, portrait=None, left_portrait=None):
         self.dialogue_manager.show_vn_dialogue(character_name, dialogue, choices, portrait, left_portrait)
@@ -864,6 +888,32 @@ class GameWidget(Widget):
             app.show_game
         )
         app.root.add_widget(splash)
+
+    def cleanup(self):
+        """ล้างสถานะและปิดเสียงทั้งหมดของตัวเกม"""
+        self.stop_all_sounds()
+        self.pressed_keys.clear()
+        if hasattr(self, 'player'):
+            self.player.stop()
+
+    def stop_all_sounds(self):
+        """วนลูปสั่งปิดเสียงทั้งหมดที่มีในเกมเพลย์นี้"""
+        # ปิดเสียงผีไล่ต่างๆ
+        if getattr(self, 'ghost_sounds', None):
+            for s in self.ghost_sounds.values():
+                if getattr(s, 'state', '') == 'play':
+                    s.stop()
+        
+        # ปิดเสียงอื่นๆ
+        sound_attrs = [
+            'find_sound', 'shock_sound', 'curious_sound',
+            'sad_soul_sound', 'reaper_voice_sound', 'click_sound'
+        ]
+        for attr in sound_attrs:
+            s_obj = getattr(self, attr, None)
+            if s_obj and getattr(s_obj, 'state', '') == 'play':
+                s_obj.stop()
+
 
     def exit_game(self):
         """ออกจากเกม"""

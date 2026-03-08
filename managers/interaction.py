@@ -246,8 +246,10 @@ class InteractionManager:
     def process_interaction(self, target, index, dx, dy):
         """ประมวลผลการคุยกับ NPC หรือ Reaper"""
         if target == self.game.reaper or target in getattr(self.game, 'extra_reapers', []):
+            # เช็คว่าเป็น Reaper ปลอม/ตัวแถม ในพิกัดอันตรายหรือไม่
+            is_extra = target in getattr(self.game, 'extra_reapers', [])
             dialogue = self.get_reaper_dialogue(dx, dy)
-            self.show_dialogue_above_reaper(dialogue)
+            self.show_dialogue_above_reaper(dialogue, can_save=not is_extra)
         elif target in self.game.npcs:
             npc_name = ""
             if hasattr(target, 'name') and target.name:
@@ -287,11 +289,13 @@ class InteractionManager:
             first_text = self.game.current_dialogue_queue[0]
             self.game.dialogue_manager.show_vn_dialogue(npc_name, first_text)
 
-    def show_dialogue_above_reaper(self, dialogue, choices=None, portrait=None):
+    def show_dialogue_above_reaper(self, dialogue, choices=None, portrait=None, can_save=True):
+        self.game.is_reaper_save_prompt = can_save # เปิดธงให้ขึ้นเซฟหลังคุยจบ (ถ้าไม่ใช่พิกัดอันตราย)
         self.game.current_dialogue_queue = dialogue
         self.game.current_dialogue_index = 0
         self.game.current_character_name = "Reaper"
         self.game.current_portrait = portrait
+        self.game.current_choices = choices
         
         if self.game.reaper_voice_sound:
             self.game.reaper_voice_sound.play()
@@ -303,26 +307,17 @@ class InteractionManager:
             is_last = (self.game.current_dialogue_index == len(self.game.current_dialogue_queue) - 1)
             self.game.dialogue_manager.show_vn_dialogue(
                 "Reaper", first_text, 
-                choices=(self.game.current_choices if is_last else None),
+                choices=(choices if is_last else None),
                 portrait=self.game.current_portrait
             )
 
     def get_proximity_dialogue(self, npc_name, distance_x, distance_y):
         from data.chat import NPC_DIALOGUES
-        if npc_name == "The Soul":
-            quest = self.game.quest_manager.active_quests.get("soul_fragments")
-            if quest:
-                if quest.current_count >= quest.target_count:
-                    from data.chat import NPC5_SUCCESS
-                    return [NPC5_SUCCESS]
-                elif quest.is_active:
-                    return ["Were you able to find the fragments? I can almost feel myself becoming whole again..."]
-
         if npc_name == "The Sad Soul":
             quest = self.game.quest_manager.active_quests.get("doll_parts")
             if quest:
                 if quest.current_count >= quest.target_count:
-                    if self.game.quest_item_fail:
+                    if getattr(self.game, 'quest_item_fail', False):
                         return ["Oh! You found them!", "Wait... these parts... they're just old scrap metal...", "Why would you give me these? This isn't my doll..."]
                     return ["Oh! You found them!", "My doll... it's whole again. Thank you so much!", "You really are a kind one."]
                 elif quest.is_active:
@@ -348,6 +343,25 @@ class InteractionManager:
                     return [OLD_SOUL_SUCCESS]
                 elif quest.is_active:
                     return ["The red flowers in the vase...", "The blue rug in the hallway...", "The yellow sunlight on the porch...", "If only I could see those colors again..."]
+
+        if npc_name == "The Lady at the Window":
+            quest = self.game.quest_manager.active_quests.get("find_key")
+            if quest:
+                if quest.current_count >= quest.target_count:
+                    if getattr(self.game, 'quest_item_fail', False):
+                        return ["Wait... this isn't my key. I don't think it fits anything here.", "Thank you for trying, though."]
+                    return ["Oh! The key... my music box can finally play its tune again.", "Thank you, little one. The melody... I've missed it so."]
+                elif quest.is_active:
+                    return ["It's so quiet... I just want to hear that song one more time."]
+
+        if npc_name == "The Soul":
+            quest = self.game.quest_manager.active_quests.get("soul_fragments")
+            if quest:
+                if quest.current_count >= quest.target_count:
+                    from data.chat import NPC5_SUCCESS
+                    return [NPC5_SUCCESS or "I feel whole again... Thank you."]
+                elif quest.is_active:
+                    return ["Were you able to find the fragments? I can almost feel myself becoming whole again..."]
 
         if npc_name in NPC_DIALOGUES:
             return NPC_DIALOGUES[npc_name]

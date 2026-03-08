@@ -247,4 +247,11 @@ UNDERGROUND_STRINGS = {
     "interact_prompt": "I found one of those objects... should I search inside?"
 }
 
+# --- ข้อความการค้นหา Day 1 (Search Dialogues) ---
+SEARCH_DIALOGUES_HOME = {
+    "empty": "Empty... they never leave anything for me anyway.",
+    "found": "Found it. This will keep me going tonight.",
+    "nothing": "Just dust and old rags. There's nothing to eat here."
+}
+
 NPC5_SUCCESS = "I can feel it... my soul is whole again. The cold is finally fading away. Thank you, little one. You have a kindness that this world has forgotten."

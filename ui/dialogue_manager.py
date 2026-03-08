@@ -611,3 +611,8 @@ class DialogueManager:
         if getattr(self.game, 'pending_save_prompt', False) and not self.game.is_dialogue_active:
             self.game.pending_save_prompt = False
             self.game.show_save_screen()
+
+        # Trigger logic ต่อเนื่องสำหรับไอเทมบางชิ้นเช่น LETTERS
+        if hasattr(self, 'last_notif_text') and self.last_notif_text:
+            self.game.story_manager.handle_dialogue_end(self.last_notif_text, False)
+            self.last_notif_text = None

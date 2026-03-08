@@ -1,6 +1,6 @@
 import random
 from kivy.uix.widget import Widget
-from kivy.graphics import Color, Rectangle
+from kivy.graphics import Color, Rectangle, Ellipse
 from kivy.animation import Animation
 from kivy.clock import Clock
 from data.settings import *
@@ -48,6 +48,13 @@ class GameplayManager:
             
         # สุ่มคำพูดโดยไม่ให้ซ้ำกับรอบล่าสุด
         from data.chat import REAPER_DEATH_QUOTES
+        
+        # User Request: เมื่อตายครบ 3 ครั้ง (death_count = 3) ให้ขึ้น Hidden Ending
+        if self.game.death_count == 3:
+            if hasattr(self.game, 'cutscene_manager'):
+                self.game.cutscene_manager.start_succumb_ending()
+            return
+
         available_indices = [i for i in range(len(REAPER_DEATH_QUOTES)) if i != self.game.last_death_quote_index]
         if available_indices:
             q_idx = random.choice(available_indices)
@@ -75,7 +82,54 @@ class GameplayManager:
                 stunned_any = True
         
         if stunned_any:
+            # 1. เล่นเสียงแจ้งเตือน
+            if self.game.shock_sound:
+                self.game.shock_sound.play()
+            
+            # 2. เพิ่ม Visual Flash ทับตัวผู้เล่น
+            root = self.game.dialogue_root if self.game.dialogue_root else self.game
+            flash = Widget(size=(200, 200), opacity=0)
+            with flash.canvas:
+                Color(0.6, 0.8, 1, 0.5) # สีฟ้าอ่อนโปร่งแสง
+                self.flash_ellipse = Ellipse(size=(0, 0), pos=(0, 0))
+            
+            # คำนวณตำแหน่งกลางตัวละครในระดับ Screen Space
+            # (เนื่องจากเป็น Ellipse ใน root widget ต้องแปลงพิกัดหรือใช้วิธีง่ายๆ)
+            # เพื่อความง่าย เราจะใช้ Ellipse วาดใน canvas ของ GameWidget เองตรงๆ
+            with self.game.canvas.after:
+                self.stun_color = Color(0.6, 0.8, 1, 0.6)
+                self.stun_circle = Ellipse(
+                    pos=(player_center_x, player_center_y),
+                    size=(0, 0)
+                )
+            
+            # สร้าง Animation ขยายวงแหวนแล้วจางหาย
+            duration = 0.5
+            def update_stun_circle(anim, instance, value):
+                # value คือรัศมีที่กำลังขยาย
+                r = value * stun_range * 2
+                self.stun_circle.size = (r, r)
+                self.stun_circle.pos = (player_center_x - r/2, player_center_y - r/2)
+            
+            def cleanup_stun_circle(*args):
+                if self.stun_circle:
+                    self.game.canvas.after.remove(self.stun_circle)
+                    self.game.canvas.after.remove(self.stun_color)
+
+            anim = Animation(d=duration, t='out_quad')
+            anim.bind(on_progress=update_stun_circle, on_complete=cleanup_stun_circle)
+            
+            # คลินิกสีให้จางลงพร้อมกัน
+            color_anim = Animation(a=0, duration=duration)
+            color_anim.start(self.stun_color)
+            anim.start(flash) # ใช้ Widget หลอกๆ เพื่อรัน Animation
+            
             print("Stun activated!")
+        else:
+            # ถึงไม่สตันใครเลย ก็ควรมีเอฟเฟกต์เล็กน้อยให้รู้ว่ากดติด
+            if self.game.click_sound:
+                self.game.click_sound.play()
+            print("Stun used but no enemies nearby.")
 
     def handle_day_transition(self, increment=True):
         """จัดการการตัดฉากขึ้นวันใหม่"""

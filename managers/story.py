@@ -1,6 +1,6 @@
 # storygame/story.py
-from data.chat import WARNING_DIALOGUE, WARNING_CHOICES, TUTORIAL_DIALOGUE
-from data.settings import ENEMY_DETECTION_RADIUS, TILE_SIZE, MAP_FILE, HOME_EAT_POS
+from data.chat import WARNING_DIALOGUE, WARNING_CHOICES, TUTORIAL_DIALOGUE, SEARCH_DIALOGUES_HOME, UNDERGROUND_STRINGS
+from data.settings import ENEMY_DETECTION_RADIUS, TILE_SIZE, MAP_FILE, HOME_EAT_POS, EMPTY_SPOT_HOME
 from kivy.clock import Clock
 
 # ข้อมูลการตั้งค่าของแต่ละวัน
@@ -70,8 +70,8 @@ class StoryManager:
             min_x, max_x = trigger.get("min_x"), trigger.get("max_x")
             min_y, max_y = trigger.get("min_y"), trigger.get("max_y")
             
-            if (target_x is None or abs(px - target_x) < buffer) and \
-               (target_y is None or abs(py - target_y) < buffer):
+            if (target_x is None or abs(px - target_x) <= buffer) and \
+               (target_y is None or abs(py - target_y) <= buffer):
                 
                 # ตรวจสอบขอบเขตเพิ่มเติม
                 if min_x is not None and px < min_x: continue
@@ -82,7 +82,7 @@ class StoryManager:
                 hit = True
                 if not self.game.warning_triggered:
                     self._stop_player_and_snap()
-                    self.game.show_dialogue_above_reaper(trigger["dialogue"], choices=trigger.get("choices"))
+                    self.game.show_dialogue_above_reaper(trigger["dialogue"], choices=trigger.get("choices"), can_save=False)
                     self.game.warning_triggered = True
                     break
         
@@ -95,11 +95,12 @@ class StoryManager:
             ex, ey = enemy.logic_pos
             if ((px - ex)**2 + (py - ey)**2)**0.5 < ENEMY_DETECTION_RADIUS:
                 if enemy.has_line_of_sight(self.game.player.logic_pos, self.game.game_map.solid_rects):
-                    self._stop_player_and_snap()
-                    self.game.tutorial_mode = True
-                    self.game.show_dialogue_above_reaper(TUTORIAL_DIALOGUE)
-                    self.game.tutorial_triggered = True
-                    break
+                    if not self.game.tutorial_triggered:
+                        self._stop_player_and_snap()
+                        self.game.tutorial_mode = True
+                        self.game.show_dialogue_above_reaper(TUTORIAL_DIALOGUE, can_save=False)
+                        self.game.tutorial_triggered = True
+                        break
 
     def _stop_player_and_snap(self):
         """หยุดผู้เล่นและ Snap ลง Grid เพื่อให้อยู่กึ่งกลางช่อง"""
@@ -123,10 +124,20 @@ class StoryManager:
                 self.game.pending_save_prompt = True
             else:
                 self.game.show_save_screen()
+            
+            # รีเซ็ตธงเพื่อให้การคุยครั้งต่อไป (ถ้ามี) ต้องตั้งธงใหม่
+            self.game.is_reaper_save_prompt = False
         
-        # 2. Angel/Devil: จบคัทซีนเข้าบ้าน (ทำเฉพาะเมื่ออยู่ในโหมด Cutscene จริงๆ เช่น ท้ายวัน)
-        if last_character in ["Angel", "Devil"] and getattr(self.game, 'is_cutscene_active', False):
-            self.game.end_cutscene()
+        # 2. จบคัทซีนท้ายวัน (เข้าบ้านสำหรับวันที่ 1-4 หรือฉากจบสำหรับวันที่ 5)
+        if getattr(self.game, 'is_cutscene_active', False) and getattr(self.game, 'black_overlay', None) is not None:
+            if self.game.current_day == 5:
+                success = not getattr(self.game, 'quest_item_fail', False)
+                total_success = self.game.quest_success_count + (1 if success else 0)
+                if hasattr(self.game, 'cutscene_manager'):
+                    self.game.cutscene_manager.start_day5_ending(total_success)
+            else:
+                self.game.end_cutscene()
+            return
             
         # 3. The Sad Soul (Quest Day 1)
         if last_character == "The Sad Soul":
@@ -168,6 +179,14 @@ class StoryManager:
         if last_character == "Mother" and self.game.current_day == 2:
             if hasattr(self.game, 'cutscene_manager'):
                 self.game.cutscene_manager.end_day2_parent_cutscene()
+
+        # 7. ?? (Hidden Ending)
+        # ตรวจสอบชื่อตัวละครปริศนา (รองรับทั้ง ?? และ ???)
+        if last_character in ["??", "???"]:
+            if hasattr(self.game, 'cutscene_manager'):
+                # ตรวจสอบว่ากำลังอยู่ในเฟสของ Succumb Ending หรือไม่ (cutscene_step 101)
+                if getattr(self.game, 'cutscene_step', 0) == 101:
+                    self.game.cutscene_manager.continue_succumb_ending()
 
     def _handle_lady_logic(self):
         quest = self.game.quest_manager.active_quests.get("find_key")
@@ -277,3 +296,31 @@ class StoryManager:
             self.game.quest_manager.update_quest_list_ui()
             # เข้าสู่ฉากจบของเควส
             Clock.schedule_once(self.game.start_quest_complete_cutscene, 1.5)
+
+    def process_search_spot(self, spot):
+        """ประมวลผลการค้นหาตามจุดต่างๆ (เรียกจาก InteractionManager)"""
+        # 1. การค้นหาในบ้าน (ทุกวัน)
+        if "home.tmj" in self.game.game_map.filename.lower():
+            # ถ้าเป็นวันที่ต้องหาอาหาร (1, 2, 4)
+            if self.game.current_day in [1, 4]:
+                if spot == EMPTY_SPOT_HOME:
+                    self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["empty"])
+                    return
+
+                if spot == getattr(self.game, 'correct_food_spot', None):
+                    if hasattr(self.game, 'find_sound') and self.game.find_sound:
+                        self.game.find_sound.play()
+                    self.game._pending_food_success = True
+                    self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["found"])
+                else:
+                    self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["nothing"])
+                return
+            else:
+                # วันอื่นๆ (3, 5) ในบ้าน มักจะไม่มีอะไรให้กิน
+                self.game.show_vn_dialogue("Little girl", SEARCH_DIALOGUES_HOME["empty"])
+                return
+
+        # 2. การค้นหาในแมพใต้ดิน (Day 5)
+        if 'underground.tmj' in self.game.game_map.filename.lower():
+             self.game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_dust"])
+             return

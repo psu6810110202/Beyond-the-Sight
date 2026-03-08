@@ -1,8 +1,11 @@
 # storygame/cutscene.py
 from kivy.clock import Clock
 from kivy.uix.widget import Widget
+from kivy.uix.label import Label
 from kivy.graphics import Color, Rectangle
 from kivy.core.audio import SoundLoader
+from kivy.animation import Animation
+from ui.intro import IntroScreen
 from data.settings import *
 
 class CutsceneManager:
@@ -341,8 +344,24 @@ class CutsceneManager:
             self._anim_timer += dt
             if self._anim_timer >= 3.0:
                 self.game.cutscene_step = 0 
-                self.game._pending_day_transition = True
-                self.game.handle_day_transition(increment=True)
+                # เฉพาะ Day 3 ที่ไม่มีการหาของกินตามคำขอ USER (ขึ้น '...' แล้วนอน)
+                if self.game.current_day == 3:
+                    self.game._pending_day_transition = True
+                    self.game.handle_day_transition(increment=True)
+                else:
+                    # วันอื่นๆ (1, 2, 4, 5) ให้ปลดล็อกเพื่อให้ผู้เล่นเริ่มหาของกินได้
+                    self.game.is_cutscene_active = False
+                    self.game.camera.locked = False
+                    self.game.request_keyboard_back()
+                    # เริ่มเควสหาของกิน
+                    self.game.quest_manager.start_quest("find_food", "Find Something to Eat", target=1, show_notif=True)
+
+        elif self.game.cutscene_step >= 100:
+            # Hidden Ending logic is primarily driven by animations and input events
+            if hasattr(self.game, 'player'):
+                self.game.player.is_moving = False
+                self.game.player.state = 'idle'
+                self.game.player.update_frame()
 
     def _on_pan_complete(self):
         """เมื่อเลื่อนกล้องเสร็จ ให้เริ่มบทสนทนา"""
@@ -403,13 +422,23 @@ class CutsceneManager:
 
     def end_side_story_cutscene(self):
         """จบเนื้อเรื่องเสริม คืนสถานะเกมให้ปกติ"""
-        if self.game.current_day == 3 and getattr(self, '_pending_find_food_quest', False):
-            # Day 3: เดินไปที่มุมห้องก่อน
+        # ถ้ามีแฟล็กที่ต้องหาอาหาร หรือต้องเดินเข้าที่ประจำ (ทุกวันหลังจากแชทจบตอนเข้าบ้าน)
+        if getattr(self, '_pending_find_food_quest', False):
+            # วันที่ 3 ขึ้น "..." ตามคำขอ USER (ถ้าบทสนทนาที่เพิ่งจบไปไม่ใช่ "...")
+            if self.game.current_day == 3 and self.side_story_data.get("queue") != ["..."]:
+                 self.game.show_vn_dialogue("Little girl", "...", portrait=PLAYER_S_PORTRAIT_IMG)
+                 # ยังไม่ต้อง self.game.cutscene_step = 40 เดี๋ยว Step ต่อไปจะเรียก end_side_story_cutscene อีกรอบหลัง "..." จบ
+                 return
+
+            # ทุกวันที่มีคัทซีนเข้าบ้าน (1, 2, 3, 4, 5): เดินไปที่มุมประจำก่อน
+            print(f"DEBUG: end_side_story_cutscene - Triggering walk to sit for Day {self.game.current_day}")
             self.game.cutscene_step = 40
             self.game.is_cutscene_active = True
-            self._pending_find_food_quest = False
+            self._pending_find_food_quest = False # ล้างแฟล็กเพื่อไม่ให้วนลูป
+            self._anim_timer = 0
             return
 
+        # กรณีทั่วไปที่ไม่ได้เข้าแมพบ้านหรือไม่มีเควสค้าง
         self.game.is_cutscene_active = False
         self.game.cutscene_step = 0
         self.game.camera.locked = False
@@ -418,11 +447,6 @@ class CutsceneManager:
         self.game.player.state = 'idle'
         self.game.player.update_frame()
         self.game.request_keyboard_back()
-        
-        # ถ้านี่เป็นคัทซีนจบส่งวิญญาณ พอพูดจบให้เริ่มเควส "หาของกิน"
-        if getattr(self, '_pending_find_food_quest', False):
-            self.game.quest_manager.start_quest("find_food", "Find Something to Eat", target=1, show_notif=True)
-            self._pending_find_food_quest = False
 
     def start_food_transition_cutscene(self):
         """เริ่มคัทซีนบังคับเดินไปกินแล้วเปลี่ยนวัน"""
@@ -627,12 +651,147 @@ class CutsceneManager:
         self._day2_wait_timer = 0
 
     def end_day2_parent_cutscene(self):
-        """จบฉากพ่อแม่ทะเลาะกัน และตัดเข้าสู่ Day 3 ทันที"""
-        self.game.is_cutscene_active = False
-        self.game.cutscene_step = 0
-        self.game.camera.locked = False
-        self.game.request_keyboard_back()
+        """จบฉากพ่อแม่ทะเลาะกัน"""
+        # เดินกลับไปที่นั่งประจำก่อนเปลี่ยนวัน
+        self.game.cutscene_step = 40
+        self.game.is_cutscene_active = True
+        self._anim_timer = 0
+
+    def start_succumb_ending(self):
+        """เริ่มคัทซีนฉากจบ Succumb (ตายครบ 3 ครั้ง)"""
+        self.game.is_cutscene_active = True
+        self.game.stop_all_sounds()
+        self.game.cutscene_step = 100
+        self.game.pressed_keys.clear()
+        if hasattr(self.game.player, 'stop'):
+            self.game.player.stop()
+        self.game.camera.locked = True
+        self.game.clear_interaction_hints()
         
-        self._pending_find_food_quest = False
-        self.game._pending_day_transition = True
-        self.game.handle_day_transition()
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        
+        # ลบวิดเจ็ตเก่าที่อาจค้างอยู่
+        if hasattr(self, 'succumb_bg') and self.succumb_bg:
+            if self.succumb_bg.parent: self.succumb_bg.parent.remove_widget(self.succumb_bg)
+        if hasattr(self, 'hidden_end_widget') and self.hidden_end_widget:
+            if self.hidden_end_widget.parent: self.hidden_end_widget.parent.remove_widget(self.hidden_end_widget)
+        
+        # 1. วิดเจ็ตจอดำ (ใช้สำหรับ Fade In ครั้งแรก)
+        self.succumb_bg = Widget(size_hint=(1, 1), opacity=0)
+        with self.succumb_bg.canvas:
+            Color(0, 0, 0, 1)
+            self.succumb_rect = Rectangle(size=root.size, pos=(0, 0))
+            
+        def _u(i, v):
+            self.succumb_rect.size = i.size
+            self.succumb_rect.pos = i.pos
+        self.succumb_bg.bind(size=_u, pos=_u)
+        root.add_widget(self.succumb_bg)
+        
+        # ขั้นตอน: ค่อยๆ มืดลง
+        anim = Animation(opacity=1, duration=1.5)
+        def on_dark(*args):
+            self.game.cutscene_step = 101
+            # 2. ขั้นตอน: ขึ้นพื้นหลัง Hidden Ending (ใช้ Widget แยกต่างหากเพื่อให้แอนิเมชันเสถียร)
+            self.hidden_end_widget = Widget(size_hint=(1, 1), opacity=0)
+            with self.hidden_end_widget.canvas:
+                Color(1, 1, 1, 1)
+                self.hidden_end_rect = Rectangle(
+                    source='assets/background/Hidden Endding.png',
+                    size=root.size, pos=(0, 0)
+                )
+            
+            def _u2(i, v):
+                if hasattr(self, 'hidden_end_rect'):
+                    self.hidden_end_rect.size = i.size
+                    self.hidden_end_rect.pos = i.pos
+            self.hidden_end_widget.bind(size=_u2, pos=_u2)
+            root.add_widget(self.hidden_end_widget)
+            
+            anim2 = Animation(opacity=1, duration=2.0)
+            def on_img_visible(*args):
+                # 3. ขั้นตอน: ขึ้นชื่อ ?? และพูด "######"
+                self.game.show_vn_dialogue("??", "######")
+            anim2.bind(on_complete=on_img_visible)
+            anim2.start(self.hidden_end_widget)
+            
+        anim.bind(on_complete=on_dark)
+        anim.start(self.succumb_bg)
+
+    def continue_succumb_ending(self):
+        """เฟส 2: มืดลงและขึ้นชื่อ Ending"""
+        print(f"DEBUG: continue_succumb_ending called. Step: {self.game.cutscene_step}")
+        self.game.cutscene_step = 102
+        
+        # ค่อยๆ จางภาพพื้นหลังออกให้เหลือแต่จอดำ
+        anim = Animation(opacity=0, duration=1.5)
+        def on_fade_back(*args):
+            print("DEBUG: Background faded out. Showing Ending Label.")
+            root = self.game.dialogue_root if self.game.dialogue_root else self.game
+            
+            # 4. เรียกใช้ IntroScreen แบบ custom_text เหมือนเวลาเปลี่ยนวัน
+            intro = IntroScreen(
+                callback=self.game.return_to_main_menu, 
+                custom_text="Ending 1/5 : Succumb", 
+                play_sound=False, 
+                duration=4.5
+            )
+            root.add_widget(intro)
+            self.game.cutscene_step = 103
+            
+        anim.bind(on_complete=on_fade_back)
+        if hasattr(self, 'hidden_end_widget') and self.hidden_end_widget:
+            anim.start(self.hidden_end_widget)
+        else:
+            print("DEBUG WARNING: hidden_end_widget not found, skipping animation.")
+            on_fade_back()
+
+    def start_day5_ending(self, total_success):
+        """เริ่มคัทซีนฉากจบจริง (เล่นเมื่อเคลียร์วัน 5 จบ)"""
+        print(f"DEBUG: Starting Day 5 Ending with {total_success} success.")
+        self.game.is_cutscene_active = True
+        self.game.stop_all_sounds()
+        self.game.cutscene_step = 200 # รหัสสำหรับเฟสฉากจบปกติ
+        self.game.pressed_keys.clear()
+        if hasattr(self.game.player, 'stop'):
+            self.game.player.stop()
+        self.game.camera.locked = True
+        self.game.clear_interaction_hints()
+        
+        root = self.game.dialogue_root if self.game.dialogue_root else self.game
+        
+        self.ending_bg = Widget(size_hint=(1, 1), opacity=0)
+        with self.ending_bg.canvas:
+            Color(0, 0, 0, 1)
+            self.ending_bg_rect = Rectangle(size=root.size, pos=(0, 0))
+        def _u(i, v):
+            if hasattr(self, 'ending_bg_rect'):
+                self.ending_bg_rect.size = i.size
+                self.ending_bg_rect.pos = i.pos
+        self.ending_bg.bind(size=_u, pos=_u)
+        root.add_widget(self.ending_bg)
+        
+        anim = Animation(opacity=1, duration=1.5)
+        def on_dark(*args):
+            if hasattr(self.game, 'black_overlay') and self.game.black_overlay:
+                if self.game.black_overlay.parent:
+                    self.game.black_overlay.parent.remove_widget(self.game.black_overlay)
+                self.game.black_overlay = None
+            
+            if total_success >= 5:
+                ending_title = "Ending 5/5\n\nPerfect"
+            elif total_success > 0:
+                ending_title = "Ending 3/5\n\nNormal"
+            else:
+                ending_title = "Ending 2/5\n\nBad"
+                
+            intro = IntroScreen(
+                callback=self.game.return_to_main_menu, 
+                custom_text=ending_title, 
+                play_sound=False, 
+                duration=4.5
+            )
+            root.add_widget(intro)
+            
+        anim.bind(on_complete=on_dark)
+        anim.start(self.ending_bg)

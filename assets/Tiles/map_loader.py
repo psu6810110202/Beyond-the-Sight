@@ -231,9 +231,9 @@ class KivyTiledMap:
             
             # Solid implies physical collision.
             is_solid = not is_ground and (
-                any(kw in name for kw in ("ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor")) or
-                name.lower() in ("funiture", "funiture2", "furniture", "props")
-            ) and not any(kw in name for kw in ("resources",))
+                any(kw in name for kw in ("ผนัง", "ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor", "wall layer")) or
+                name.lower() in ("funiture", "funiture2", "furniture", "props", "ผนัง")
+            ) and not any(kw in name for kw in ("resources", "floor"))
             
             opacity = layer.get('opacity', 1.0)
 

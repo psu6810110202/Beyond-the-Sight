@@ -61,29 +61,34 @@ class WorldManager:
         # 3. สร้าง Extra Reapers ตามวัน (เฉพาะในแมพหลัก beyond.tmj)
         if is_village:
             day = getattr(self.game, 'current_day', 1)
+            
+            # User Request: Day 1 เป็นหลัก (0 Extra), 2-4 เพิ่มแบบสะสม
+            # Day 2: เพิ่ม 1 ตัว (ใกล้ NPC1)
             if day >= 2:
-                # จุดสำหรับ Day 2 (กลาง-ล่างซ้าย)
-                extra_reap = Reaper(self.game.sorting_layer, x=304, y=288)
-                extra_reap.direction = 'right'
-                extra_reap.update_frame()
-                extra_reap.update_visual_positions()
-                self.game.extra_reapers.append(extra_reap)
+                er1 = Reaper(self.game.sorting_layer, x=896, y=416)
+                er1.direction = 'down'
+                er1.update_frame()
+                er1.update_visual_positions()
+                self.game.extra_reapers.append(er1)
                 
+            # Day 3: เพิ่มตัวที่ 2 (ใกล้ NPC2)
             if day >= 3:
-                # จุดสำหรับ Day 3 (ตามที่ User กำหนด: 480, 1312)
-                extra_reap2 = Reaper(self.game.sorting_layer, x=480, y=1312)
-                extra_reap2.direction = 'down'
-                extra_reap2.update_frame()
-                extra_reap2.update_visual_positions()
-                self.game.extra_reapers.append(extra_reap2)
-
+                er2 = Reaper(self.game.sorting_layer, x=304, y=288)
+                er2.direction = 'right'
+                er2.update_frame()
+                er2.update_visual_positions()
+                self.game.extra_reapers.append(er2)
+                
+            # Day 4: เพิ่มตัวที่ 3 (ตรอกลึก NPC3)
             if day >= 4:
-                # จุดสำหรับ Day 4 (1344, 944) ตามที่ User กำหนด
-                extra_reap3 = Reaper(self.game.sorting_layer, x=1344, y=944)
-                extra_reap3.direction = 'down' # หรือทิศทางที่เหมาะสม
-                extra_reap3.update_frame()
-                extra_reap3.update_visual_positions()
-                self.game.extra_reapers.append(extra_reap3)
+                er3 = Reaper(self.game.sorting_layer, x=480, y=1312)
+                er3.direction = 'down'
+                er3.update_frame()
+                er3.update_visual_positions()
+                self.game.extra_reapers.append(er3)
+
+            # หมายเหตุ: สำหรับ Day 5 จะไม่มีการเพิ่ม Extra ในหมู่บ้าน (เพราะไปอยู่ใต้ดิน)
+                
         elif 'underground.tmj' in map_file.lower():
             # สร้าง Reapers ใน Underground ตามที่ระบุ
             from data.settings import REAPER_SPAWN_DATA_UNDERGROUND

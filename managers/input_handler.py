@@ -31,6 +31,16 @@ class InputHandler:
     def on_key_down(self, keyboard, keycode, text, modifiers):
         key_name = keycode[1]
         
+        # ป้องกันการกดปุ่มถ้าเกมหยุดหรือยังไม่พร้อม (ยกเว้นตอนจบ Ending)
+        if (self.game.is_paused or not self.game.is_ready) and getattr(self.game, 'cutscene_step', 0) != 103:
+            return True
+            
+        # User Request: Ending Sequence Exit
+        if getattr(self.game, 'cutscene_step', 0) == 103:
+            if key_name in ['enter', 'e', 'space']:
+                self.game.return_to_main_menu()
+            return True
+            
         if key_name == 'e' or key_name == 'enter':
             # 1. ถ้ามีแจ้งเตือนไอเทมอยู่ ให้ปิดแจ้งเตือนก่อน
             if self.game.dialogue_manager.is_item_notif_active:
@@ -48,11 +58,17 @@ class InputHandler:
         
         # คีย์ Q สำหรับกดใช้ไอเทม Blue Stone
         if key_name == 'q':
+            # ห้ามใช้ขณะคุย หรือ มีกระดานแจ้งเตือนไอเทมโชว์อยู่
+            if self.game.is_dialogue_active or self.game.dialogue_manager.is_item_notif_active:
+                return True
+                
             if getattr(self.game, 'has_received_blue_stone', False):
                 if getattr(self.game, 'stun_cooldown', 0) <= 0:
                     self.game.use_stun_item()
                 else:
                     print(f"Stun on cooldown: {self.game.stun_cooldown:.1f}s")
+            else:
+                print("You don't have the Blue Stone yet!")
             return True
 
         if key_name == 'e':
@@ -98,3 +114,4 @@ class InputHandler:
         key_name = keycode[1] 
         if key_name in self.pressed_keys:
             self.pressed_keys.remove(key_name)
+        return True
