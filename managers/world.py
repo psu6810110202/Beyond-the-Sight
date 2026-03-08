@@ -301,13 +301,15 @@ class WorldManager:
             if quest and not quest.is_active:
                 return
             # สำหรับแมพใต้ดิน: ระบบเดียวกับ Day 1/4 (สุ่ม 3 จุดจริง, 5 จุดผีหลอก)
-            objects_layer = next((l for l in self.game.game_map.tmx_data.layers if l.name == "ของ"), None)
+            layers = self.game.game_map.map_data.get('layers', [])
+            objects_layer = next((l for l in layers if l.get('name') == "ของ"), None)
             if objects_layer:
                 # รวบรวมตำแหน่งทั้งหมดที่มี "ของ"
                 all_positions = []
-                for obj in objects_layer:
-                    obj_y_render = self.game.game_map.height * 16 - obj.y
-                    all_positions.append((obj.x, obj_y_render))
+                for obj in objects_layer.get('objects', []):
+                    ox, oy = obj.get('x', 0), obj.get('y', 0)
+                    obj_y_render = self.game.game_map.height * 16 - oy
+                    all_positions.append((ox, obj_y_render))
                 
                 # ถ้ายังไม่มีการทำ mapping (กันพิกัดเปลี่ยนตอนโหลด)
                 if not hasattr(self.game, 'underground_fragments_mapping'):

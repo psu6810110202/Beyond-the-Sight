@@ -51,8 +51,10 @@ def handle_choice_selection(game, choice):
                 game.quest_manager.update_quest_progress("soul_fragments", 1)
                 game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_soul"], portrait=PLAYER_PORTRAIT_IMG)
             elif result["type"] == "fake":
-                # เคส: ของปลอม (ใช้หน้าเศร้า)
-                game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_dust"], portrait=PLAYER_S_PORTRAIT_IMG)
+                # เคส: ของปลอม (นับเข้าเควสแต่ทำให้เควสเฟลเหมือน NPC1)
+                game.quest_item_fail = True
+                game.quest_manager.update_quest_progress("soul_fragments", 1)
+                game.show_vn_dialogue("Little girl", UNDERGROUND_STRINGS["found_soul"], portrait=PLAYER_S_PORTRAIT_IMG)
             else:
                 # เคส: เจอผีหลอก (Ghost Scare)
                 if game.scare_sound: game.scare_sound.play()
@@ -144,7 +146,6 @@ def handle_choice_selection(game, choice):
                     game.stars.clear()
                     
                     # ตั้งค่าแชทที่จะขึ้นต่อหลังจากผู้เล่นกดปิด "Banner ไอเทม" (เพื่อไม่ให้ซ้อนทับกัน)
-                    from data.settings import PLAYER_PORTRAIT_IMG
                     game.pending_post_discovery_dialogue = {
                         "name": "Little girl",
                         "text": "I found a key. I should return it to the lady at the window.",

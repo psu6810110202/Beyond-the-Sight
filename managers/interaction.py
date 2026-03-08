@@ -230,11 +230,13 @@ class InteractionManager:
             return
 
         if 'underground.tmj' in self.game.game_map.filename.lower():
-            objects_layer = next((l for l in self.game.game_map.tmx_data.layers if l.name == "ของ"), None)
+            layers = self.game.game_map.map_data.get('layers', [])
+            objects_layer = next((l for l in layers if l.get('name') == "ของ"), None)
             if objects_layer:
                 px, py = self.game.player.logic_pos
-                for obj in objects_layer:
-                    dist = ((px - obj.x)**2 + (py - (self.game.game_map.height * 16 - obj.y))**2)**0.5
+                for obj in objects_layer.get('objects', []):
+                    ox, oy = obj.get('x', 0), obj.get('y', 0)
+                    dist = ((px - ox)**2 + (py - (self.game.game_map.height * 16 - oy))**2)**0.5
                     if dist <= 32:
                         self.interact_with_search_spot(obj)
                         return
@@ -358,7 +360,9 @@ class InteractionManager:
             quest = self.game.quest_manager.active_quests.get("soul_fragments")
             if quest:
                 if quest.current_count >= quest.target_count:
-                    from data.chat import NPC5_SUCCESS
+                    from data.chat import NPC5_SUCCESS, NPC5_FAIL
+                    if getattr(self.game, 'quest_item_fail', False):
+                        return [NPC5_FAIL or "These aren't my fragments..."]
                     return [NPC5_SUCCESS or "I feel whole again... Thank you."]
                 elif quest.is_active:
                     return ["Were you able to find the fragments? I can almost feel myself becoming whole again..."]

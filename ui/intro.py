@@ -75,6 +75,13 @@ class IntroScreen(FloatLayout):
         self.label.font_size = self._get_scaled_font_size()
         
     def finish(self, dt=None):
+        if getattr(self, '_finished', False):
+            return
+        self._finished = True
+        
+        # Unschedule the timer if it was called manually
+        Clock.unschedule(self.finish)
+        
         if self.callback:
             self.callback()
         if self.parent:

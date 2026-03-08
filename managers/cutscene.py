@@ -717,6 +717,11 @@ class CutsceneManager:
             anim2 = Animation(opacity=1, duration=2.0)
             def on_img_visible(*args):
                 # 3. ขั้นตอน: ขึ้นชื่อ ?? และพูด "######"
+                # ต้องตั้งค่าสถานะตัวละครเพื่อให้ StoryManager ตรวจสอบตอนจบแชทได้
+                self.game.current_character_name = "??"
+                self.game.current_dialogue_queue = ["######"]
+                self.game.current_dialogue_index = 0
+                self.game.is_dialogue_active = True
                 self.game.show_vn_dialogue("??", "######")
             anim2.bind(on_complete=on_img_visible)
             anim2.start(self.hidden_end_widget)

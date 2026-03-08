@@ -229,11 +229,16 @@ class KivyTiledMap:
                 is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg and not is_roof
                 is_well = "well" in name
             
-            # Solid implies physical collision.
-            is_solid = not is_ground and (
-                any(kw in name for kw in ("ผนัง", "ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor", "wall layer")) or
-                name.lower() in ("funiture", "funiture2", "furniture", "props", "ผนัง")
-            ) and not any(kw in name for kw in ("resources", "floor"))
+            # Special Rule for underground.tmj: "ผนัง" and "ของ" must be solid (Hitbox)
+            if "underground.tmj" in self.filename.lower() and ("ผนัง" in name or "ของ" in name):
+                is_solid = True
+                is_ground = False
+            else:
+                # Normal solid logic
+                is_solid = not is_ground and (
+                    any(kw in name for kw in ("ผนัง", "ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor", "wall layer")) or
+                    name.lower() in ("funiture", "funiture2", "furniture", "props", "ผนัง")
+                ) and not any(kw in name for kw in ("resources", "floor"))
             
             opacity = layer.get('opacity', 1.0)
 
@@ -317,6 +322,12 @@ class KivyTiledMap:
         return struct.unpack(f"<{w*h}I", decoded)
 
     def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg, l_ground, is_ground, is_roof, l_roof):
+        if gid_full == 0:
+            if is_solid:
+                # Shape without Tile (Collision Box)
+                self.solid_rects.append([x, y, cw, ch])
+            return
+
         gid = gid_full & ~ALL_FLAGS
         t_info = self.textures.get(gid)
         if not t_info: return

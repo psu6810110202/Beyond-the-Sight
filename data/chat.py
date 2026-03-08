@@ -254,4 +254,12 @@ SEARCH_DIALOGUES_HOME = {
     "nothing": "Just dust and old rags. There's nothing to eat here."
 }
 
-NPC5_SUCCESS = "I can feel it... my soul is whole again. The cold is finally fading away. Thank you, little one. You have a kindness that this world has forgotten."
+NPC5_SUCCESS = [
+    "I can feel it... my soul is whole again.",
+    "The cold is finally fading away. Thank you, little one.",
+    "You have a kindness that this world has forgotten."
+]
+NPC5_FAIL = [
+    "Wait... these fragments... they don't belong to me.",
+    "My essence is still scattered... I feel even emptier than before."
+]
