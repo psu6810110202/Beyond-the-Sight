@@ -26,11 +26,8 @@ class SaveManager:
         if self.game.dialogue_root:
             self.game.dialogue_root.add_widget(save_screen)
 
-    def on_save_confirmed(self, slot_id, save_screen=None):
-        """บันทึกข้อมูลแบบแยกส่วนตามวัน (Day-specific save) เพื่อลดขนาดไฟล์และล้างข้อมูลเก่าที่ไม่จำเป็น"""
-        if not os.path.exists('saves'):
-            os.makedirs('saves')
-            
+    def get_save_data(self, slot_id=None):
+        """รวบรวมข้อมูลสถานะเกมปัจจุบันทั้งหมดลงใน Dictionary"""
         day = self.game.current_day
         
         # 1. ข้อมูลหลักที่ต้องสืบทอดไปทุกวัน (Core Data)
@@ -65,7 +62,6 @@ class SaveManager:
         all_quests = self.game.quest_manager.to_dict()
         filtered_quests = {}
         
-        # ค้นหาเควสที่เกี่ยวข้องกับวันนั้นๆ และเควส "หากิน" (ค้นหาเสบียงท้ายวัน)
         target_quests = {
             1: ["doll_parts"],
             2: ["deliver_letters"],
@@ -82,7 +78,7 @@ class SaveManager:
 
         # 3. ข้อมูลสิ่งของวางกระจายตามแมพ (Stars / Candles / Letters)
         if day in [1, 4, 5]:
-            save_data["collected_stars"] = self.game.collected_stars
+            save_data["collected_stars"] = [list(p) for p in self.game.collected_stars]
             
         if day == 2:
             save_data["letters_held"] = getattr(self.game, 'letters_held', 0)
@@ -95,15 +91,26 @@ class SaveManager:
                 for c in getattr(self.game, 'candles', []) if c.is_lit
             ]
         
-        # เพิ่ม timestamp จริง (ไม่แสดงใน UI แต่ใช้เลือก save ล่าสุด)
         save_data["saved_at"] = datetime.datetime.now().isoformat()
-        save_data["slot_id"]  = slot_id   # เก็บ slot เพื่อให้ game รู้ว่ากำลัง auto-save ไปที่ไหน
+        if slot_id is not None:
+            save_data["slot_id"] = slot_id
+        elif hasattr(self.game, 'current_save_slot') and self.game.current_save_slot is not None:
+            save_data["slot_id"] = self.game.current_save_slot
 
+        return save_data
+
+    def on_save_confirmed(self, slot_id, save_screen=None):
+        """บันทึกข้อมูลแบบสล็อต (Manual Save)"""
+        if not os.path.exists('saves'):
+            os.makedirs('saves')
+            
+        save_data = self.get_save_data(slot_id)
         file_path = f'saves/slot_{slot_id}.json'
+        
         with open(file_path, 'w') as f:
             json.dump(save_data, f)
 
-        # จำ slot ที่ใช้งานอยู่ เพื่อให้ auto-save ตามถูกต้อง
+        # จำ slot ที่ใช้งานอยู่
         self.game.current_save_slot = slot_id
             
         if save_screen:
@@ -111,6 +118,24 @@ class SaveManager:
         
         self.game.is_dialogue_active = False
         self.game.request_keyboard_back()
+
+    def auto_save(self):
+        """บันทึกข้อมูลอัตโนมัติลงไฟล์แยก (Autosave) และไฟล์ความคืบหน้ากลาง"""
+        if not os.path.exists('saves'):
+            os.makedirs('saves')
+
+        slot_id = getattr(self.game, 'current_save_slot', None)
+        save_data = self.get_save_data(slot_id)
+        save_data["is_auto_save"] = True
+
+        # 1. เซฟลงไฟล์ Autosave แยกต่างหาก (ไม่ทับสล็อตแมนนวล)
+        file_path = 'saves/autosave.json'
+        try:
+            with open(file_path, 'w') as f:
+                json.dump(save_data, f)
+            print(f"DEBUG: Auto-save successful to {file_path}")
+        except Exception as e:
+            print(f"DEBUG: Auto-save failed: {e}")
 
     def load_game_from_pause(self):
         """เปิดหน้าจอโหลดเซฟจากเมนู Pause"""
@@ -133,8 +158,8 @@ class SaveManager:
         if self.game.dialogue_root:
             self.game.dialogue_root.add_widget(load_screen)
 
-    def get_latest_save_data(self):
-        """ค้นหาไฟล์เซฟล่าสุดและคืนค่าข้อมูล โดยเช็คจาก saved_at timestamp ใน JSON (fallback: mtime)"""
+    def get_latest_manual_save_data(self):
+        """ค้นหาไฟล์เซฟ MANUAL ล่าสุด (slot_*.json)"""
         saves_dir = 'saves'
         if not os.path.exists(saves_dir):
             return None
@@ -155,7 +180,6 @@ class SaveManager:
             except Exception:
                 pass
 
-        # fallback: ถ้าไม่มี saved_at ใดเลย ใช้ mtime เหมือนเดิม
         if not best_file:
             best_file = max(files, key=os.path.getmtime)
 
@@ -164,6 +188,34 @@ class SaveManager:
                 return json.load(f)
         except:
             return None
+
+    def get_latest_checkpoint_data(self):
+        """ค้นหาข้อมูลที่ใหม่ที่สุด (รวมทั้ง Manual และ Auto) สำหรับใช้ Respawn"""
+        manual_data = self.get_latest_manual_save_data()
+        
+        # เช็ค Autosave
+        auto_path = 'saves/autosave.json'
+        auto_data = None
+        if os.path.exists(auto_path):
+            try:
+                with open(auto_path, 'r') as f:
+                    auto_data = json.load(f)
+            except:
+                pass
+        
+        if not manual_data and not auto_data:
+            return None
+        if not manual_data: return auto_data
+        if not auto_data: return manual_data
+        
+        # เทียบ Timestamp
+        if auto_data.get('saved_at', '') > manual_data.get('saved_at', ''):
+            return auto_data
+        return manual_data
+
+    def get_latest_save_data(self):
+        """(Legacy/Compatibility) คืนค่าเซฟที่ใหม่ที่สุด (เฉพาะ Manual)"""
+        return self.get_latest_manual_save_data()
 
     def _on_pause_load_selected(self, slot_id, load_screen=None):
         save_path = f'saves/slot_{slot_id}.json'

@@ -11,8 +11,8 @@ MAP_WIDTH = 1600
 MAP_HEIGHT = 1600
 
 # Camera Settings
-CAMERA_WIDTH = 320
-CAMERA_HEIGHT = 240
+CAMERA_WIDTH = 260
+CAMERA_HEIGHT = 180
 
 # Tile Settings
 TILE_SIZE = 16
@@ -212,24 +212,24 @@ NPC5_IMG = ('assets/characters/NPC/NPC5.png', 1, 5, 0, 4)  # (path, cols, rows, 
 UNDERGROUND_FRAGMENT_MAPPING = {
     # --- ของจริง 3 จุด (fail=False) ---
     (992, 336):  {"type": "true",  "img": NPC5_IMG, "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
-    (480, 544):  {"type": "true",  "img": NPC5_IMG, "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
-    (256, 1040): {"type": "true",  "img": NPC5_IMG, "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
+    (496, 544):  {"type": "true",  "img": NPC5_IMG, "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
+    (272, 1040): {"type": "true",  "img": NPC5_IMG, "portrait": PLAYER_PORTRAIT_IMG,   "fail": False},
 
     # --- ของปลอม 3 จุด (fail=True) ---
-    (1184, 176): {"type": "fake",  "img": NPC5_IMG, "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
-    (704, 672):  {"type": "fake",  "img": NPC5_IMG, "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
-    (864, 1120): {"type": "fake",  "img": NPC5_IMG, "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (1184, 160): {"type": "fake",  "img": NPC5_IMG, "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (720, 672):  {"type": "fake",  "img": NPC5_IMG, "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
+    (880, 1120): {"type": "fake",  "img": NPC5_IMG, "portrait": PLAYER_S_PORTRAIT_IMG, "fail": True},
 
     # --- ผีหลอก 10 จุด ---
-    (640, 336):  {"type": "ghost"},
+    (672, 336):  {"type": "ghost"},
     (720, 128):  {"type": "ghost"},
     (240, 240):  {"type": "ghost"},
     (144, 432):  {"type": "ghost"},
-    (576, 464):  {"type": "ghost"},
+    (576, 480):  {"type": "ghost"},
     (800, 1008): {"type": "ghost"},
     (448, 1040): {"type": "ghost"},
     (320, 848):  {"type": "ghost"},
-    (160, 960):  {"type": "ghost"},
+    (176, 960):  {"type": "ghost"},
     (96, 1088):  {"type": "ghost"},
 }
 

@@ -96,15 +96,16 @@ class InteractionManager:
         
         target, dx, dy = self.get_interaction_target(npcs_to_check + reapers_to_check, limit=32)
         if target:
-            self._draw_interaction_hint(target, offset_y=50) # ยกสูง 50
+            self._draw_interaction_hint(target, offset_y=45) # ปรับลงจาก 50 มานิดนึง
             return
 
         # 4. เช็ค Underground Portal (Day 5)
         px, py = self.game.player.logic_pos
         ux, uy = UNDERGROUND_PORTAL_POS
         dist = ((px - ux)**2 + (py - uy)**2)**0.5
-        if dist <= 32 and self.game.current_day == 5:
-            self._draw_interaction_hint(None, offset_y=45, pos_override=UNDERGROUND_PORTAL_POS)
+        if dist <= 16 and self.game.current_day == 5:
+            # ใช้ offset ต่ำ (5) เพื่อให้ปุ่ม E อยู่บนพื้นกรง ไม่ลอยทับตัวละคร
+            self._draw_interaction_hint(None, offset_y=5, pos_override=UNDERGROUND_PORTAL_POS)
             return
 
         # 5. เช็คจุดวางจดหมาย (Day 2)
@@ -124,10 +125,10 @@ class InteractionManager:
     def _draw_interaction_hint(self, target, offset_y=50, pos_override=None):
         """Helper สำหรับวาดปุ่ม E ใน Screen Space"""
         hint_text = "E"
-        box_width = 25
+        box_width = 28 # เดิม 25 เพิ่มขึ้นนิดเดียว
         hint = Label(
-            text=hint_text, font_name=GAME_FONT, font_size='12sp',
-            color=(1, 1, 1, 1), size_hint=(None, None), size=(box_width, 25),
+            text=hint_text, font_name=GAME_FONT, font_size='13sp', # เดิม 12sp
+            color=(1, 1, 1, 1), size_hint=(None, None), size=(box_width, 28), # เดิม 25, 25
             halign='center', valign='middle', bold=True
         )
         hint.bind(size=lambda l, s: setattr(l, 'text_size', s))
@@ -158,7 +159,7 @@ class InteractionManager:
         ux, uy = UNDERGROUND_PORTAL_POS
         dist = ((px - ux)**2 + (py - uy)**2)**0.5
         
-        if dist <= 32 and self.game.current_day == 5:
+        if dist <= 16 and self.game.current_day == 5:
             # ล้างทุกอย่างให้เกลี้ยงที่สุด
             for npc in self.game.npcs: npc.destroy()
             for enemy in self.game.enemies: enemy.destroy()

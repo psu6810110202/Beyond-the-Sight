@@ -1,5 +1,5 @@
 ﻿<tileset version="1.10" tiledversion="1.11.2" name="Furniture" tilewidth="32" tileheight="32" tilecount="25" columns="5">
-    <image source="/assets/Tiles/prop/Furniture.png" trans="ff00ff" width="160" height="160" />
+    <image source="../prop/Furniture.png" trans="ff00ff" width="160" height="160" />
     <tile id="2">
         <objectgroup draworder="index" id="2">
             <object id="1" x="9.09091" y="16.8182" width="13.6364" height="9.18182">

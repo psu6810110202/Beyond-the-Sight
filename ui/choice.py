@@ -42,27 +42,10 @@ def handle_choice_selection(game, choice):
                 game.stars.remove(game.current_star_target)
             game.current_star_target.destroy()
 
-            # Auto-save collected_stars ลงสล็อตที่กำลังใช้งานทันที (ไม่ต้องรอผู้เล่น save เอง)
-            import os, json
-            os.makedirs('saves', exist_ok=True)
-            _slot = getattr(game, 'current_save_slot', None)
-            if _slot is not None:
-                _path = f'saves/slot_{_slot}.json'
-                if os.path.exists(_path):
-                    try:
-                        with open(_path, 'r') as _f:
-                            _sd = json.load(_f)
-                        _sd['collected_stars'] = [list(p) for p in game.collected_stars]
-                        with open(_path, 'w') as _f:
-                            json.dump(_sd, _f)
-                    except Exception as _e:
-                        print(f"Auto-save collected_stars failed: {_e}")
-            # เขียน standalone file เสมอ — สำหรับผู้เล่นที่ไม่เคย save เลย
-            try:
-                with open('saves/underground_progress.json', 'w') as _f:
-                    json.dump({'collected_stars': [list(p) for p in game.collected_stars]}, _f)
-            except Exception:
-                pass
+            # Auto-save ทันทีเพื่อให้ข้อมูล sync กันทุกที่
+            if hasattr(game.save_manager, 'auto_save'):
+                game.save_manager.auto_save()
+
 
             # เช็คผลลัพธ์จาก Mapping
             from data.settings import UNDERGROUND_FRAGMENT_MAPPING
@@ -76,6 +59,13 @@ def handle_choice_selection(game, choice):
             if rtype == "true":
                 # ของจริง — โชว์ item discovery + เพิ่มเควส
                 game.quest_manager.update_quest_progress("soul_fragments", 1)
+                
+                # เช็คว่าครบหรือยังเพื่อเปลี่ยนชื่อเควส
+                quest = game.quest_manager.active_quests.get("soul_fragments")
+                if quest and quest.current_count >= quest.target_count:
+                    quest.name = "Return to The Soul"
+                    game.quest_manager.update_quest_list_ui()
+
                 if img:
                     game.show_item_discovery("SOUL FRAGMENT", img)
                     game.pending_post_discovery_dialogue = {
@@ -90,6 +80,13 @@ def handle_choice_selection(game, choice):
                 # ของปลอม — โชว์ item discovery แต่ set fail
                 game.quest_item_fail = True
                 game.quest_manager.update_quest_progress("soul_fragments", 1)
+
+                # เช็คว่าครบหรือยังเพื่อเปลี่ยนชื่อเควส
+                quest = game.quest_manager.active_quests.get("soul_fragments")
+                if quest and quest.current_count >= quest.target_count:
+                    quest.name = "Return to The Soul"
+                    game.quest_manager.update_quest_list_ui()
+
                 if img:
                     game.show_item_discovery("SOUL FRAGMENT", img)
                     game.pending_post_discovery_dialogue = {

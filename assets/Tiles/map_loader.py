@@ -73,15 +73,68 @@ class KivyTiledMap:
         for ts_info in self.map_data.get('tilesets', []):
             firstgid = ts_info.get('firstgid', 1)
             source = ts_info.get('source')
-            if not source: continue
-                
-            tsx_path = self._resolve_path(source, '.tsx')
-            if not tsx_path: continue
-                
-            try:
-                self._parse_tsx(tsx_path, firstgid)
-            except Exception as e:
-                print(f"Error loading tileset {tsx_path}: {e}")
+            
+            if source:
+                tsx_path = self._resolve_path(source, '.tsx')
+                if tsx_path:
+                    try:
+                        self._parse_tsx(tsx_path, firstgid)
+                    except Exception as e:
+                        print(f"Error loading tileset {tsx_path}: {e}")
+            else:
+                # Embedded JSON tileset
+                try:
+                    self._parse_embedded_json_tileset(ts_info, firstgid)
+                except Exception as e:
+                    print(f"Error parsing embedded tileset in {self.filename}: {e}")
+
+    def _parse_embedded_json_tileset(self, ts_info, firstgid):
+        """Parse an embedded tileset directly from the JSON map data."""
+        name = ts_info.get('name', '')
+        img_src = ts_info.get('image')
+        if not img_src: return
+            
+        img_path = self._resolve_path(img_src, 'prop')
+        if not img_path: return
+
+        # Load Texture
+        cimg = CoreImage(img_path)
+        self.core_images.append(cimg)
+        tex = cimg.texture
+        tex.mag_filter = tex.min_filter = 'nearest'
+        
+        tw = int(ts_info.get('tilewidth', self.tile_w))
+        th = int(ts_info.get('tileheight', self.tile_h))
+        cols = int(ts_info.get('columns', 1))
+        count = int(ts_info.get('tilecount', 0))
+        margin = int(ts_info.get('margin', 0))
+        spacing = int(ts_info.get('spacing', 0))
+
+        self.setup_well(name, firstgid, cols, count)
+        pad_x, pad_y = self._get_uv_padding(tex)
+        
+        for i in range(count):
+            gid = firstgid + i
+            col, row = i % cols, i // cols
+            tx, ty = margin + col*(tw+spacing), margin + row*(th+spacing)
+            inv_y = cimg.height - ty - th
+            region = tex.get_region(tx, inv_y, tw, th)
+            u0, v0 = region.tex_coords[0], region.tex_coords[1]
+            u1, v1 = region.tex_coords[4], region.tex_coords[5]
+            self.textures[gid] = (tex, (u0+pad_x, v0+pad_y, u1-pad_x, v1-pad_y), tw, th, tx, inv_y)
+
+        # Parse objects (hitboxes)
+        for tile in ts_info.get('tiles', []):
+            tid = int(tile.get('id', 0))
+            gid = firstgid + tid
+            obj_group = tile.get('objectgroup')
+            if obj_group:
+                boxes = []
+                for obj in obj_group.get('objects', []):
+                    ox, oy = float(obj.get('x', 0)), float(obj.get('y', 0))
+                    # Simplified for now (only rects)
+                    boxes.append((ox, oy, float(obj.get('width', 0)), float(obj.get('height', 0))))
+                if boxes: self.tile_hitboxes[gid] = boxes
 
     def _resolve_path(self, filename, sub_dir=None):
         """Find a file in map_dir, optional sub_dir, or via recursive search."""
@@ -196,9 +249,7 @@ class KivyTiledMap:
             name = layer.get('name', '').strip().lower()
             
             # Logic classifications
-            # ใช้ (kw,) หรือ [kw] เพื่อป้องกันการไล่ตรวจทีละตัวอักษร
-            # ตรวจสอบว่าเป็นชั้นหลังคา (สูงที่สุด) หรือไม่
-            is_roof = any(kw in name for kw in ("หลังคา", "roof", "หลังคา2 ชั้น", "funiture3", "furniture3"))
+            is_roof = any(kw in name for kw in ("หลังคา", "roof", "หลังคา2 ชั้น", "funiture3", "furniture3", "ผนังลอย", "ผนังลอยตัว"))
             
             # กฎพิเศษสำหรับ home.tmj: ให้เลเยอร์ "เหนือ" อยู่ชั้นหน้าสุด (High Z)
             map_basename = os.path.basename(self.filename).lower()
@@ -229,27 +280,34 @@ class KivyTiledMap:
                 is_ground = any(kw in name for kw in ("พื้น", "ground", "floor", "floor layer", "bottom", "ดิน")) and not is_fg and not is_roof
                 is_well = "well" in name
             
-            # Special Rule for underground.tmj: "ผนัง" solid, "ของ" solid + foreground (วาดทับผนัง)
-            if "underground.tmj" in self.filename.lower():
-                if "ผนัง" in name:
-                    is_solid = True
-                    is_ground = False
-                elif "ของ" in name:
-                    is_solid = True
-                    is_fg = True      # ← วาดทับผนัง (Z สูงกว่า)
-                    is_ground = False
+            # Collision Logic
+            # ผนังลอย/roof ไม่ต้องมี hitbox เลย
+            # 'ของ' ใน underground และ 'ขยะ' ใน beyond: custom_hitbox_only=True
+            # (ใช้เฉพาะ hitbox ที่กำหนดใน TSX objectgroup เท่านั้น ไม่ fallback เป็น full rect)
+            is_solid = False
+            custom_hitbox_only = False
+            if not is_roof:
+                if "underground.tmj" in self.filename.lower():
+                    if "ผนัง" in name and "ลอย" not in name:
+                        is_solid = True
+                        is_ground = False
+                    elif "ของ" in name:
+                        is_solid = True
+                        is_fg = True
+                        is_ground = False
+                        custom_hitbox_only = True  # เหมือน ขยะ ใน beyond: ใช้แค่ hitbox จาก TSX
+                    else:
+                        is_solid = not is_ground and (
+                            any(kw in name for kw in ("ผนัง", "กำแพง", "wall", "solid", "obstacle")) or
+                            name.lower() in ("funiture", "funiture2", "furniture", "props")
+                        )
                 else:
-                    # layer อื่นใน underground ใช้ logic ปกติ (ไม่ solid เว้นแต่ชื่อตรง)
                     is_solid = not is_ground and (
-                        any(kw in name for kw in ("ผนัง", "กำแพง", "wall", "solid", "obstacle")) or
-                        name.lower() in ("funiture", "funiture2", "furniture", "props")
-                    )
-            else:
-                # Normal solid logic
-                is_solid = not is_ground and (
-                    any(kw in name for kw in ("ผนัง", "ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor", "wall layer")) or
-                    name.lower() in ("funiture", "funiture2", "furniture", "props", "ผนัง")
-                ) and not any(kw in name for kw in ("resources", "floor"))
+                        any(kw in name for kw in ("ผนัง", "ผนังบ้าน", "กองขยะ", "กำแพง", "ขยะ", "wall", "solid", "obstacle", "trash", "chair", "table", "unfloor", "wall layer")) or
+                        name.lower() in ("funiture", "funiture2", "furniture", "props", "ผนัง")
+                    ) and not any(kw in name for kw in ("resources", "floor"))
+                    if is_solid and "ขยะ" in name:
+                        custom_hitbox_only = True  # ขยะ ใน beyond ก็ใช้ custom hitbox only เหมือนกัน
             
             opacity = layer.get('opacity', 1.0)
 
@@ -262,7 +320,8 @@ class KivyTiledMap:
             for gid_full, x, y, cw, ch in instances:
                 self._process_tile(
                     gid_full, x, y, cw, ch, scale, chunk_size_pixels,
-                    is_solid, is_fg, is_well, name, l_meshes_bg, l_meshes_fg, l_meshes_ground, is_ground, is_roof, l_meshes_roof
+                    is_solid, is_fg, is_well, name, l_meshes_bg, l_meshes_fg, l_meshes_ground, is_ground, is_roof, l_meshes_roof,
+                    custom_hitbox_only=custom_hitbox_only
                 )
             
             # 3. Add layer meshes to global chunk data
@@ -332,10 +391,10 @@ class KivyTiledMap:
         w, h = layer.get('width', self.width), layer.get('height', self.height)
         return struct.unpack(f"<{w*h}I", decoded)
 
-    def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg, l_ground, is_ground, is_roof, l_roof):
+    def _process_tile(self, gid_full, x, y, cw, ch, scale, chunk_size_pixels, is_solid, is_fg, is_well, name, l_bg, l_fg, l_ground, is_ground, is_roof, l_roof, custom_hitbox_only=False):
         if gid_full == 0:
-            if is_solid:
-                # Shape without Tile (Collision Box)
+            if is_solid and not custom_hitbox_only:
+                # Shape without Tile (Collision Box) - ข้ามถ้าใช้ custom hitbox only mode
                 self.solid_rects.append([x, y, cw, ch])
             return
 
@@ -358,7 +417,7 @@ class KivyTiledMap:
         # Collision Logic
         if is_solid:
             # Pass tileset dimensions (tsw, tsh) to scale custom hitboxes correctly
-            self._add_to_solid_rects(gid, x, y, w, h, scale, name, tsw, tsh)
+            self._add_to_solid_rects(gid, x, y, w, h, scale, name, tsw, tsh, custom_only=custom_hitbox_only)
         elif is_well and gid in self.well_solid_gids:
             self.solid_rects.append([x, y, w, h])
 
@@ -420,8 +479,10 @@ class KivyTiledMap:
         if fv: v0, v1 = v1, v0
         return [u1, v0, u1, v1, u0, v1, u0, v0] if fd else [u0, v0, u1, v0, u1, v1, u0, v1]
 
-    def _add_to_solid_rects(self, gid, x, y, w, h, scale, name, tsw=None, tsh=None):
-        """Unified hitbox generation. x,y is the Kivy bottom-left of the tile/object."""
+    def _add_to_solid_rects(self, gid, x, y, w, h, scale, name, tsw=None, tsh=None, custom_only=False):
+        """Unified hitbox generation. x,y is the Kivy bottom-left of the tile/object.
+        custom_only=True: ใช้เฉพาะ hitbox จาก TSX objectgroup เท่านั้น (ไม่ fallback เป็น full rect)
+        ใช้สำหรับ layer เช่น 'ของ' ใน underground และ 'ขยะ' ใน beyond ที่ต้องการ hitbox แม่นยำ"""
         if gid in self.tile_hitboxes:
             # Calculate object-to-tile ratio for scaling the hitboxes
             # w and h are already world coordinates; (tsw * scale) is world size of one tile
@@ -439,8 +500,9 @@ class KivyTiledMap:
                 # k_ry = Object Height - (Box Top Y + Box Height)
                 k_ry = h - (shy + shh)
                 self.solid_rects.append([x + shx, y + k_ry, shw, shh])
-        else:
+        elif not custom_only:
             # Fallback for generic solids
+            # (ข้ามถ้าเป็น custom_only mode - เช่น 'ของ' หรือ 'ขยะ' ที่ tile ไม่มี hitbox กำหนดไว้)
             self.solid_rects.append([x, y, w, h])
 
     # --- Mesh Management & Rendering ---

@@ -1611,47 +1611,47 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"old_house.tsx"
+         "source":".tsx/old_house.tsx"
         }, 
         {
          "firstgid":1055,
-         "source":"Roofs 1.tsx"
+         "source":".tsx/Roofs 1.tsx"
         }, 
         {
          "firstgid":1680,
-         "source":"Floors_Tiles 2.tsx"
+         "source":".tsx/Floors_Tiles 2.tsx"
         }, 
         {
          "firstgid":2330,
-         "source":"mainlevbuild 1.tsx"
+         "source":".tsx/mainlevbuild 1.tsx"
         }, 
         {
          "firstgid":4890,
-         "source":"Roofs 2.tsx"
+         "source":".tsx/Roofs 2.tsx"
         }, 
         {
          "firstgid":5515,
-         "source":"\u0e01\u0e2d\u0e07\u0e02\u0e22\u0e30.tsx"
+         "source":".tsx/\u0e01\u0e2d\u0e07\u0e02\u0e22\u0e30.tsx"
         }, 
         {
          "firstgid":5899,
-         "source":"Rocks.tsx"
+         "source":".tsx/Rocks.tsx"
         }, 
         {
          "firstgid":6146,
-         "source":"Furniture.tsx"
+         "source":".tsx/Furniture.tsx"
         }, 
         {
          "firstgid":6171,
-         "source":"Resources.tsx"
+         "source":".tsx/Resources.tsx"
         }, 
         {
          "firstgid":6255,
-         "source":"Well1.tsx"
+         "source":".tsx/Well1.tsx"
         }, 
         {
          "firstgid":6271,
-         "source":"Well2.tsx"
+         "source":".tsx/Well2.tsx"
         }],
  "tilewidth":16,
  "type":"map",

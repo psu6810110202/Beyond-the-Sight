@@ -27,6 +27,9 @@ class Player:
         self.is_underground = False   # เช็คว่าอยู่ใน underground หรือไม่
         self.cutscene_mode = False # บังคับให้เล่นอนิเมชั่นเดินแม้ไม่ได้กดปุ่ม (เช่น ในคัทซีน)
         self.animation_disabled = False # ปิดการอนิเมชั่นทั้งหมด (สำหรับยืนนิ่งๆ ในคัทซีน)
+        # ขอบเขตแมพจริง (อัปเดตเมื่อเปลี่ยนแมพ) รูปแบบ: (min_x, min_y, max_x, max_y)
+        # กิน 1 block เข้ามาทุกด้าน ป้องกันการเดินชิดขอบแมพ
+        self.map_bounds = (TILE_SIZE, TILE_SIZE, MAP_WIDTH - TILE_SIZE * 2, MAP_HEIGHT - TILE_SIZE * 2)
         
         # โหลด Texture
         self.idle_texture = CoreImage(PLAYER_IDLE_IMG).texture
@@ -266,9 +269,11 @@ class Player:
         new_x = self.logic_pos[0] + dx
         new_y = self.logic_pos[1] + dy
         
-        # ตรวจสอบขอบเขตกำแพงล่องหนของแผนที่ (1600x1600) หรืออยู่ในโหมดคัทซีน (อนุญาตให้เดินทะลุขอบตกแมพได้)
+        # ตรวจสอบขอบเขตแมพ (ใช้ self.map_bounds ซึ่งอัปเดตตามแมพจริง ไม่ใช่ MAP_WIDTH/HEIGHT จาก settings)
         is_cutscene = getattr(self, 'cutscene_mode', False)
-        if is_cutscene or (0 <= new_x <= MAP_WIDTH - TILE_SIZE and 0 <= new_y <= MAP_HEIGHT - TILE_SIZE):
+        bounds = getattr(self, 'map_bounds', (TILE_SIZE, TILE_SIZE, MAP_WIDTH - TILE_SIZE * 2, MAP_HEIGHT - TILE_SIZE * 2))
+        min_x, min_y, max_x, max_y = bounds
+        if is_cutscene or (min_x <= new_x <= max_x and min_y <= new_y <= max_y):
             # ตรวจสอบกำแพงจากแผนที่
             if map_rects and self.check_map_collision(new_x, new_y, map_rects) and not is_cutscene:
                 # print("Cannot move - Wall blocking!") # ปิด log เพื่อไม่ให้รกจอ

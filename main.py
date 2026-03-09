@@ -1,5 +1,7 @@
 from kivy.config import Config
 from data.settings import *
+import os
+import json
 
 Config.set('graphics', 'width', str(WINDOW_WIDTH))
 Config.set('graphics', 'height', str(WINDOW_HEIGHT))
@@ -23,8 +25,6 @@ from kivy.clock import Clock
 from kivy.animation import Animation
 from kivy.core.image import Image as CoreImage
 from kivy.core.audio import SoundLoader
-import os 
-import json
 import random
 
 from entities.characters.player import Player
@@ -67,20 +67,6 @@ class GameWidget(Widget):
         self.current_save_slot = initial_data.get('slot_id', None) if initial_data else None
         print(f"DEBUG _initialize_game: current_save_slot={self.current_save_slot}, collected_stars={self.collected_stars}")
         
-        # Merge underground_progress.json — ครอบคลุมผู้เล่นที่ไม่เคย save เลย
-        import json as _json, os as _os
-        _up = 'saves/underground_progress.json'
-        if _os.path.exists(_up):
-            try:
-                with open(_up, 'r') as _f:
-                    _prog = _json.load(_f)
-                _extra = set(tuple(p) for p in _prog.get('collected_stars', []))
-                _existing = set(self.collected_stars)
-                self.collected_stars = list(_existing | _extra)
-                print(f"DEBUG merged underground_progress: {_extra} → total {len(self.collected_stars)}")
-            except Exception:
-                pass
-        
         self.candles = []
         self.current_candle_target = None
         # โหลดจำนวนเทียนที่จุดไปแล้วจากเซฟ
@@ -96,10 +82,10 @@ class GameWidget(Widget):
         # สำหรับกรณีที่ผู้เล่นไม่ยอมเซฟเลย เราจะใช้ค่าความสำเร็จสูงสุดที่เคยทำได้
         self.persistent_stats_path = 'saves/persistent_progress.json'
         self.persistent_stats = {}
-        if _os.path.exists(self.persistent_stats_path):
+        if os.path.exists(self.persistent_stats_path):
             try:
                 with open(self.persistent_stats_path, 'r') as _f:
-                    self.persistent_stats = _json.load(_f)
+                    self.persistent_stats = json.load(_f)
                 
                 # ถ้าโหลดเกมใหม่ (ไม่มี initial_data) หรือโหลดเซฟที่สำเร็จน้อยกว่าสถิติสูงสุด
                 # ให้พิจารณาใช้ค่าจาก Persistent (แต่ในตอนนี้เน้นใช้เพื่อตัดสิน Ending เป็นหลัก)
@@ -383,6 +369,7 @@ class GameWidget(Widget):
         self.player = Player(self.sorting_layer, x=start_pos[0], y=start_pos[1])
         # ตั้งค่าเสียงเดินครั้งแรก
         self.player.is_in_home = 'home.tmj' in starting_map
+        self.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
         
         # Draw Map Foreground ใน Container ใหม่
         self.map_after_group.add(Color(1, 1, 1, 1)) # รับประกันสีปกติ
@@ -806,7 +793,7 @@ class GameWidget(Widget):
         self.interaction_manager.interact()
 
     def stop_all_sounds(self):
-        """หยุดเสียงประกอบเกมทั้งหมด (เช่น เมื่อเริ่มคัทซีนฉากจบ) ยกเว้นเสียง Ambiance หลัก"""
+        """หยุดเสียงประกอบเกมทั้งหมด (SFX, เสียงเดิน ฯลฯ) — ไม่แตะ app.bg_loop"""
         sounds = [
             self.curious_sound, self.sad_soul_sound, self.reaper_voice_sound,
             self.click_sound, self.find_sound, self.shock_sound,
@@ -817,17 +804,7 @@ class GameWidget(Widget):
         
         for s in sounds:
             if s and s.state == 'play':
-                # ตรวจสอบว่าเป็นเสียงบรรยากาศหลักหรือไม่ ถ้าใช่ให้ผ่านไป
-                if hasattr(s, 'source') and 'Ambiance_Cave_Dark_Loop_Stereo.wav' in s.source:
-                    continue
                 s.stop()
-        
-        # ตรวจสอบเสียงจาก App (ถ้ามี)
-        from kivy.app import App
-        app = App.get_running_app()
-        if hasattr(app, 'bg_loop') and app.bg_loop:
-            if app.bg_loop.state != 'play':
-                app.bg_loop.play() # ให้แน่ใจว่ายังเล่นอยู่
         
         if hasattr(self, 'player'):
             self.player.cleanup() # หยุดเสียงเดินและเสียงหอบของ Player
@@ -984,6 +961,9 @@ class GameWidget(Widget):
         # 3. ล้างสถานะปุ่มกด และ UI ลอยตัว
         self.pressed_keys.clear()
         self.clear_interaction_hints()
+        self.is_cutscene_active = False
+        self.cutscene_step = 0
+        self.is_dialogue_active = False
         
         # 4. ล้าง Stun Label ที่ผูกกับ HeartUI ออกจากจอ
         if hasattr(self, 'heart_ui') and self.heart_ui.stun_label:
@@ -1007,8 +987,13 @@ class GameWidget(Widget):
         
         from ui.screen import SplashScreen
         
+        # ตรวจสอบว่าแอปมีฟังก์ชันเลือกปกไหม (เพื่อเลี่ยง Error ตอนเทส)
+        cover_img = SPLASH_COVER_IMG
+        if hasattr(app, '_get_splash_cover'):
+            cover_img = app._get_splash_cover()
+            
         splash = SplashScreen(
-            app._get_splash_cover(),
+            cover_img,
             app.show_game
         )
         app.root.add_widget(splash)

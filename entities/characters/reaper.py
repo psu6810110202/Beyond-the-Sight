@@ -69,17 +69,6 @@ class Reaper:
         """Create the Kivy canvas instructions for the Reaper."""
         self.group = InstructionGroup()
         
-        # Protection aura (gentle blue glow) - Draw FIRST
-        self.aura_color = Color(0.3, 0.7, 1.0, 0.1)
-        self.group.add(self.aura_color)
-        self.protection_circle = Ellipse(
-            pos=(self.x - self.safe_zone_radius + TILE_SIZE // 2, 
-                    self.y - self.safe_zone_radius + TILE_SIZE // 2),
-            size=(self.safe_zone_radius * 2, self.safe_zone_radius * 2)
-        )
-        self.group.add(self.protection_circle)
-
-        
         # Main sprite
         if self.idle_texture:
             self.sprite_color = Color(1, 1, 1, 1)
@@ -136,7 +125,7 @@ class Reaper:
             
             # อัปเดตกราฟิก
             self.sprite_color.a = self.alpha
-            self.aura_color.a = self.alpha * 0.1 # ออร่าจางตาม
+            # self.aura_color.a = self.alpha * 0.1 # ออร่าจางตาม
             return
 
         # Check protection
@@ -172,12 +161,6 @@ class Reaper:
         offset_y = TILE_SIZE / 2
         
         self.rect.pos = (self.x + offset_x, self.y + offset_y)
-        
-        # Center protection circle on the reaper's logic position
-        self.protection_circle.pos = (
-            self.x - self.safe_zone_radius + TILE_SIZE // 2,
-            self.y - self.safe_zone_radius + TILE_SIZE // 2
-        )
     
     def calculate_distance(self, target_pos):
         """Calculate Euclidean distance between Reaper and target centers."""

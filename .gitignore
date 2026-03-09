@@ -3,6 +3,3 @@ __pycache__/
 
 saves/
 .vscode/
-
-tests/
-run_tests.py

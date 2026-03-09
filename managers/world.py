@@ -233,10 +233,12 @@ class WorldManager:
                 if y <= 464:
                     continue
             
-            # ไม่ให้ศัตรูสุ่มเกิดใกล้กับตำแหน่งคงที่เกินไป (เพิ่มระยะห่าง)
+            # ระยะห่างระหว่างศัตรูสุ่ม: สุ่มให้ห่างกันประมาณ 80-120 block (1280-1920px)
+            # แต่ละตัวได้ระยะ min_dist ต่างกันเพื่อกระจายแบบไม่สม่ำเสมอ (แบบสุ่ม)
+            min_dist = r.randint(80, 120) * TILE_SIZE
             too_close = False
             for cx, cy in candidates_xy:
-                if ((x - cx)**2 + (y - cy)**2)**0.5 < 250:  # เพิ่มจาก 180 เป็น 250
+                if ((x - cx)**2 + (y - cy)**2)**0.5 < min_dist:
                     too_close = True
                     break
             if too_close:
@@ -414,6 +416,10 @@ class WorldManager:
         map_w_px = self.game.game_map.width * TILE_SIZE
         map_h_px = self.game.game_map.height * TILE_SIZE
         self.game.clip_rect.size = (map_w_px, map_h_px)
+        
+        # อัปเดต map_bounds ของ player ให้ตรงกับแมพจริง (กิน 1 block เข้ามาทุกด้าน)
+        if hasattr(self.game, 'player') and self.game.player:
+            self.game.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
         
         # 3. วาดกราฟิกแผนที่ใหม่
         self.game.map_before_group.add(Color(1, 1, 1, 1))

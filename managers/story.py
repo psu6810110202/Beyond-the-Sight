@@ -146,12 +146,7 @@ class StoryManager:
         if getattr(self.game, 'is_cutscene_active', False) and getattr(self.game, 'black_overlay', None) is not None:
             if self.game.current_day == 5:
                 success = not getattr(self.game, 'quest_item_fail', False)
-                # ใช้ค่าสูงสุดระหว่างที่นับได้ในรอบนี้ กับที่เคยบันทึกไว้ใน Persistent 
-                base_success = self.game.quest_success_count
-                if hasattr(self.game, 'persistent_stats'):
-                    base_success = max(base_success, self.game.persistent_stats.get('max_quest_success', 0))
-                
-                total_success = base_success + (1 if success else 0)
+                total_success = self.game.quest_success_count + (1 if success else 0)
                 if hasattr(self.game, 'cutscene_manager'):
                     self.game.cutscene_manager.start_day5_ending(total_success)
             else:

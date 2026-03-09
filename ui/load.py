@@ -232,7 +232,19 @@ class SaveLoadScreen(FloatLayout):
         # ค้นหา Slot ที่มีข้อมูลเป็นค่าเริ่มต้น (สำหรับโหมด LOAD)
         valid_indices = [i for i, slot in enumerate(self.slots) if self.mode == "SAVE" or slot.data is not None]
         if valid_indices:
-            self.index = valid_indices[0]
+            if self.mode == "LOAD":
+                # เลือกสล็อตที่ใหม่ที่สุด (Timestamp ล่าสุด)
+                best_idx = valid_indices[0]
+                best_ts = ""
+                for idx in valid_indices:
+                    data = self.slots[idx].data
+                    if data:
+                        ts = data.get('saved_at', '')
+                        if ts > best_ts:
+                            best_ts, best_idx = ts, idx
+                self.index = best_idx
+            else:
+                self.index = valid_indices[0]
             
         self.update_selection()
         

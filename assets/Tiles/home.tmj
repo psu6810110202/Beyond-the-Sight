@@ -398,23 +398,23 @@
  "tilesets":[
         {
          "firstgid":1,
-         "source":"old_house.tsx"
+         "source":".tsx/old_house.tsx"
         }, 
         {
          "firstgid":1055,
-         "source":"\u0e01\u0e2d\u0e07\u0e02\u0e22\u0e30.tsx"
+         "source":".tsx/\u0e01\u0e2d\u0e07\u0e02\u0e22\u0e30.tsx"
         }, 
         {
          "firstgid":1439,
-         "source":"Resources.tsx"
+         "source":".tsx/Resources.tsx"
         }, 
         {
          "firstgid":1523,
-         "source":"Rocks.tsx"
+         "source":".tsx/Rocks.tsx"
         }, 
         {
          "firstgid":1770,
-         "source":"Furniture.tsx"
+         "source":".tsx/Furniture.tsx"
         }],
  "tilewidth":16,
  "type":"map",

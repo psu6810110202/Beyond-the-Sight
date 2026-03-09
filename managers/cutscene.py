@@ -630,9 +630,35 @@ class CutsceneManager:
         self.game.player.stop()
         
     def show_black_screen_transition(self):
-        """แสดงฉากสีดำและบทสนทนาของ Angel"""
+        """แสดงฉากสีดำและบทสนทนาของ Angel/Devil (วันสุดท้าย)"""
         # หยุดการเดินและอนิเมชั่นของผู้เล่นทันที
         self.game.player.stop()
+
+        # ---- เสียง: ปิดทุกอย่าง แล้วสลับเป็น Ambiance Cave (loop ต่อจนถึง main menu) ----
+        from kivy.app import App
+        from kivy.core.audio import SoundLoader as _SL
+        _app = App.get_running_app()
+
+        # 1. หยุด bg_loop ปัจจุบัน (เช่น Underground BGM หรือ loop เก่า)
+        if hasattr(_app, 'bg_loop') and _app.bg_loop:
+            try: _app.bg_loop.stop()
+            except Exception: pass
+
+        # 2. หยุดเสียงอื่นทั้งหมด (SFX, เสียงเดิน ฯลฯ)
+        self.game.stop_all_sounds()
+
+        # 3. โหลดและเริ่ม Ambiance Cave ที่ app.bg_loop → loop ไปตลอด (รวมถึง main menu)
+        _ambiance_path = 'assets/sound/loop/Ambiance_Cave_Dark_Loop_Stereo.wav'
+        import os as _os
+        if _os.path.exists(_ambiance_path):
+            _new_bgm = _SL.load(_ambiance_path)
+            if _new_bgm:
+                _new_bgm.loop = True
+                _new_bgm.volume = 0.7
+                _new_bgm.play()
+                _app.bg_loop = _new_bgm  # เก็บไว้เพื่อให้ main menu ไม่ต้องโหลดใหม่
+        # -----------------------------------------------------------------------
+
 
         root = self.game.dialogue_root if self.game.dialogue_root else self.game
         
@@ -1225,6 +1251,8 @@ class CutsceneManager:
             return
         char, text, portrait = self._bad_q1.pop(0)
         self.game.show_vn_dialogue(char, text, portrait=portrait)
+        # ตั้งธงให้ตัวเองถูกเรียกอีกครั้งเมื่อประโยคนี้จบลง
+        self.game._bad_ending_next = self._bad_next_1
 
     def _bad_play_sounds(self):
         """เล่น Gore.wav ก่อน แล้วต่อด้วย Scream.wav"""
@@ -1299,3 +1327,5 @@ class CutsceneManager:
             return
         char, text, portrait = self._bad_q2.pop(0)
         self.game.show_vn_dialogue(char, text, portrait=portrait)
+        # ตั้งธงให้ตัวเองถูกเรียกอีกครั้งเพื่อรัน Phase ถัดไป (หรือจบ)
+        self.game._bad_ending_next = self._bad_next_2
