@@ -303,7 +303,7 @@ class WorldManager:
         elif 'underground.tmj' in getattr(self.game.game_map, 'filename', '').lower():
             # สำหรับแมพใต้ดิน: ใช้ UNDERGROUND_FRAGMENT_MAPPING ที่กำหนดไว้ใน settings.py
             quest = self.game.quest_manager.active_quests.get("soul_fragments")
-            if quest and not quest.is_active:
+            if not quest or not quest.is_active:
                 return
 
             from data.settings import UNDERGROUND_FRAGMENT_MAPPING
@@ -442,11 +442,18 @@ class WorldManager:
         map_h_px = self.game.game_map.height * TILE_SIZE
         self.game.clip_rect.size = (map_w_px, map_h_px)
         
-        # อัปเดต map_bounds ของ player ให้ตรงกับแมพจริง (กิน 1 block เข้ามาทุกด้าน)
+        # อัปเดต map_bounds ของ player ให้ตรงกับแมพจริง
         if hasattr(self.game, 'player') and self.game.player:
-            self.game.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
+            is_home = 'home.tmj' in map_file.lower()
+            if is_home:
+                # แมพบ้านไม่ร่นขอบ สามารถเดินชิดขอบชั้นนอกได้เลย
+                self.game.player.map_bounds = (0, 0, map_w_px, map_h_px)
+            else:
+                # แมพอื่นร่นขอบเข้ามา 1 block เพื่อความสวยงาม
+                self.game.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
+            
             # อัปเดตสถานะแมพบ้านเพื่อให้เสียงเดินถูกต้อง
-            self.game.player.is_in_home = 'home.tmj' in map_file.lower()
+            self.game.player.is_in_home = is_home
         
         # 3. วาดกราฟิกแผนที่ใหม่
         self.game.map_before_group.add(Color(1, 1, 1, 1))

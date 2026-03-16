@@ -367,9 +367,15 @@ class GameWidget(Widget):
 
         # 5. สร้างตัวละครหลัก (ใช้พิกัดจากเซฟถ้ามี)
         self.player = Player(self.sorting_layer, x=start_pos[0], y=start_pos[1])
-        # ตั้งค่าเสียงเดินครั้งแรก
-        self.player.is_in_home = 'home.tmj' in starting_map
-        self.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
+        # ตั้งค่าเสียงเดินและขอบเขตแมพครั้งแรก
+        is_home = 'home.tmj' in starting_map
+        self.player.is_in_home = is_home
+        if is_home:
+            # แมพบ้านไม่ร่นขอบ (0,0)
+            self.player.map_bounds = (0, 0, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
+        else:
+            # แมพทั่วไปร่นขอบ 1 block
+            self.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
         
         # Draw Map Foreground ใน Container ใหม่
         self.map_after_group.add(Color(1, 1, 1, 1)) # รับประกันสีปกติ
