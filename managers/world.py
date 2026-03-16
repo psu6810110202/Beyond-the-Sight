@@ -233,9 +233,9 @@ class WorldManager:
                 if y <= 464:
                     continue
             
-            # ระยะห่างระหว่างศัตรูสุ่ม: สุ่มให้ห่างกันประมาณ 80-120 block (1280-1920px)
+            # ระยะห่างระหว่างศัตรูสุ่ม: สุ่มให้ห่างกันประมาณ 5-8 block (80-128px)
             # แต่ละตัวได้ระยะ min_dist ต่างกันเพื่อกระจายแบบไม่สม่ำเสมอ (แบบสุ่ม)
-            min_dist = r.randint(80, 120) * TILE_SIZE
+            min_dist = r.randint(5, 8) * TILE_SIZE
             too_close = False
             for cx, cy in candidates_xy:
                 if ((x - cx)**2 + (y - cy)**2)**0.5 < min_dist:
@@ -362,7 +362,10 @@ class WorldManager:
     def create_house_marks(self):
         """สร้างรูปสัญลักษณ์ต่างๆ บนผนังหน้าบ้านใน Day 2"""
         self.game.house_marks_group.clear()
-        if self.game.current_day != 2:
+        
+        # กรองวันและแผนที่หมู่บ้าน (beyond.tmj)
+        map_file = getattr(self.game.game_map, 'filename', '')
+        if self.game.current_day != 2 or 'beyond.tmj' not in map_file.lower():
             return
             
         from kivy.core.image import Image as CoreImage
@@ -386,7 +389,10 @@ class WorldManager:
     def restore_delivered_marks(self):
         """วาดจดหมายที่วางไปแล้วใหม่ให้เชื่อมโยงกับ Graphic Layer (Persist visuals)"""
         self.game.delivered_marks_group.clear()
-        if self.game.current_day != 2:
+        
+        # กรองวันและแผนที่หมู่บ้าน (beyond.tmj)
+        map_file = getattr(self.game.game_map, 'filename', '')
+        if self.game.current_day != 2 or 'beyond.tmj' not in map_file.lower():
             return
             
         from kivy.core.image import Image as CoreImage
@@ -408,7 +414,26 @@ class WorldManager:
         # 1. ล้าง Containers ทั้งหมด
         self.game.map_before_group.clear()
         self.game.map_after_group.clear()
+        self.game.house_marks_group.clear()
+        self.game.delivered_marks_group.clear()
         
+        # 1.5 ล้าง Entities เก่าออกจาก Sorting Layer (Destroy Orphans)
+        for entity_list in [getattr(self.game, 'npcs', []), 
+                           getattr(self.game, 'enemies', []), 
+                           getattr(self.game, 'stars', []),
+                           getattr(self.game, 'candles', []),
+                           getattr(self.game, 'extra_reapers', [])]:
+            for e in entity_list:
+                if hasattr(e, 'destroy'):
+                    e.destroy()
+        
+        # รีเซ็ตลิสต์หลังจาก Destroy
+        self.game.npcs = []
+        self.game.enemies = []
+        self.game.stars = []
+        self.game.candles = []
+        self.game.extra_reapers = []
+
         # 2. สร้าง instance แมพใหม่
         self.game.game_map = KivyTiledMap(map_file)
         
@@ -420,6 +445,8 @@ class WorldManager:
         # อัปเดต map_bounds ของ player ให้ตรงกับแมพจริง (กิน 1 block เข้ามาทุกด้าน)
         if hasattr(self.game, 'player') and self.game.player:
             self.game.player.map_bounds = (TILE_SIZE, TILE_SIZE, map_w_px - TILE_SIZE * 2, map_h_px - TILE_SIZE * 2)
+            # อัปเดตสถานะแมพบ้านเพื่อให้เสียงเดินถูกต้อง
+            self.game.player.is_in_home = 'home.tmj' in map_file.lower()
         
         # 3. วาดกราฟิกแผนที่ใหม่
         self.game.map_before_group.add(Color(1, 1, 1, 1))
@@ -430,12 +457,21 @@ class WorldManager:
         self.game.map_after_group.add(Color(1, 1, 1, 1))
         self.game.game_map.draw_roof(self.game.map_after_group)       # หลังคา/เหนือ อยู่บนสุดทับตัวละคร
         
+        # 3.5 สร้าง Entities ใหม่ตามแมพที่เพิ่งโหลด
+        self.create_reapers()
+        self.create_npcs()
+        self.create_enemies()
+        self.create_stars()
+        self.create_candles()
+        self.create_house_marks()
+        self.restore_delivered_marks()
+
         # 4. รีเฟรชตำแหน่งกล้อง
         self.game.update_camera()
         self.game.game_map.update_chunks(self.game.player.logic_pos[0], self.game.player.logic_pos[1])
         
-        # 5. อัปเดตเสียงเดินตามประเภทแมพ
-        self.game.player.is_in_home = 'home.tmj' in map_file
+        # 5. อัปเดตสถานะ World อื่นๆ
+        self.refresh_darkness()
         
         print(f"DEBUG: Map swapped to {map_file} (via World Manager)")
 

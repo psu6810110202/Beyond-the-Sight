@@ -24,8 +24,22 @@ class DialogueManager:
         
         self.chat_tri_event = None
         self.item_tri_event = None
-        self.portrait_anim_event = None
+        p_event = None
+        self.portrait_anim_event = p_event # Dummy to satisfy typing
         self.current_anim_character = None
+        
+        # UI Elements and State
+        self.bg_rect = None
+        self.portrait_rect = None
+        self.left_portrait_rect = None
+        self._portrait_update_bound = False
+        self._left_portrait_update_bound = False
+        
+        # Discovery elements
+        self.notif_banner_rect = None
+        self.notif_line_top = None
+        self.notif_line_bottom = None
+        self.item_tri_widget = None
 
     def _get_scaled_font_size(self):
         """Scale font size (Single point of control)"""
@@ -79,7 +93,7 @@ class DialogueManager:
             self.game.clear_interaction_hints()
 
         self.stop_portrait_animation()
-        if self.dialogue_bg:
+        if self.dialogue_bg is not None:
             if self.dialogue_bg.parent: self.dialogue_bg.parent.remove_widget(self.dialogue_bg)
             self.dialogue_bg = None
         if self.chat_tri_event: Clock.unschedule(self.chat_tri_event); self.chat_tri_event = None
@@ -525,12 +539,12 @@ class DialogueManager:
             }
             
             # โชว์ Banner ไอเทมก่อน (เพื่อให้ story_manager รู้ว่าจะต้อง Queue save ไว้)
-            if "Blue Stone" in current_text:
-                self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
-                self.game.has_received_blue_stone = True
-            elif "Lantern" in current_text:
+            if "lantern" in current_text.lower() and not self.game.has_received_lantern:
                 self.show_item_discovery("Received [Lantern]", "assets/Items/Lantern.png")
                 self.game.has_received_lantern = True
+            elif "blue stone" in current_text.lower() and not self.game.has_received_blue_stone:
+                self.show_item_discovery("Received [Blue Stone]", "assets/items/blue stone.png")
+                self.game.has_received_blue_stone = True
                 
             # ปิดกล่องแชทตาม User Request (Chat ควรจะหายไปก่อน)
             self.close_dialogue()

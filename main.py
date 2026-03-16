@@ -123,16 +123,16 @@ class GameWidget(Widget):
         # Setup Camera
         self.camera = Camera(self.canvas.before)
 
-        self.debug_label = Label(
-            text="", 
-            size_hint=(None, None),
-            size=(200, 120),              # ตั้งขนาดกรอบ
-            halign='right',                # ชิดซ้าย
-            valign='top',                 # ชิดบน
-            color=(0, 1, 0, 1),           # สีเขียว
-            font_size='18sp'
-        )
-        self.debug_label.bind(size=self.debug_label.setter('text_size'))
+        # self.debug_label = Label(
+        #     text="", 
+        #     size_hint=(None, None),
+        #     size=(200, 120),              # ตั้งขนาดกรอบ
+        #     halign='right',                # ชิดซ้าย
+        #     valign='top',                 # ชิดบน
+        #     color=(0, 1, 0, 1),           # สีเขียว
+        #     font_size='18sp'
+        # )
+        # self.debug_label.bind(size=self.debug_label.setter('text_size'))
 
         # ระบบจัดการ UI บทสนทนา
         self.dialogue_manager = DialogueManager(self)
@@ -396,8 +396,9 @@ class GameWidget(Widget):
         # Ensure UI updates position correctly on window resize AFTER everything is created
         self.bind(size=self.update_ui_positions)
         
-        # Manually force the first UI positioning update
-        self.update_ui_positions()
+        # Manually force the first UI positioning update just in case, but delay it slightly
+        # so that dialogue_root has time to be set by MyApp
+        Clock.schedule_once(lambda dt: self.update_ui_positions(), 0.1)
 
         # อัปเดตความมืด (Fog of War)
         # ถ้าอยู่ในแมพ Underground ให้ปิดหมอก (User Request: เอาหมอกออก)
@@ -458,8 +459,9 @@ class GameWidget(Widget):
             self.heart_ui.set_stun_visibility(self.has_received_blue_stone)
             # เพิ่ม Label เข้า Root ถ้ายังไม่มี
             if self.has_received_blue_stone and self.heart_ui.stun_label and \
-               self.heart_ui.stun_label.parent is None and self.dialogue_root:
-                self.dialogue_root.add_widget(self.heart_ui.stun_label)
+               self.heart_ui.stun_label.parent is None:
+                root = self.dialogue_root if self.dialogue_root else getattr(self, 'parent', self)
+                if root: root.add_widget(self.heart_ui.stun_label)
 
     def _on_keyboard_closed(self): 
         self.input_handler.on_keyboard_closed()
@@ -544,6 +546,8 @@ class GameWidget(Widget):
             
             # อัปเดต NPCs / Reaper / Enemies (Culling - อัปเดตเฉพาะที่อยู่ใกล้)
             px, py = self.player.logic_pos
+            damage_taken_this_frame = False # ป้องกันโดนดาเมจซ้อนในเฟรมเดียว (1 ผี = 1 เล็กด้าเมจ)
+            
             for npc in self.npcs:
                 # Cull distance: 600px
                 if abs(npc.x - px) + abs(npc.y - py) < 600:
@@ -590,15 +594,19 @@ class GameWidget(Widget):
                     if enemy.id not in self.destroyed_enemies:
                         self.destroyed_enemies.append(enemy.id)
                     enemy.start_fade()
-                    self.heart_ui.take_damage()
                     
-                    # เล่นเสียงตกใจ
-                    if self.shock_sound:
-                        self.shock_sound.play()
+                    # หักเลือดเพียงครั้งเดียวต่อเฟรม (แก้ปัญหาผีซ้อนกันแล้วลด 2 เลือด)
+                    if not damage_taken_this_frame:
+                        self.heart_ui.take_damage()
+                        damage_taken_this_frame = True
                     
-                    # ตรวจสอบว่าเลือดหมดหรือยัง
-                    if self.heart_ui.current_health <= 0:
-                        self.respawn_at_reaper()
+                        # เล่นเสียงตกใจ
+                        if self.shock_sound:
+                            self.shock_sound.play()
+                        
+                        # ตรวจสอบว่าเลือดหมดหรือยัง
+                        if self.heart_ui.current_health <= 0:
+                            self.respawn_at_reaper()
                 
                 # ตรวจสอบว่าศัตรูเข้าใกล้ Reaper หรือยัง (Safe Zone)
                 # Optimization: ใช้ Squared Distance เพื่อเลี่ยง sqrt
@@ -672,15 +680,15 @@ class GameWidget(Widget):
         # อัปเดต Debug Label (อัปเดตแค่บางเฟรมเพื่อลดภาระ CPU ในการจัดการ String)
         if not hasattr(self, '_debug_frame_count'): self._debug_frame_count = 0
         self._debug_frame_count += 1
-        if self._debug_frame_count % 60 == 0:
-            map_name = os.path.basename(self.game_map.filename)
-            self.debug_label.text = (
-                f"FPS: {int(Clock.get_fps())}\n"
-                f"Map: {map_name}\n"
-                f"Pos: ({int(px)}, {int(py)})\n"
-                f"Grid: ({int(px/16)}, {int(py/16)})\n"
-                f"Chunk: ({int(px/16/16)}, {int(py/16/16)})"
-            )
+        # if self._debug_frame_count % 60 == 0:
+        #     map_name = os.path.basename(self.game_map.filename)
+        #     self.debug_label.text = (
+        #         f"FPS: {int(Clock.get_fps())}\n"
+        #         f"Map: {map_name}\n"
+        #         f"Pos: ({int(px)}, {int(py)})\n"
+        #         f"Grid: ({int(px/16)}, {int(py/16)})\n"
+        #         f"Chunk: ({int(px/16/16)}, {int(py/16/16)})"
+        #     )
         
         # จัดเลเยอร์การวาดตัวละคร (Y-Sorting)
         self.y_sorting()
@@ -688,15 +696,16 @@ class GameWidget(Widget):
 
     def _update_debug_text(self, px, py):
         """อัปเดตข้อมูล Debug ที่มุมจอ"""
-        grid_x, grid_y = px // TILE_SIZE, py // TILE_SIZE
-        chunk_x, chunk_y = grid_x // 16, grid_y // 16
-        
-        self.debug_label.text = (
-            f"FPS: {Clock.get_fps():.0f}\n"
-            f"Pos: ({px}, {py})\n"
-            f"Grid: ({grid_x}, {grid_y})\n"
-            f"Chunk: ({chunk_x}, {chunk_y})"
-        )
+        pass
+        # grid_x, grid_y = px // TILE_SIZE, py // TILE_SIZE
+        # chunk_x, chunk_y = grid_x // 16, grid_y // 16
+        # 
+        # self.debug_label.text = (
+        #     f"FPS: {Clock.get_fps():.0f}\n"
+        #     f"Pos: ({px}, {py})\n"
+        #     f"Grid: ({grid_x}, {grid_y})\n"
+        #     f"Chunk: ({chunk_x}, {chunk_y})"
+        # )
 
     def y_sorting(self):
         """จัดลำดับการวาดตัวละครตามค่า Y (Y-Sorting)"""
@@ -1142,8 +1151,8 @@ class MyApp(App):
         game.quest_manager.update_quest_list_ui(animate=False)
         
         # นำ debug_label แปะที่ FloatLayout (UI หน้าจอจริงๆ) ให้พ้นจากกล้องซูม/หมุน
-        game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
-        self.root.add_widget(game.debug_label) 
+        # game.debug_label.pos_hint = {'right': 0.95, 'top': 0.95}
+        # self.root.add_widget(game.debug_label) 
 
     def on_start(self):
         # ผูกเหตุการณ์คีย์บอร์ดระดับ Window เพื่อให้กด F11 ได้ทุกหน้าจอ

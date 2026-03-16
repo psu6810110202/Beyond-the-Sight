@@ -539,9 +539,10 @@ class CutsceneManager:
         self.game.cutscene_step = 10  # 10 คือรหัส step สำหรับ Side Story Cutscene
         self.game.camera.locked = True
         
-        # User Request: เล่นเสียงกล่องดนตรีตอนคัทซีนบ้าน
-        if hasattr(self.game, 'music_box_sound') and self.game.music_box_sound:
-            self.game.music_box_sound.play()
+        # User Request: เล่นเสียงกล่องดนตรีตอนคัทซีนบ้าน (เฉพาะวันที่ 4)
+        if getattr(self.game, 'current_day', 1) == 4:
+            if hasattr(self.game, 'music_box_sound') and self.game.music_box_sound:
+                self.game.music_box_sound.play()
         
         # เก็บข้อมูลบทสนทนาไว้เปิดทีหลัง
         self.side_story_data = {
